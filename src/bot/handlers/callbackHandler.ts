@@ -37,7 +37,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       });
     } else if (result === 'NOT_MEMBER') {
       await ctx.answerCallbackQuery({
-        text: '❌ لم تشترك بعد. اشترك ثم حاول مجدداً 🔄',
+        text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط أدناه، ثم اضغط على زر التحقق للحصول على مكافأتك 🎁',
         show_alert: true,
       });
     } else if (result === 'ADMIN_BLOCKED') {
@@ -76,12 +76,13 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  // ── STEP 3: Reset quota if 24h have passed ────────────────────────────────────
+  // ── STEP 3: Reset quota if 24h have passed (Additive to preserve debt) ──────
   if (
     !user.lastQuotaReset ||
     Date.now() - new Date(user.lastQuotaReset).getTime() > 24 * 60 * 60 * 1000
   ) {
-    user.dailyQuota = 5;
+    user.dailyQuota += 5;
+    if (user.dailyQuota > 5) user.dailyQuota = 5;
     user.lastQuotaReset = new Date();
     await user.save();
   }

@@ -8,6 +8,9 @@ export interface IFundCampaign extends Document {
   createdBy: number;
   isActive: boolean;
   createdAt: Date;
+  claimCounter: number;
+  broadcastMessages: { userId: number; messageId: number; claimed: boolean }[];
+  claimedUsers: number[];
 }
 
 export interface IFundCampaignModel extends Model<IFundCampaign> {}
@@ -37,6 +40,24 @@ const FundCampaignSchema = new Schema<IFundCampaign>(
     createdAt: {
       type: Date,
       default: () => new Date(),
+    },
+    claimCounter: {
+      type: Number,
+      default: 0,
+    },
+    broadcastMessages: {
+      type: [
+        {
+          userId: Number,
+          messageId: Number,
+          claimed: Boolean,
+        },
+      ],
+      default: [],
+    },
+    claimedUsers: {
+      type: [Number],
+      default: [],
     },
   },
   {

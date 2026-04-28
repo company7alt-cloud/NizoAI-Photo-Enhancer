@@ -3,7 +3,7 @@ import { InlineKeyboard } from 'grammy';
 import { User } from '../../database/models/User';
 import { Settings } from '../../database/models/Settings';
 import { BotContext } from '../../utils/validators';
-import { addAttemptsWithDebtCheck } from '../../services/channelFundService';
+
 
 // ─── /start ───────────────────────────────────────────────────────────────────
 
@@ -35,27 +35,26 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     });
 
     // ── 4. Referral reward (strict rules) ──────────────────────────────────────
-    if (isActuallyNew && referrerId !== null && referrerId !== telegramId) {
+    if (referrerId !== null && referrerId !== telegramId && !user.referralRewardClaimed) {
       const referrer = await User.findOne({ telegramId: referrerId });
 
-      if (
-        referrer &&
-        !referrer.isBanned &&
-        !referrer.referredUsers.includes(telegramId)
-      ) {
-        // Add 20 points via the shared debt-aware function
-        await addAttemptsWithDebtCheck(referrerId, 20);
+      if (referrer) {
+        // Add 5 points to referrer
+        await User.updateOne({ telegramId: referrerId }, { $inc: { dailyQuota: 5, referralCount: 1 } });
+        await User.updateOne({ telegramId: referrerId }, { $push: { referredUsers: telegramId } });
 
-        // Record this user so the same referrer cannot claim again
-        referrer.referredUsers.push(telegramId);
-        referrer.referralCount += 1;
-        await referrer.save();
+        // Mark on the new user immediately
+        user.referredBy = referrerId;
+        user.referralRewardClaimed = true;
+        await user.save();
 
         // Notify referrer
         ctx.api
           .sendMessage(
             referrerId,
-            '🎉 مبروك! انضم شخص عبر رابطك وحصلت على 20 نقطة!'
+            '🎉 ياهووو! دخل صديق جديد عن طريق رابط دعوتك الخاص! 🚀\n' +
+            'تم إضافة 5 محاولات مجانية لرصيدك بنجاح 💎✨\n' +
+            'استمر في مشاركة رابطك واكسب أكثر! 🔥'
           )
           .catch(() => {});
       }

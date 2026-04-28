@@ -20,6 +20,7 @@ export interface IUser extends Document {
   quotaDebt: number;
   channelJoinDate: Date | null;
   channelRewardClaimed: boolean;
+  referralRewardClaimed: boolean;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -104,6 +105,10 @@ const UserSchema = new Schema<IUser>(
       default: null,
     },
     channelRewardClaimed: {
+      type: Boolean,
+      default: false,
+    },
+    referralRewardClaimed: {
       type: Boolean,
       default: false,
     },

@@ -126,17 +126,20 @@ export async function broadcastFundCampaign(
     `بعد الانضمام اضغط الزر أدناه للحصول على مكافأتك ✨`;
 
   const { InlineKeyboard } = await import('grammy');
-  const keyboard = new InlineKeyboard().text(
-    '🎁 احصل على مكافأتي',
-    `claim_reward_${campaign.channelId}`
-  );
+  const keyboard = new InlineKeyboard()
+    .url('📢 انضم للقناة الآن', campaign.channelLink)
+    .row()
+    .text('🎁 تحقق واحصل على مكافأتي', `claim_reward_${campaign.channelId}`);
+
+  const broadcastMessages: { userId: number; messageId: number; claimed: boolean }[] = [];
 
   for (const u of users) {
     try {
-      await api.sendMessage(u.telegramId, message, {
+      const msg = await api.sendMessage(u.telegramId, message, {
         parse_mode: 'Markdown',
         reply_markup: keyboard,
       });
+      broadcastMessages.push({ userId: u.telegramId, messageId: msg.message_id, claimed: false });
       sent++;
     } catch {
       failed++;
@@ -146,6 +149,9 @@ export async function broadcastFundCampaign(
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
+
+  campaign.broadcastMessages = broadcastMessages;
+  await campaign.save();
 
   return { sent, failed };
 }
@@ -160,15 +166,6 @@ export async function claimChannelReward(
   // Admin cannot claim their own campaign
   if (isAdmin(userId)) return 'ADMIN_BLOCKED';
 
-  const campaign = await FundCampaign.findOne({ channelId, isActive: true });
-  if (!campaign) return 'NO_CAMPAIGN';
-
-  const user = await User.findOne({ telegramId: userId });
-  if (!user) return 'NOT_MEMBER';
-
-  // Duplicate-claim guard
-  if (user.fundedChannels.includes(channelId)) return 'ALREADY_CLAIMED';
-
   // Verify membership via Telegram API
   try {
     const member = await api.getChatMember(channelId, userId);
@@ -178,10 +175,60 @@ export async function claimChannelReward(
     return 'NOT_MEMBER';
   }
 
+  const campaign = await FundCampaign.findOne({ channelId, isActive: true });
+  if (!campaign) return 'NO_CAMPAIGN';
+
+  const user = await User.findOne({ telegramId: userId });
+  if (!user) return 'NOT_MEMBER';
+
+  // Duplicate-claim guard for legacy records
+  if (user.fundedChannels.includes(channelId)) return 'ALREADY_CLAIMED';
+
+  // ATOMIC CAMPAIGN UPDATE (Scarcity + Anti-Spam)
+  const campaignId = campaign._id;
+  const maxTarget = campaign.targetMembers;
+
+  const updatedCampaign = await FundCampaign.findOneAndUpdate(
+    {
+      _id: campaignId,
+      claimCounter: { $lt: maxTarget },
+      claimedUsers: { $ne: userId },
+      isActive: true
+    },
+    {
+      $inc: { claimCounter: 1 },
+      $push: { claimedUsers: userId },
+      $set: { "broadcastMessages.$[elem].claimed": true }
+    },
+    {
+      arrayFilters: [{ "elem.userId": userId }],
+      new: true
+    }
+  );
+
+  if (!updatedCampaign) {
+    const checkCampaign = await FundCampaign.findById(campaignId);
+    if (checkCampaign?.claimedUsers.includes(userId)) return 'ALREADY_CLAIMED';
+    return 'NO_CAMPAIGN';
+  }
+
   // Add 5 attempts (debt-aware) and mark channel as claimed
   await addAttemptsWithDebtCheck(userId, 5);
   user.fundedChannels.push(channelId);
   await user.save();
+
+  // CHANGE C — After successful claim, check if campaign is now full
+  if (updatedCampaign.claimCounter >= updatedCampaign.targetMembers) {
+    const remaining = updatedCampaign.broadcastMessages.filter(m => !m.claimed);
+    for (const { userId: uid, messageId } of remaining) {
+      try {
+        await api.deleteMessage(uid, messageId);
+      } catch (e) {
+        // Ignore: user blocked bot or deleted the chat
+      }
+    }
+    await FundCampaign.findByIdAndUpdate(campaignId, { isActive: false });
+  }
 
   return 'REWARDED';
 }
@@ -199,28 +246,34 @@ export async function handleMemberLeft(
   // Only penalise if they had claimed this channel's reward
   if (!user.fundedChannels.includes(channelId)) return;
 
-  // Deduct 5 via the shared wallet function (balance can go negative)
-  const newBalance = await addAttemptsWithDebtCheck(userId, -5);
+  // Deduct 5 atomically, allowing negative balances. Also reset claim tracking.
+  const updatedUser = await User.findOneAndUpdate(
+    { telegramId: userId },
+    { 
+      $inc: { dailyQuota: -5 },
+      $pull: { fundedChannels: channelId },
+      $set: { channelRewardClaimed: false }
+    },
+    { new: true }
+  );
 
-  // Remove channel from claimed list so they can reclaim if they rejoin
-  user.fundedChannels = user.fundedChannels.filter((id) => id !== channelId);
-  await user.save();
+  if (!updatedUser) return;
+
+  const campaign = await FundCampaign.findOne({ channelId });
+  const channelLink = campaign?.channelLink || '#';
+
+  const { InlineKeyboard } = await import('grammy');
+  const keyboard = new InlineKeyboard()
+    .url('📢 انضم للقناة الآن', channelLink)
+    .row()
+    .text('🎁 تحقق واسترجع محاولاتي', `claim_reward_${channelId}`);
 
   try {
-    if (newBalance >= 0) {
-      await api.sendMessage(
-        userId,
-        `⚠️ تم خصم 5 محاولات بسبب مغادرتك القناة.\n` +
-          `📊 رصيدك الحالي: ${newBalance} محاولة\n\n` +
-          `انضم مجدداً لاستردادها 🔄`
-      );
-    } else {
-      await api.sendMessage(
-        userId,
-        `⚠️ رصيدك الحالي: ${newBalance} (دين متراكم).\n` +
-          `سيتم خصم الدين من مكافآتك القادمة تلقائياً 🔒`
-      );
-    }
+    await api.sendMessage(
+      userId,
+      "⚠️ تم خصم 5 محاولات بسبب مغادرتك القناة. رصيدك الحالي انخفض.\n\nللتعويض واسترجاع محاولاتك، انضم للقناة مجدداً من الزر أدناه ثم اضغط على زر التحقق 👇",
+      { reply_markup: keyboard }
+    );
   } catch {
     // Silent — never disrupt the user's pending interactions
   }
