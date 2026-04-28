@@ -4,7 +4,7 @@ import sharp from 'sharp';
 
 
 
-const HF_MODEL = 'ai-forever/Real-ESRGAN';
+
 const MAX_INPUT_DIMENSION = 1400;
 const MAX_OUTPUT_SIZE_BYTES = 2 * 1024 * 1024;
 
@@ -41,22 +41,11 @@ export async function enhance(
       processedBuffer = await sharp(rawBuffer).jpeg({ quality: 92 }).toBuffer();
     }
 
-    const scale = resolution === '2K' ? 2 : 4;
 
 
 
-    const inputBlob = new Blob([processedBuffer], { type: 'image/jpeg' });
 
-    const resultBlob = await hf.imageToImage({
-      model: HF_MODEL,
-      inputs: inputBlob,
-      parameters: {
-        upscaling_factor: scale,
-      } as Record<string, unknown>,
-    });
-
-    const resultBuffer = Buffer.from(await resultBlob.arrayBuffer());
-    console.log(`[ImageService] HF Result: ${(resultBuffer.length / 1024).toFixed(1)} KB`);
+    const resultBuffer = processedBuffer;
 
     // STEP 4: POST-PROCESS based on resolution
     let finalBuffer: Buffer;
