@@ -5,7 +5,7 @@ if (!process.env.BOT_TOKEN) throw new Error('BOT_TOKEN is missing');
 if (!process.env.ADMIN_IDS) throw new Error('ADMIN_IDS is missing');
 if (!process.env.CHANNEL_ID) throw new Error('CHANNEL_ID is missing');
 if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is missing');
-if (!process.env.HF_API_KEY) throw new Error('HF_API_KEY is missing');
+
 
 import http from 'http';
 import { Bot, session, NextFunction } from 'grammy';

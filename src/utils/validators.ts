@@ -18,7 +18,7 @@ export type BotContext = Context & SessionFlavor<SessionData>;
 // ─── Environment Validation ────────────────────────────────────────────────────
 
 export function validateEnv(): void {
-  const required: string[] = ['BOT_TOKEN', 'MONGODB_URI', 'ADMIN_IDS', 'HF_API_KEY', 'PORT'];
+  const required: string[] = ['BOT_TOKEN', 'MONGODB_URI', 'ADMIN_IDS', 'PORT'];
   for (const key of required) {
     if (!process.env[key]) {
       console.error(`[Fatal] Missing required environment variable: ${key}`);

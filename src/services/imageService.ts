@@ -1,8 +1,8 @@
 // src/services/imageService.ts
-import { InferenceClient } from '@huggingface/inference';
+
 import sharp from 'sharp';
 
-const hf = new InferenceClient(process.env.HF_API_KEY!);
+
 
 const HF_MODEL = 'ai-forever/Real-ESRGAN';
 const MAX_INPUT_DIMENSION = 1400;
@@ -42,9 +42,9 @@ export async function enhance(
     }
 
     const scale = resolution === '2K' ? 2 : 4;
-    console.log(`[ImageService] Sending to HuggingFace — ${resolution}, Scale: ${scale}x`);
 
-    // STEP 3: Call HuggingFace Real-ESRGAN via imageToImage
+
+
     const inputBlob = new Blob([processedBuffer], { type: 'image/jpeg' });
 
     const resultBlob = await hf.imageToImage({
