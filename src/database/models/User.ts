@@ -1,0 +1,134 @@
+// src/database/models/User.ts
+import { Schema, model, Document, Model } from 'mongoose';
+
+export interface IUser extends Document {
+  telegramId: number;
+  username?: string;
+  firstName: string;
+  language: string;
+  dailyQuota: number;
+  lastQuotaReset: Date;
+  totalEnhancements: number;
+  referralCount: number;
+  referredBy?: number;
+  referredUsers: number[];
+  fundedChannels: string[];
+  isVip: boolean;
+  isBanned: boolean;
+  lastSeen: Date;
+  joinedAt: Date;
+  quotaDebt: number;
+  channelJoinDate: Date | null;
+  channelRewardClaimed: boolean;
+}
+
+export interface IUserModel extends Model<IUser> {
+  findByTelegramId(telegramId: number): Promise<IUser | null>;
+  findOrCreate(data: Partial<IUser>): Promise<{ user: IUser; isNew: boolean }>;
+}
+
+const UserSchema = new Schema<IUser>(
+  {
+    telegramId: {
+      type: Number,
+      required: true,
+      unique: true,
+      index: true,
+    },
+    username: {
+      type: String,
+      default: undefined,
+    },
+    firstName: {
+      type: String,
+      default: '',
+    },
+    language: {
+      type: String,
+      default: 'en',
+    },
+    dailyQuota: {
+      type: Number,
+      default: 5,
+      // No min — negative values represent debt from channel-fund penalties
+    },
+    lastQuotaReset: {
+      type: Date,
+      default: () => new Date(),
+    },
+    totalEnhancements: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    referralCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    referredBy: {
+      type: Number,
+      default: undefined,
+    },
+    referredUsers: {
+      type: [Number],
+      default: [],
+    },
+    fundedChannels: {
+      type: [String],
+      default: [],
+    },
+    isVip: {
+      type: Boolean,
+      default: false,
+    },
+    isBanned: {
+      type: Boolean,
+      default: false,
+    },
+    lastSeen: {
+      type: Date,
+      default: () => new Date(),
+    },
+    joinedAt: {
+      type: Date,
+      default: () => new Date(),
+    },
+    quotaDebt: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    channelJoinDate: {
+      type: Date,
+      default: null,
+    },
+    channelRewardClaimed: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  {
+    timestamps: false,
+    versionKey: false,
+  }
+);
+
+UserSchema.statics.findByTelegramId = async function (
+  telegramId: number
+): Promise<IUser | null> {
+  return this.findOne({ telegramId }) as Promise<IUser | null>;
+};
+
+UserSchema.statics.findOrCreate = async function (
+  data: Partial<IUser>
+): Promise<{ user: IUser; isNew: boolean }> {
+  const existing = (await this.findOne({ telegramId: data.telegramId })) as IUser | null;
+  if (existing) {
+    return { user: existing, isNew: false };
+  }
+  const user = (await this.create(data)) as IUser;
+  return { user, isNew: true };
+};
+
+export const User = model<IUser, IUserModel>('User', UserSchema);

@@ -1,0 +1,16 @@
+import { BotContext } from '../../utils/validators';
+export declare function adminCommand(ctx: BotContext): Promise<void>;
+export declare function handleAdminCallback(ctx: BotContext): Promise<void>;
+export declare const isBroadcastPending: (id: number) => boolean;
+export declare function executeBroadcast(ctx: BotContext): Promise<void>;
+export declare function runBroadcast(ctx: BotContext): Promise<void>;
+export declare const isAddBroadcastBtnPending: (id: number) => boolean;
+export declare function handleAddBroadcastButton(ctx: BotContext, text: string): Promise<void>;
+export declare const isQuotaAddPending: (id: number) => boolean;
+export declare function handleQuotaAdd(ctx: BotContext, input: string): Promise<void>;
+export declare const getContentEditPending: (id: number) => string | undefined;
+export declare const setContentEditPending: (id: number, field: string) => Map<number, string>;
+export declare const clearContentEditPending: (id: number) => boolean;
+export declare function handleContentEdit(ctx: BotContext, field: string, value: string): Promise<void>;
+export declare const isUserSearchPending: (id: number) => boolean;
+export declare function searchUser(ctx: BotContext, searchId: number): Promise<void>;
