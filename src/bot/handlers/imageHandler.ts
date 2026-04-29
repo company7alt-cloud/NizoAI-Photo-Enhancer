@@ -4,6 +4,39 @@ import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
 
 export async function imageHandler(ctx: BotContext): Promise<void> {
+  const telegramId = ctx.from?.id.toString();
+  const reportUser = await User.findOne({ telegramId });
+
+  if (reportUser?.awaitingReport) {
+    await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
+
+    const adminIdsRaw = process.env.ADMIN_IDS || '';
+    const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
+    const userId = ctx.from?.id;
+    const firstName = ctx.from?.first_name || 'مجهول';
+    const username = ctx.from?.username ? `@${ctx.from.username}` : 'لا يوجد معرف';
+    const userLink = `tg://user?id=${userId}`;
+
+    const reportHeader =
+      `🚨 <b>بلاغ جديد من عميل</b>\n\n` +
+      `👤 <b>العميل:</b> <a href="${userLink}">${firstName}</a>\n` +
+      `🔗 <b>المعرف:</b> ${username}\n` +
+      `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
+      `📅 <b>التوقيت:</b> ${new Date().toLocaleString('ar-SA')}`;
+
+    for (const adminId of adminIds) {
+      try {
+        await ctx.api.sendMessage(adminId, reportHeader, { parse_mode: 'HTML' });
+        await ctx.forwardMessage(adminId);
+      } catch (e) {
+        console.error('[Report] Forward error:', e);
+      }
+    }
+
+    await ctx.reply('✅ تم تحويل بلاغك إلى المطور بنجاح 💌\nسيتم الرد عليك في أسرع وقت ممكن 🌹');
+    return;
+  }
+
   const userId = ctx.from?.id;
   if (!userId) return;
 

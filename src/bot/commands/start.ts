@@ -93,8 +93,13 @@ export async function startCommand(ctx: BotContext): Promise<void> {
       quotaLine = `🎁 محاولاتك اليومية: ${freshUser.dailyQuota}`;
     }
 
+    const joinDate = freshUser.joinedAt
+      ? new Date(freshUser.joinedAt).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' })
+      : 'غير محدد';
+
     const greeting =
       `- مرحباً ( ${firstName} ) 🎃\n\n` +
+      `📅 تاريخ انضمامك: ${joinDate}\n\n` +
       `• هل ترغب في تحسين جودة الصور القديمة الى . 2k - 4k - 8k ؟\n\n` +
       `• من خلال بوت رفع جودة الصور يمكنك تحقيق ذالك بكل سهولة وتحسين جودة الصورة بذكاء الاصطناعي دون الحاجة لتطبيق او موقع 🙂🤍\n\n` +
       `👇👇👇\n\n` +
@@ -110,7 +115,10 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     const keyboard = new InlineKeyboard();
     if (devLink) keyboard.url('المطور', devLink);
     keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
-    if (chanLink) keyboard.url('القناة', chanLink);
+    if (chanLink) keyboard.row().url('القناة', chanLink);
+
+    keyboard.row().text('🏠 عملة', 'show_welcome');
+    keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
 
     await ctx.reply(greeting, {
       parse_mode: undefined,

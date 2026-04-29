@@ -25,6 +25,7 @@ export interface IUser extends Document {
   referralRewardClaimed: boolean;
   isProcessingClaim: boolean;
   isProcessingImage: boolean;
+  awaitingReport: boolean;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -120,6 +121,10 @@ const UserSchema = new Schema<IUser>(
       default: false,
     },
     isProcessingImage: {
+      type: Boolean,
+      default: false,
+    },
+    awaitingReport: {
       type: Boolean,
       default: false,
     },

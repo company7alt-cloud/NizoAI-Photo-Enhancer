@@ -490,4 +490,32 @@ if (data.startsWith('admin_restrict_')) {
   await ctx.editMessageReplyMarkup(undefined);
   return;
 }
+if (data === 'show_welcome') {
+  await ctx.answerCallbackQuery();
+  const { startCommand } = await import('../commands/start');
+  await startCommand(ctx);
+  return;
+}
+
+if (data === 'report_to_dev') {
+  await ctx.answerCallbackQuery();
+  const telegramId = ctx.from?.id.toString();
+  await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: true } });
+  await ctx.reply(
+    '🌹 فضلاً أرسل لنا بلاغك (رسالة أو صورة)\nوسيتم الرد عليك في أسرع وقت ممكن 💬',
+    {
+      reply_markup: {
+        inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_report' }]],
+      },
+    }
+  );
+  return;
+}
+
+if (data === 'cancel_report') {
+  await ctx.answerCallbackQuery({ text: 'تم الإلغاء' });
+  const telegramId = ctx.from?.id.toString();
+  await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
+  return;
+}
 }
