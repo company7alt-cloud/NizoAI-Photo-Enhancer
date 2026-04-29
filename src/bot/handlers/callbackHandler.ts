@@ -1,15 +1,11 @@
 // src/bot/handlers/callbackHandler.ts
 import { InputFile } from 'grammy';
 import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
 import { User } from '../../database/models/User';
 import { handleAdminCallback } from '../commands/admin';
 import { BotContext, isAdmin } from '../../utils/validators';
 import { claimChannelReward } from '../../services/channelFundService';
 import * as imageService from '../../services/imageService';
-import { generateNanoBananaPrompt } from '../../services/geminiService';
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
