@@ -6,36 +6,30 @@ const replicate = new Replicate({
 });
 
 async function enhance2K(inputBuffer: Buffer): Promise<Buffer> {
-  const metadata = await sharp(inputBuffer).metadata();
-  const newWidth  = (metadata.width  || 1920) * 2;
-  const newHeight = (metadata.height || 1080) * 2;
-
-  const enhanced = await sharp(inputBuffer)
-    .resize(newWidth, newHeight, {
-      kernel: sharp.kernel.lanczos3,   // Best upscaling algorithm
-      fastShrinkOnLoad: false
-    })
-    .sharpen({
-      sigma: 1.2,      // Sharpness radius
-      m1: 1.5,         // Flat area sharpening
-      m2: 0.7,         // Edge sharpening
-      x1: 2.0,
-      y2: 10.0,
-      y3: 20.0
-    })
-    .clahe({
-      width: 8,        // Contrast enhancement tile width
-      height: 8,       // Contrast enhancement tile height
-      maxSlope: 3      // Prevents over-brightening
+  const processed = await sharp(inputBuffer)
+    .resize({
+      width: 2048,
+      height: 2048,
+      fit: 'inside',         // keep aspect ratio, never crop
+      withoutEnlargement: false, // allow upscaling for small images
     })
     .jpeg({
-      quality: 82,
-      chromaSubsampling: '4:4:4',  // Preserve full color detail
-      mozjpeg: true                // Better compression algorithm
+      quality: 92,           // high quality, no visible degradation
+      chromaSubsampling: '4:4:4', // preserve color accuracy
+      force: true,
     })
     .toBuffer();
 
-  return enhanced;
+  // Cap output at 2MB — if larger, reduce quality slightly
+  const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+  if (processed.length > MAX_SIZE) {
+    return await sharp(inputBuffer)
+      .resize({ width: 2048, height: 2048, fit: 'inside' })
+      .jpeg({ quality: 82, chromaSubsampling: '4:4:4', force: true })
+      .toBuffer();
+  }
+
+  return processed;
 }
 
 const MAX_INPUT_DIMENSION = 1400;
