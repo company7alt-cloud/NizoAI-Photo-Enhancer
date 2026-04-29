@@ -311,21 +311,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   if (data === 'process_4k_ai') {
     try {
-      const msgToDelete = (ctx.callbackQuery as any)?.message;
-      if (msgToDelete?.message_id) {
-        await ctx.deleteMessage(msgToDelete.message_id);
-      }
-    } catch (e) { /* ignore if already deleted */ }
-
-    try {
+      // 1. Get file ID first
       const msg = (ctx.callbackQuery as any)?.message;
-
       let fileId: string | undefined;
       let fileName = '4K_Ai_Enhanced.jpg';
 
       if (msg?.photo && msg.photo.length > 0) {
         fileId = msg.photo[msg.photo.length - 1].file_id;
-      } else if (msg?.reply_to_message?.photo && msg.reply_to_message.photo.length > 0) {
+      } else if (msg?.reply_to_message?.photo?.length > 0) {
         fileId = msg.reply_to_message.photo[msg.reply_to_message.photo.length - 1].file_id;
       } else if (msg?.document?.mime_type?.startsWith('image/')) {
         fileId = msg.document.file_id;
@@ -340,27 +333,44 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         return;
       }
 
-      await ctx.answerCallbackQuery('بدأ التحسين... ⏳');
-      await ctx.reply('⏳ جاري تحسين صورتك بتقنية 4K-Ai...');
+      // 2. Acknowledge button press
+      await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' });
 
+      // 3. Get image URL
       const tgFile = await ctx.api.getFile(fileId);
       const telegramImageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
 
+      // 4. Send processing message
+      const processingMsg = await ctx.reply('⏳ جاري تحسين صورتك بتقنية 4K-Ai...');
+
+      // 5. Process the image
       const resultBuffer = await imageService.process4KAi(telegramImageUrl);
 
-      // Send as high-quality document (no compression)
+      // 6. Delete the buttons message NOW (after result is ready)
+      try {
+        if (msg?.message_id) {
+          await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
+        }
+      } catch (e) { /* ignore */ }
+
+      // 7. Delete the "processing..." message
+      try {
+        await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id);
+      } catch (e) { /* ignore */ }
+
+      // 8. Send result as document
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
         { caption: '✨ تم تحسين صورتك بنجاح! جودة 4K-Ai 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة' }
       );
 
-      // Send as photo preview
+      // 9. Send preview
       await ctx.replyWithPhoto(
         new InputFile(resultBuffer, fileName),
         { caption: '🖼 معاينة سريعة' }
       );
 
-      // Backup copy to channel
+      // 10. Backup to channel
       await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new InputFile(resultBuffer, fileName));
 
     } catch (error) {

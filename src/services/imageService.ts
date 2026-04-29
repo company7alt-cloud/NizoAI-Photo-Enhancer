@@ -179,12 +179,31 @@ export async function enhanceWithNanoBanana(base64Image: string, aiPrompt: strin
 }
 
 export async function process4KAi(imageUrl: string): Promise<Buffer> {
+  const imageResponse = await fetch(imageUrl);
+  const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+
+  const metadata = await sharp(imageBuffer).metadata();
+  const totalPixels = (metadata.width || 1920) * (metadata.height || 1080);
+  const MAX_PIXELS = 1_800_000;
+
+  let processBuffer = imageBuffer;
+  if (totalPixels > MAX_PIXELS) {
+    const scale = Math.sqrt(MAX_PIXELS / totalPixels);
+    const newWidth = Math.floor((metadata.width || 1920) * scale);
+    const newHeight = Math.floor((metadata.height || 1080) * scale);
+    processBuffer = await sharp(imageBuffer)
+      .resize(newWidth, newHeight, { kernel: sharp.kernel.lanczos3 })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+  }
+
+  const base64Image = `data:image/jpeg;base64,${processBuffer.toString('base64')}`;
 
   const output = await replicate.run(
     "nightmareai/real-esrgan",
     {
       input: {
-        image: imageUrl,
+        image: base64Image,
         scale: 2,
         face_enhance: false
       }
