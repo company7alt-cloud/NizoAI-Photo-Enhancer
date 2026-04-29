@@ -15,6 +15,8 @@ export interface IUser extends Document {
   fundedChannels: string[];
   isVip: boolean;
   isBanned: boolean;
+  isRestricted: boolean;
+  lastRewardDate: Date | null;
   lastSeen: Date;
   joinedAt: Date;
   quotaDebt: number;
@@ -85,10 +87,9 @@ const UserSchema = new Schema<IUser>(
       type: Boolean,
       default: false,
     },
-    isBanned: {
-      type: Boolean,
-      default: false,
-    },
+    lastRewardDate: { type: Date, default: null },
+    isBanned: { type: Boolean, default: false },
+    isRestricted: { type: Boolean, default: false },
     lastSeen: {
       type: Date,
       default: () => new Date(),

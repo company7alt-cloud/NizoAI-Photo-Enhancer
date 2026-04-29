@@ -6,6 +6,7 @@ import { handleAdminCallback } from '../commands/admin';
 import { BotContext, isAdmin } from '../../utils/validators';
 import { claimChannelReward } from '../../services/channelFundService';
 import * as imageService from '../../services/imageService';
+import { sendAdminAlert } from '../../utils/adminAlert';
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
@@ -82,16 +83,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  // ── STEP 3: Reset quota if 24h have passed (Additive to preserve debt) ──────
-  if (
-    !user.lastQuotaReset ||
-    Date.now() - new Date(user.lastQuotaReset).getTime() > 24 * 60 * 60 * 1000
-  ) {
-    user.dailyQuota += 5;
-    if (user.dailyQuota > 5) user.dailyQuota = 5;
-    user.lastQuotaReset = new Date();
-    await user.save();
-  }
+  // ── STEP 3: Auto-reset logic removed. User MUST click daily reward button. ──
 
   // ── STEP 4: Admin flag ────────────────────────────────────────────────────────
   const admin = isAdmin(ctx.from.id);
@@ -401,6 +393,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       );
 
     } catch (error) {
+      await sendAdminAlert(ctx as any, (error as Error).message || 'Unknown Error in 4K-Ai');
       console.error('4K-Ai Error:', error);
       await ctx.reply('عذراً، حدث خطأ أثناء المعالجة. حاول مجدداً ❌');
     }
@@ -413,4 +406,88 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.editMessageText('📸 أرسل الصورة الجديدة التي تريد تحسينها.');
     return;
   }
+
+// ══════════════════════════════════════
+// 🎁 الهدية اليومية
+// ══════════════════════════════════════
+if (data === 'claim_daily_reward') {
+  try {
+    const telegramId = ctx.from?.id.toString();
+    if (!telegramId) return;
+
+    const user = await User.findOne({ telegramId });
+    if (!user) return;
+
+    const now = new Date();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
+    if (user.lastRewardDate) {
+      const timePassed = now.getTime() - new Date(user.lastRewardDate).getTime();
+      if (timePassed < TWENTY_FOUR_HOURS) {
+        const timeLeft = TWENTY_FOUR_HOURS - timePassed;
+        const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
+        const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+        const claimTime = new Date(user.lastRewardDate).toLocaleTimeString('ar-SA', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        });
+
+        await ctx.answerCallbackQuery(
+          `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
+          { show_alert: true }
+        );
+        return;
+      }
+    }
+
+    // Atomic update — prevents race conditions from double clicks
+    await User.findOneAndUpdate(
+      { telegramId },
+      {
+        $inc: { dailyQuota: 5 },
+        $set: { lastRewardDate: now },
+      }
+    );
+
+    await ctx.answerCallbackQuery(
+      '🎉 مبروك! تمت إضافة 5 محاولات مجانية لحسابك.\nعُد غداً لاستلام هديتك الجديدة 🎁',
+      { show_alert: true }
+    );
+  } catch (error) {
+    console.error('[DailyReward] Error:', error);
+    await sendAdminAlert(ctx as any, `Daily Reward Error: ${(error as Error).message}`);
+  }
+  return;
+}
+
+// ══════════════════════════════════════
+// 🛡️ أزرار الأدمن — حظر وتقييد
+// ══════════════════════════════════════
+if (data.startsWith('admin_ban_')) {
+  const adminIds = (process.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
+  if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
+
+  const targetId = data.replace('admin_ban_', '');
+  await User.findOneAndUpdate({ telegramId: targetId }, { isBanned: true });
+
+  await ctx.answerCallbackQuery('✅ تم حظر العميل بنجاح!', { show_alert: true });
+  await ctx.editMessageReplyMarkup(undefined);
+  return;
+}
+
+if (data.startsWith('admin_restrict_')) {
+  const adminIds = (process.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
+  if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
+
+  const targetId = data.replace('admin_restrict_', '');
+  await User.findOneAndUpdate(
+    { telegramId: targetId },
+    { $set: { dailyQuota: 0, isRestricted: true } }
+  );
+
+  await ctx.answerCallbackQuery('✅ تم تقييد العميل وتصفير محاولاته بنجاح!', { show_alert: true });
+  await ctx.editMessageReplyMarkup(undefined);
+  return;
+}
 }

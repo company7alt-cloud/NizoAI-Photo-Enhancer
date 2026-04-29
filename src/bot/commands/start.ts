@@ -109,6 +109,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
 
     const keyboard = new InlineKeyboard();
     if (devLink) keyboard.url('المطور', devLink);
+    keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
     if (chanLink) keyboard.url('القناة', chanLink);
 
     await ctx.reply(greeting, {
