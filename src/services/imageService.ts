@@ -181,7 +181,7 @@ export async function enhanceWithNanoBanana(base64Image: string, aiPrompt: strin
 export async function process4KAi(imageUrl: string): Promise<Buffer> {
 
   const output = await replicate.run(
-    "nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164c1d5be36ff74576ee2d209f07a6bfa4cdf96",
+    "nightmareai/real-esrgan",
     {
       input: {
         image: imageUrl,

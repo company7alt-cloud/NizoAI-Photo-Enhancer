@@ -311,6 +311,13 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   if (data === 'process_4k_ai') {
     try {
+      const msgToDelete = (ctx.callbackQuery as any)?.message;
+      if (msgToDelete?.message_id) {
+        await ctx.deleteMessage(msgToDelete.message_id);
+      }
+    } catch (e) { /* ignore if already deleted */ }
+
+    try {
       const msg = (ctx.callbackQuery as any)?.message;
 
       let fileId: string | undefined;
