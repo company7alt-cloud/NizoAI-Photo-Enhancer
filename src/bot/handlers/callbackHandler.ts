@@ -433,10 +433,10 @@ if (data === 'claim_daily_reward') {
           hour12: true,
         });
 
-        await ctx.answerCallbackQuery(
-          `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
-          { show_alert: true }
-        );
+        await ctx.answerCallbackQuery({
+          text: `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
+          show_alert: true
+        });
         return;
       }
     }
@@ -450,10 +450,10 @@ if (data === 'claim_daily_reward') {
       }
     );
 
-    await ctx.answerCallbackQuery(
-      '🎉 مبروك! تمت إضافة 5 محاولات مجانية لحسابك.\nعُد غداً لاستلام هديتك الجديدة 🎁',
-      { show_alert: true }
-    );
+    await ctx.answerCallbackQuery({
+      text: '🎉 مبروك! تمت إضافة 5 محاولات مجانية لحسابك.\nعُد غداً لاستلام هديتك الجديدة 🎁',
+      show_alert: true
+    });
   } catch (error) {
     console.error('[DailyReward] Error:', error);
     await sendAdminAlert(ctx as any, `Daily Reward Error: ${(error as Error).message}`);
@@ -471,7 +471,7 @@ if (data.startsWith('admin_ban_')) {
   const targetId = data.replace('admin_ban_', '');
   await User.findOneAndUpdate({ telegramId: targetId }, { isBanned: true });
 
-  await ctx.answerCallbackQuery('✅ تم حظر العميل بنجاح!', { show_alert: true });
+  await ctx.answerCallbackQuery({ text: '✅ تم حظر العميل بنجاح!', show_alert: true });
   await ctx.editMessageReplyMarkup(undefined);
   return;
 }
@@ -486,7 +486,7 @@ if (data.startsWith('admin_restrict_')) {
     { $set: { dailyQuota: 0, isRestricted: true } }
   );
 
-  await ctx.answerCallbackQuery('✅ تم تقييد العميل وتصفير محاولاته بنجاح!', { show_alert: true });
+  await ctx.answerCallbackQuery({ text: '✅ تم تقييد العميل وتصفير محاولاته بنجاح!', show_alert: true });
   await ctx.editMessageReplyMarkup(undefined);
   return;
 }
