@@ -180,7 +180,8 @@ export async function enhanceWithNanoBanana(base64Image: string, aiPrompt: strin
 
 export async function process4KAi(imageUrl: string): Promise<Buffer> {
   const imageResponse = await fetch(imageUrl);
-  const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+  const rawImage = await imageResponse.arrayBuffer();
+  const imageBuffer = Buffer.from(new Uint8Array(rawImage)) as Buffer;
 
   const metadata = await sharp(imageBuffer).metadata();
   const totalPixels = (metadata.width || 1920) * (metadata.height || 1080);
@@ -213,6 +214,6 @@ export async function process4KAi(imageUrl: string): Promise<Buffer> {
   const imageOutput = Array.isArray(output) ? output[0] : output;
   if (!imageOutput) throw new Error('No output from Replicate');
   const response = await fetch(imageOutput.toString());
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(new Uint8Array(arrayBuffer));
+  const rawData = await response.arrayBuffer();
+  return Buffer.from(new Uint8Array(rawData)) as Buffer;
 }
