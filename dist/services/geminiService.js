@@ -1,32 +1,15 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateEnhancementPrompt = generateEnhancementPrompt;
-// src/services/geminiService.ts
+exports.generateNanoBananaPrompt = generateNanoBananaPrompt;
 const generative_ai_1 = require("@google/generative-ai");
-async function generateEnhancementPrompt(imageBase64, mimeType = 'image/jpeg') {
-    const genAI = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const prompt = `You are a professional product photographer and image enhancement expert.
-  Analyze this image carefully and write a detailed English prompt (80-120 words) that describes
-  exactly how to enhance this specific image into a hyper-realistic 4K professional shot.
-  Focus on: lighting conditions, material textures, color accuracy, surface details,
-  shadows, reflections, and background. Preserve ALL original features, shapes, branding,
-  and design elements. Output ONLY the prompt text, nothing else.`;
-    const imagePart = {
-        inlineData: {
-            data: imageBase64,
-            mimeType: mimeType
-        }
-    };
-    const generateCall = async () => {
-        const result = await model.generateContent([prompt, imagePart]);
-        const generatedPrompt = result.response.text().trim();
-        if (!generatedPrompt || generatedPrompt.length < 20) {
-            throw new Error('gemini_empty_response');
-        }
-        return generatedPrompt;
-    };
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('gemini_timeout')), 30000));
-    return Promise.race([generateCall(), timeoutPromise]);
+const genAI = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+async function generateNanoBananaPrompt(base64Image) {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+    const prompt = `Act as an elite 3D architectural and product visualization artist. Analyze this image and write a highly detailed, 150-word English prompt to recreate or enhance the subject into a hyper-realistic, striking commercial ad. Incorporate intricate material studies (e.g., polished terrazzo, matte metals, high-gloss finishes). Specify dramatic studio lighting, an 85mm camera lens, physical based rendering (PBR), and render engines like Octane Render or Unreal Engine 5. Output ONLY the raw English prompt string, no pleasantries.`;
+    const result = await model.generateContent([
+        prompt,
+        { inlineData: { data: base64Image, mimeType: 'image/jpeg' } }
+    ]);
+    return result.response.text().trim();
 }
 //# sourceMappingURL=geminiService.js.map

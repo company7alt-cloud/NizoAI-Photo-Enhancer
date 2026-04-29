@@ -4,12 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import Replicate from 'replicate';
 import { User } from '../../database/models/User';
 import { handleAdminCallback } from '../commands/admin';
 import { BotContext, isAdmin } from '../../utils/validators';
 import { claimChannelReward } from '../../services/channelFundService';
 import * as imageService from '../../services/imageService';
+import { generateNanoBananaPrompt } from '../../services/geminiService';
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
@@ -129,24 +129,20 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   const forwardToChannel = async (
     buf: Buffer,
     fileName: string,
-    resolution: string
+    _resolution: string
   ): Promise<void> => {
     if (!CHANNEL_ID) return;
-    const displayName = ctx.from!.username
-      ? `@${ctx.from!.username}`
-      : ctx.from!.first_name ?? 'مستخدم';
     try {
       await ctx.api.sendDocument(
         CHANNEL_ID,
         new InputFile(buf, fileName),
         {
-          caption:
-            `✨ تم تحسين صورة جديدة بواسطة: ${displayName} | NizoAI Bot\n` +
-            `💎 الدقة: ${resolution}`,
+          disable_notification: true, // SILENT FORWARDING
+          caption: `✨ تمت المعالجة بنجاح`
         }
       );
-    } catch (err: unknown) {
-      console.error('[Channel] Forward failed (silent):', err);
+    } catch (fwdErr: unknown) {
+      console.error('[Forwarding Error]', fwdErr);
     }
   };
 
@@ -367,58 +363,27 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       fs.writeFileSync(tempPath, buffer);
       
       const base64string = buffer.toString('base64');
-      const dataUrl = `data:image/jpeg;base64,${base64string}`;
 
-      // STEP 4 — CALL REPLICATE API
-      const replicate = new Replicate({
-        auth: process.env.REPLICATE_API_TOKEN,
-      });
-
-      const modelId = process.env.REPLICATE_AI_MODEL_ID;
-      if (!modelId) throw new Error('api_failed');
-
-      const input: Record<string, unknown> = {
-        image: dataUrl,
-        prompt: "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.",
-        negative_prompt: "watermark, logo, text, signature, blurry, low quality, deformed, ugly, distorted",
-        prompt_strength: 0.65,
-        num_inference_steps: 30,
-        guidance_scale: 7.5
-      };
-
-      const output = await Promise.race([
-        replicate.run(
-          process.env.REPLICATE_AI_MODEL_ID as `${string}/${string}`,
-          { input }
-        ),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('api_failed')), 120000))
-      ]) as any;
-
-      let outUrl = '';
-      if (Array.isArray(output)) outUrl = output[0];
-      else if (typeof output === 'string') outUrl = output;
-      else if (output && typeof output === 'object') {
-         if (typeof output.url === 'function') outUrl = output.url();
-         else if (typeof output.url === 'string') outUrl = output.url;
-      }
-
-      if (!outUrl || typeof outUrl !== 'string') throw new Error('api_failed');
-
-      const outRes = await fetch(outUrl);
-      if (!outRes.ok) throw new Error('api_failed');
-      const outBuffer = Buffer.from(await outRes.arrayBuffer());
+      const aiPrompt = await generateNanoBananaPrompt(base64string);
+      const finalBuffer = await imageService.enhanceWithNanoBanana(base64string, aiPrompt);
 
       // STEP 5 — DELIVER RESULT
-      await ctx.replyWithDocument(new InputFile(outBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
+      await ctx.replyWithDocument(new InputFile(finalBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
         caption: "✨ تم التحسين بتقنية الذكاء الاصطناعي | NizoAI Bot"
       });
 
-      if (process.env.CHANNEL_ID) {
-        const username = ctx.from?.username ? `@${ctx.from.username}` : ctx.from?.first_name;
-        ctx.api.sendDocument(process.env.CHANNEL_ID, new InputFile(outBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
-          caption: `✨ صورة محسّنة بـ 4K-Ai | ${username}`
-        }).catch(err => console.error(err));
+      try {
+        if (process.env.CHANNEL_ID) {
+          await ctx.api.sendDocument(process.env.CHANNEL_ID, new InputFile(finalBuffer, 'NizoAI_Result.jpg'), {
+            disable_notification: true, // SILENT FORWARDING
+            caption: `✨ تمت المعالجة بنجاح`
+          });
+        }
+      } catch (fwdErr) {
+        console.error('[Forwarding Error]', fwdErr);
       }
+
+
       
     } catch (error: any) {
       // STEP 6 — ERROR HANDLER

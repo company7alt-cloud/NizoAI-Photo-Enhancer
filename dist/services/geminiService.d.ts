@@ -1,1 +1,1 @@
-export declare function generateEnhancementPrompt(imageBase64: string, mimeType?: string): Promise<string>;
+export declare function generateNanoBananaPrompt(base64Image: string): Promise<string>;

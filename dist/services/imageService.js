@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.enhance = enhance;
+exports.enhanceWithNanoBanana = enhanceWithNanoBanana;
 const replicate_1 = __importDefault(require("replicate"));
 const sharp_1 = __importDefault(require("sharp"));
 const replicate = new replicate_1.default({
@@ -110,5 +111,26 @@ async function enhance(telegramFileUrl, resolution) {
         console.error(`[ImageService] ❌ Error: ${error?.message || error}`);
         throw error;
     }
+}
+async function enhanceWithNanoBanana(base64Image, aiPrompt) {
+    console.log('[ImageService] Sending to SDXL with prompt:', aiPrompt);
+    const output = await replicate.run("stability-ai/sdxl", {
+        input: {
+            image: `data:image/jpeg;base64,${base64Image}`,
+            prompt: aiPrompt,
+            prompt_strength: 0.7,
+            num_inference_steps: 40,
+            refine: "expert_ensemble_refiner"
+        }
+    });
+    let resultUrl = "";
+    if (Array.isArray(output) && output.length > 0)
+        resultUrl = output[0];
+    else if (typeof output === 'string')
+        resultUrl = output;
+    else
+        throw new Error('SDXL returned invalid format');
+    const resultResponse = await fetch(resultUrl);
+    return Buffer.from(await resultResponse.arrayBuffer());
 }
 //# sourceMappingURL=imageService.js.map

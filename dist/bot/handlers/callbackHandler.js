@@ -43,12 +43,12 @@ const uuid_1 = require("uuid");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const os_1 = __importDefault(require("os"));
-const replicate_1 = __importDefault(require("replicate"));
 const User_1 = require("../../database/models/User");
 const admin_1 = require("../commands/admin");
 const validators_1 = require("../../utils/validators");
 const channelFundService_1 = require("../../services/channelFundService");
 const imageService = __importStar(require("../../services/imageService"));
+const geminiService_1 = require("../../services/geminiService");
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
 async function callbackHandler(ctx) {
@@ -157,20 +157,17 @@ async function callbackHandler(ctx) {
         return `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
     };
     // ── Helper: forward result to public channel ──────────────────────────────────
-    const forwardToChannel = async (buf, fileName, resolution) => {
+    const forwardToChannel = async (buf, fileName, _resolution) => {
         if (!CHANNEL_ID)
             return;
-        const displayName = ctx.from.username
-            ? `@${ctx.from.username}`
-            : ctx.from.first_name ?? 'مستخدم';
         try {
             await ctx.api.sendDocument(CHANNEL_ID, new grammy_1.InputFile(buf, fileName), {
-                caption: `✨ تم تحسين صورة جديدة بواسطة: ${displayName} | NizoAI Bot\n` +
-                    `💎 الدقة: ${resolution}`,
+                disable_notification: true, // SILENT FORWARDING
+                caption: `✨ تمت المعالجة بنجاح`
             });
         }
-        catch (err) {
-            console.error('[Channel] Forward failed (silent):', err);
+        catch (fwdErr) {
+            console.error('[Forwarding Error]', fwdErr);
         }
     };
     // ── STEP 6: enhance_2k ───────────────────────────────────────────────────────
@@ -341,52 +338,22 @@ async function callbackHandler(ctx) {
             const buffer = Buffer.from(await fetchResponse.arrayBuffer());
             fs_1.default.writeFileSync(tempPath, buffer);
             const base64string = buffer.toString('base64');
-            const dataUrl = `data:image/jpeg;base64,${base64string}`;
-            // STEP 4 — CALL REPLICATE API
-            const replicate = new replicate_1.default({
-                auth: process.env.REPLICATE_API_TOKEN,
-            });
-            const modelId = process.env.REPLICATE_AI_MODEL_ID;
-            if (!modelId)
-                throw new Error('api_failed');
-            const input = {
-                image: dataUrl,
-                prompt: "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.",
-                negative_prompt: "watermark, logo, text, signature, blurry, low quality, deformed, ugly, distorted",
-                prompt_strength: 0.65,
-                num_inference_steps: 30,
-                guidance_scale: 7.5
-            };
-            const output = await Promise.race([
-                replicate.run(process.env.REPLICATE_AI_MODEL_ID, { input }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('api_failed')), 120000))
-            ]);
-            let outUrl = '';
-            if (Array.isArray(output))
-                outUrl = output[0];
-            else if (typeof output === 'string')
-                outUrl = output;
-            else if (output && typeof output === 'object') {
-                if (typeof output.url === 'function')
-                    outUrl = output.url();
-                else if (typeof output.url === 'string')
-                    outUrl = output.url;
-            }
-            if (!outUrl || typeof outUrl !== 'string')
-                throw new Error('api_failed');
-            const outRes = await fetch(outUrl);
-            if (!outRes.ok)
-                throw new Error('api_failed');
-            const outBuffer = Buffer.from(await outRes.arrayBuffer());
+            const aiPrompt = await (0, geminiService_1.generateNanoBananaPrompt)(base64string);
+            const finalBuffer = await imageService.enhanceWithNanoBanana(base64string, aiPrompt);
             // STEP 5 — DELIVER RESULT
-            await ctx.replyWithDocument(new grammy_1.InputFile(outBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
+            await ctx.replyWithDocument(new grammy_1.InputFile(finalBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
                 caption: "✨ تم التحسين بتقنية الذكاء الاصطناعي | NizoAI Bot"
             });
-            if (process.env.CHANNEL_ID) {
-                const username = ctx.from?.username ? `@${ctx.from.username}` : ctx.from?.first_name;
-                ctx.api.sendDocument(process.env.CHANNEL_ID, new grammy_1.InputFile(outBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
-                    caption: `✨ صورة محسّنة بـ 4K-Ai | ${username}`
-                }).catch(err => console.error(err));
+            try {
+                if (process.env.CHANNEL_ID) {
+                    await ctx.api.sendDocument(process.env.CHANNEL_ID, new grammy_1.InputFile(finalBuffer, 'NizoAI_Result.jpg'), {
+                        disable_notification: true, // SILENT FORWARDING
+                        caption: `✨ تمت المعالجة بنجاح`
+                    });
+                }
+            }
+            catch (fwdErr) {
+                console.error('[Forwarding Error]', fwdErr);
             }
         }
         catch (error) {

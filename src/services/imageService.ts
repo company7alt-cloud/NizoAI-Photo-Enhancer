@@ -118,3 +118,27 @@ export async function enhance(
     throw error;
   }
 }
+
+export async function enhanceWithNanoBanana(base64Image: string, aiPrompt: string): Promise<Buffer> {
+  console.log('[ImageService] Sending to SDXL with prompt:', aiPrompt);
+  const output = await replicate.run(
+    "stability-ai/sdxl",
+    {
+      input: {
+        image: `data:image/jpeg;base64,${base64Image}`,
+        prompt: aiPrompt,
+        prompt_strength: 0.7,
+        num_inference_steps: 40,
+        refine: "expert_ensemble_refiner"
+      }
+    }
+  );
+
+  let resultUrl: string = "";
+  if (Array.isArray(output) && output.length > 0) resultUrl = output[0] as string;
+  else if (typeof output === 'string') resultUrl = output;
+  else throw new Error('SDXL returned invalid format');
+
+  const resultResponse = await fetch(resultUrl);
+  return Buffer.from(await resultResponse.arrayBuffer());
+}
