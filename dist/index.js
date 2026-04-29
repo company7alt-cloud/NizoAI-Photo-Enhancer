@@ -168,6 +168,7 @@ async function bootstrap() {
         console.log(`[Bot] ✅ Authenticated as @${botInfo.username}`);
         bot.start({
             allowed_updates: ['message', 'callback_query', 'chat_member'],
+            drop_pending_updates: true,
             onStart: (info) => {
                 console.log(`[Bot] 🚀 Polling started for @${info.username}`);
             },

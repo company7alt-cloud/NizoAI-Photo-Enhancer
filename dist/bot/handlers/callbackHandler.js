@@ -49,7 +49,6 @@ const admin_1 = require("../commands/admin");
 const validators_1 = require("../../utils/validators");
 const channelFundService_1 = require("../../services/channelFundService");
 const imageService = __importStar(require("../../services/imageService"));
-const geminiService_1 = require("../../services/geminiService");
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
 async function callbackHandler(ctx) {
@@ -343,46 +342,42 @@ async function callbackHandler(ctx) {
             fs_1.default.writeFileSync(tempPath, buffer);
             const base64string = buffer.toString('base64');
             const dataUrl = `data:image/jpeg;base64,${base64string}`;
-            // STEP 4A — GEMINI ANALYSIS (Brain)
-            let enhancementPrompt;
-            try {
-                console.log('[4K-Ai] Calling Gemini for prompt generation...');
-                enhancementPrompt = await (0, geminiService_1.generateEnhancementPrompt)(base64string, 'image/jpeg');
-                console.log('[4K-Ai] Gemini prompt generated:', enhancementPrompt);
-            }
-            catch (geminiError) {
-                console.warn('[4K-Ai] Gemini failed, using fallback prompt:', geminiError);
-                enhancementPrompt = "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.";
-            }
-            // STEP 4B — REPLICATE PROCESSING (Muscle)
+            // STEP 4 — CALL REPLICATE API
             const replicate = new replicate_1.default({
                 auth: process.env.REPLICATE_API_TOKEN,
             });
+            const modelId = process.env.REPLICATE_AI_MODEL_ID;
+            if (!modelId)
+                throw new Error('api_failed');
             const input = {
                 image: dataUrl,
-                prompt: enhancementPrompt,
-                negative_prompt: "watermark, logo, text, signature, blurry, low quality, deformed, ugly, distorted, bad anatomy, extra limbs",
-                prompt_strength: 0.7,
-                num_inference_steps: 40,
+                prompt: "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.",
+                negative_prompt: "watermark, logo, text, signature, blurry, low quality, deformed, ugly, distorted",
+                prompt_strength: 0.65,
+                num_inference_steps: 30,
                 guidance_scale: 7.5
             };
-            console.log('[4K-Ai] Calling Replicate with model:', process.env.REPLICATE_AI_MODEL_ID);
-            const output = await replicate.run(process.env.REPLICATE_AI_MODEL_ID, { input });
-            console.log('[4K-Ai] Replicate output:', output);
-            let outputUrl;
-            if (Array.isArray(output) && output.length > 0) {
-                outputUrl = String(output[0]);
+            const output = await Promise.race([
+                replicate.run(process.env.REPLICATE_AI_MODEL_ID, { input }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('api_failed')), 120000))
+            ]);
+            let outUrl = '';
+            if (Array.isArray(output))
+                outUrl = output[0];
+            else if (typeof output === 'string')
+                outUrl = output;
+            else if (output && typeof output === 'object') {
+                if (typeof output.url === 'function')
+                    outUrl = output.url();
+                else if (typeof output.url === 'string')
+                    outUrl = output.url;
             }
-            else if (typeof output === 'string') {
-                outputUrl = output;
-            }
-            else {
-                throw new Error('api_invalid_output');
-            }
-            const outputResponse = await fetch(outputUrl);
-            if (!outputResponse.ok)
-                throw new Error('api_download_failed');
-            const outBuffer = Buffer.from(await outputResponse.arrayBuffer());
+            if (!outUrl || typeof outUrl !== 'string')
+                throw new Error('api_failed');
+            const outRes = await fetch(outUrl);
+            if (!outRes.ok)
+                throw new Error('api_failed');
+            const outBuffer = Buffer.from(await outRes.arrayBuffer());
             // STEP 5 — DELIVER RESULT
             await ctx.replyWithDocument(new grammy_1.InputFile(outBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
                 caption: "✨ تم التحسين بتقنية الذكاء الاصطناعي | NizoAI Bot"
@@ -396,11 +391,10 @@ async function callbackHandler(ctx) {
         }
         catch (error) {
             // STEP 6 — ERROR HANDLER
-            console.error('[4K-Ai] Processing failed:', {
-                error: error instanceof Error ? error.message : String(error),
+            console.error('[4K-Ai] Replicate error details:', {
+                message: error instanceof Error ? error.message : String(error),
                 model: process.env.REPLICATE_AI_MODEL_ID,
-                userId: userId,
-                time: new Date().toISOString()
+                timestamp: new Date().toISOString()
             });
             await User_1.User.findOneAndUpdate({ telegramId: userId }, { $inc: { dailyQuota: 2 } });
             if (error.message === 'download_failed') {

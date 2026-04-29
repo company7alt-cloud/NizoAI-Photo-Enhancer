@@ -52,7 +52,7 @@ export async function enhance(
       }
     );
 
-    const resultUrl = output as string;
+    const resultUrl = output as unknown as string;
     if (!resultUrl || typeof resultUrl !== 'string') {
       throw new Error('Replicate returned no output URL');
     }

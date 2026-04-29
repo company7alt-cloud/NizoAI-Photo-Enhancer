@@ -25,9 +25,6 @@ function validateEnv() {
             process.exit(1);
         }
     }
-    if (!process.env.GEMINI_API_KEY) {
-        throw new Error('GEMINI_API_KEY is missing from environment variables');
-    }
     if (!process.env.REPLICATE_AI_MODEL_ID) {
         throw new Error('REPLICATE_AI_MODEL_ID is missing from environment variables');
     }
