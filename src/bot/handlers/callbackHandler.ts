@@ -333,8 +333,27 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         return;
       }
 
+      if (!admin && user.dailyQuota < 2) {
+        await ctx.answerCallbackQuery({ text: 'رصيدك غير كافٍ! تحتاج محاولتين لاستخدام 4K-Ai 💎', show_alert: true });
+        return;
+      }
+
+      try {
+        const msg = (ctx.callbackQuery as any)?.message;
+        if (msg?.message_id && msg?.chat?.id) {
+          await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
+        }
+      } catch (e) { /* ignore */ }
+
+      if (!admin) {
+        user.dailyQuota -= 2;
+        await user.save();
+      }
+
       // 2. Acknowledge button press
-      await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' });
+      try {
+        await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' });
+      } catch (e) { /* ignore if already deleted */ }
 
       // 3. Get image URL
       const tgFile = await ctx.api.getFile(fileId);
@@ -345,13 +364,6 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
       // 5. Process the image
       const resultBuffer = await imageService.process4KAi(telegramImageUrl);
-
-      // 6. Delete the buttons message NOW (after result is ready)
-      try {
-        if (msg?.message_id) {
-          await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
-        }
-      } catch (e) { /* ignore */ }
 
       // 7. Delete the "processing..." message
       try {
@@ -371,7 +383,22 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       );
 
       // 10. Backup to channel
-      await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new InputFile(resultBuffer, fileName));
+      const actionUser = ctx.from;
+      const userLink = actionUser?.username
+        ? `@${actionUser.username}`
+        : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+
+      const caption = `📦 نسخة أرشيفية\n\n` +
+        `🆔 User ID: ${actionUser?.id}\n` +
+        `👤 Username: ${userLink}\n` +
+        `💎 Resolution: 4K-Ai\n` +
+        `🕐 Time: ${new Date().toLocaleString('ar-SA')}`;
+
+      await ctx.api.sendDocument(
+        BACKUP_CHANNEL_ID,
+        new InputFile(resultBuffer, fileName),
+        { caption, parse_mode: 'HTML' }
+      );
 
     } catch (error) {
       console.error('4K-Ai Error:', error);

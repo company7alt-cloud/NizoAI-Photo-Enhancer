@@ -214,5 +214,5 @@ export async function process4KAi(imageUrl: string): Promise<Buffer> {
   if (!imageOutput) throw new Error('No output from Replicate');
   const response = await fetch(imageOutput.toString());
   const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  return Buffer.from(new Uint8Array(arrayBuffer));
 }
