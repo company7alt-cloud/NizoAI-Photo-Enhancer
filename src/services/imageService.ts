@@ -98,16 +98,13 @@ export async function enhance(
     // STEP 6: Post-process
     let finalBuffer: Buffer;
     if (resolution === '4K') {
-      let sharpened = await sharp(resultBuffer)
-        .sharpen({ sigma: 1.2, m1: 1.5, m2: 0.7 })
-        .jpeg({ quality: 85 })
+      finalBuffer = await sharp(resultBuffer)
+        .jpeg({ quality: 92, chromaSubsampling: '4:4:4' })
         .toBuffer();
-      if (sharpened.length > MAX_OUTPUT_SIZE_BYTES) {
-        sharpened = await sharp(sharpened).jpeg({ quality: 72 }).toBuffer();
-      }
-      finalBuffer = sharpened;
     } else {
-      finalBuffer = await sharp(resultBuffer).jpeg({ quality: 90 }).toBuffer();
+      finalBuffer = await sharp(resultBuffer)
+        .jpeg({ quality: 80, chromaSubsampling: '4:2:0' })
+        .toBuffer();
     }
 
     console.log(`[ImageService] ✅ Final size: ${(finalBuffer.length / 1024).toFixed(1)} KB`);

@@ -148,13 +148,16 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── STEP 6: enhance_2k ───────────────────────────────────────────────────────
   if (data === 'enhance_2k') {
+    const resolution = '2K';
     await ctx.answerCallbackQuery();
 
-    if (!admin && user.dailyQuota < 1) {
-      await ctx.reply(
-        '🌙 أوه! انتهت محاولاتك اليومية 🥺\nعد غداً وستجد 5 محاولات جديدة بانتظارك 🎁✨'
-      );
-      return;
+    if (resolution !== '2K') {
+      if (!admin && user.dailyQuota < 1) {
+        await ctx.reply(
+          '🌙 أوه! انتهت محاولاتك اليومية 🥺\nعد غداً وستجد 5 محاولات جديدة بانتظارك 🎁✨'
+        );
+        return;
+      }
     }
 
     const telegramFileUrl = await getTelegramFileUrl();
@@ -163,9 +166,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    if (!admin) {
-      user.dailyQuota -= 1;
-      await user.save();
+    if (resolution !== '2K') {
+      if (!admin) {
+        user.dailyQuota -= 1;
+        await user.save();
+      }
     }
 
     const jobId = uuidv4().substring(0, 8).toUpperCase();
@@ -208,9 +213,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           .catch((e: unknown) => console.error('[Archive] 2K failed:', e));
       }
     } catch {
-      if (!admin) {
-        user.dailyQuota += 1;
-        await user.save();
+      if (resolution !== '2K') {
+        if (!admin) {
+          user.dailyQuota += 1;
+          await user.save();
+        }
       }
       await ctx.deleteMessage().catch(() => {});
       await ctx.reply(
