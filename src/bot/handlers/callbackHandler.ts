@@ -1,6 +1,10 @@
 // src/bot/handlers/callbackHandler.ts
 import { InputFile } from 'grammy';
 import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import Replicate from 'replicate';
 import { User } from '../../database/models/User';
 import { handleAdminCallback } from '../commands/admin';
 import { BotContext, isAdmin } from '../../utils/validators';
@@ -34,6 +38,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.answerCallbackQuery({
         text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅',
         show_alert: true,
+      });
+    } else if (result === 'PROCESSING') {
+      await ctx.answerCallbackQuery({
+        text: 'جاري المعالجة، انتظر لحظة... ⏳',
+        show_alert: false,
       });
     } else if (result === 'NOT_MEMBER') {
       await ctx.answerCallbackQuery({
@@ -286,6 +295,147 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.deleteMessage().catch(() => {});
       await ctx.reply(
         '😔 عذراً حدث خطأ أثناء معالجة صورتك بدقة 4K 🌸\nتم إعادة المحاولتين تلقائياً ✨\nجرب مرة أخرى وسنكون معك 💙'
+      );
+    }
+    return;
+  }
+
+  // ── process_4k_ai & locked_8k_ai ───────────────────────────────────────────
+  if (data === 'locked_8k_ai') {
+    void ctx.answerCallbackQuery({
+      text: '🔒 هذه الميزة مقفلة. تواصل مع المدير لتفعيلها',
+      show_alert: true,
+    });
+    return;
+  }
+
+  if (data === 'process_4k_ai') {
+    const userId = ctx.from.id;
+
+    // STEP 1 — ATOMIC LOCK + BALANCE CHECK + DEDUCTION
+    const atomicUser = await User.findOneAndUpdate(
+      {
+        telegramId: userId,
+        isProcessingImage: { $ne: true },
+        dailyQuota: { $gte: 2 }
+      },
+      {
+        $set: { isProcessingImage: true },
+        $inc: { dailyQuota: -2 }
+      },
+      { new: true }
+    );
+
+    if (!atomicUser) {
+      const check = await User.findOne({ telegramId: userId });
+      if (check?.isProcessingImage === true) {
+        await ctx.answerCallbackQuery({
+          text: "⏳ جاري معالجة صورة بالفعل، انتظر حتى تنتهي",
+          show_alert: true
+        });
+        return;
+      } else {
+        await ctx.answerCallbackQuery({
+          text: "❌ رصيدك غير كافٍ. هذا التحسين يتطلب نقطتين",
+          show_alert: true
+        });
+        return;
+      }
+    }
+
+    await ctx.answerCallbackQuery();
+    
+    let tempPath = '';
+    try {
+      // STEP 2 — PROCESSING MESSAGE
+      await ctx.editMessageText("⏳ جاري المعالجة بتقنية الذكاء الاصطناعي المتقدمة...");
+
+      // STEP 3 — DOWNLOAD ORIGINAL IMAGE
+      const pendingFile = ctx.session.pendingFile;
+      if (!pendingFile?.fileId) throw new Error('download_failed');
+
+      const tgFile = await ctx.api.getFile(pendingFile.fileId);
+      if (!tgFile.file_path) throw new Error('download_failed');
+
+      const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+      tempPath = path.join(os.tmpdir(), `${userId}_${Date.now()}.jpg`);
+      
+      const fetchResponse = await fetch(fileUrl);
+      if (!fetchResponse.ok) throw new Error('download_failed');
+      
+      const buffer = Buffer.from(await fetchResponse.arrayBuffer());
+      fs.writeFileSync(tempPath, buffer);
+      
+      const base64string = buffer.toString('base64');
+      const dataUrl = `data:image/jpeg;base64,${base64string}`;
+
+      // STEP 4 — CALL REPLICATE API
+      const replicate = new Replicate({
+        auth: process.env.REPLICATE_API_TOKEN,
+      });
+
+      const modelId = process.env.REPLICATE_AI_MODEL_ID;
+      if (!modelId) throw new Error('api_failed');
+
+      const output = await Promise.race([
+        replicate.run(modelId as any, {
+          input: {
+            image: dataUrl,
+            prompt: "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.",
+            negative_prompt: "watermark, logo, text, signature, blurry, low quality, deformed, ugly, distorted",
+            num_inference_steps: 30,
+            guidance_scale: 7.5,
+            strength: 0.6
+          }
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('api_failed')), 120000))
+      ]) as any;
+
+      let outUrl = '';
+      if (Array.isArray(output)) outUrl = output[0];
+      else if (typeof output === 'string') outUrl = output;
+      else if (output && typeof output === 'object') {
+         if (typeof output.url === 'function') outUrl = output.url();
+         else if (typeof output.url === 'string') outUrl = output.url;
+      }
+
+      if (!outUrl || typeof outUrl !== 'string') throw new Error('api_failed');
+
+      const outRes = await fetch(outUrl);
+      if (!outRes.ok) throw new Error('api_failed');
+      const outBuffer = Buffer.from(await outRes.arrayBuffer());
+
+      // STEP 5 — DELIVER RESULT
+      await ctx.replyWithDocument(new InputFile(outBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
+        caption: "✨ تم التحسين بتقنية الذكاء الاصطناعي | NizoAI Bot"
+      });
+
+      if (process.env.CHANNEL_ID) {
+        const username = ctx.from?.username ? `@${ctx.from.username}` : ctx.from?.first_name;
+        ctx.api.sendDocument(process.env.CHANNEL_ID, new InputFile(outBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
+          caption: `✨ صورة محسّنة بـ 4K-Ai | ${username}`
+        }).catch(err => console.error(err));
+      }
+      
+    } catch (error: any) {
+      // STEP 6 — ERROR HANDLER
+      await User.findOneAndUpdate(
+        { telegramId: userId },
+        { $inc: { dailyQuota: 2 } }
+      );
+      if (error.message === 'download_failed') {
+        await ctx.editMessageText("❌ فشل تحميل الصورة. تم إرجاع نقطتيك");
+      } else {
+        await ctx.editMessageText("❌ حدث خطأ في المعالجة. تم إرجاع نقطتيك");
+      }
+    } finally {
+      // STEP 7 — FINALLY BLOCK
+      if (tempPath && fs.existsSync(tempPath)) {
+        try { fs.unlinkSync(tempPath); } catch {}
+      }
+      await User.findOneAndUpdate(
+        { telegramId: userId },
+        { $set: { isProcessingImage: false } }
       );
     }
     return;

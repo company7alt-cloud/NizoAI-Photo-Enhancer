@@ -10,6 +10,7 @@ export interface IUser extends Document {
     referralCount: number;
     referredBy?: number;
     referredUsers: number[];
+    fundedChannels: string[];
     isVip: boolean;
     isBanned: boolean;
     lastSeen: Date;
@@ -17,6 +18,9 @@ export interface IUser extends Document {
     quotaDebt: number;
     channelJoinDate: Date | null;
     channelRewardClaimed: boolean;
+    referralRewardClaimed: boolean;
+    isProcessingClaim: boolean;
+    isProcessingImage: boolean;
 }
 export interface IUserModel extends Model<IUser> {
     findByTelegramId(telegramId: number): Promise<IUser | null>;

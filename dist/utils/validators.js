@@ -18,12 +18,15 @@ exports.resolutionLabel = resolutionLabel;
 const grammy_1 = require("grammy");
 // ─── Environment Validation ────────────────────────────────────────────────────
 function validateEnv() {
-    const required = ['BOT_TOKEN', 'MONGODB_URI', 'ADMIN_IDS', 'REPLICATE_API_TOKEN', 'PORT'];
+    const required = ['BOT_TOKEN', 'MONGODB_URI', 'ADMIN_IDS', 'PORT'];
     for (const key of required) {
         if (!process.env[key]) {
             console.error(`[Fatal] Missing required environment variable: ${key}`);
             process.exit(1);
         }
+    }
+    if (!process.env.REPLICATE_AI_MODEL_ID) {
+        throw new Error('REPLICATE_AI_MODEL_ID is missing from environment variables');
     }
 }
 // ─── File Size ─────────────────────────────────────────────────────────────────
@@ -42,9 +45,9 @@ function isAdmin(id) {
 }
 // ─── Referral Helpers ──────────────────────────────────────────────────────────
 function parseStartPayload(payload) {
-    if (!payload || !payload.startsWith('ref_'))
+    if (!payload)
         return null;
-    const id = parseInt(payload.replace('ref_', ''), 10);
+    const id = parseInt(payload, 10);
     return isNaN(id) ? null : id;
 }
 // ─── Economy ───────────────────────────────────────────────────────────────────

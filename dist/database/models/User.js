@@ -25,7 +25,7 @@ const UserSchema = new mongoose_1.Schema({
     dailyQuota: {
         type: Number,
         default: 5,
-        min: 0,
+        // No min — negative values represent debt from channel-fund penalties
     },
     lastQuotaReset: {
         type: Date,
@@ -47,6 +47,10 @@ const UserSchema = new mongoose_1.Schema({
     },
     referredUsers: {
         type: [Number],
+        default: [],
+    },
+    fundedChannels: {
+        type: [String],
         default: [],
     },
     isVip: {
@@ -75,6 +79,18 @@ const UserSchema = new mongoose_1.Schema({
         default: null,
     },
     channelRewardClaimed: {
+        type: Boolean,
+        default: false,
+    },
+    referralRewardClaimed: {
+        type: Boolean,
+        default: false,
+    },
+    isProcessingClaim: {
+        type: Boolean,
+        default: false,
+    },
+    isProcessingImage: {
         type: Boolean,
         default: false,
     },

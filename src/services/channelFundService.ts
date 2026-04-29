@@ -162,75 +162,100 @@ export async function claimChannelReward(
   userId: number,
   channelId: string,
   api: Api
-): Promise<'REWARDED' | 'ALREADY_CLAIMED' | 'NOT_MEMBER' | 'ADMIN_BLOCKED' | 'NO_CAMPAIGN'> {
+): Promise<'REWARDED' | 'ALREADY_CLAIMED' | 'NOT_MEMBER' | 'ADMIN_BLOCKED' | 'NO_CAMPAIGN' | 'PROCESSING'> {
   // Admin cannot claim their own campaign
   if (isAdmin(userId)) return 'ADMIN_BLOCKED';
 
-  // Verify membership via Telegram API
-  try {
-    const member = await api.getChatMember(channelId, userId);
-    const validStatuses = ['member', 'administrator', 'creator'];
-    if (!validStatuses.includes(member.status)) return 'NOT_MEMBER';
-  } catch {
-    return 'NOT_MEMBER';
-  }
-
-  const campaign = await FundCampaign.findOne({ channelId, isActive: true });
-  if (!campaign) return 'NO_CAMPAIGN';
-
-  const user = await User.findOne({ telegramId: userId });
-  if (!user) return 'NOT_MEMBER';
-
-  // Duplicate-claim guard for legacy records
-  if (user.fundedChannels.includes(channelId)) return 'ALREADY_CLAIMED';
-
-  // ATOMIC CAMPAIGN UPDATE (Scarcity + Anti-Spam)
-  const campaignId = campaign._id;
-  const maxTarget = campaign.targetMembers;
-
-  const updatedCampaign = await FundCampaign.findOneAndUpdate(
-    {
-      _id: campaignId,
-      claimCounter: { $lt: maxTarget },
-      claimedUsers: { $ne: userId },
-      isActive: true
-    },
-    {
-      $inc: { claimCounter: 1 },
-      $push: { claimedUsers: userId },
-      $set: { "broadcastMessages.$[elem].claimed": true }
-    },
-    {
-      arrayFilters: [{ "elem.userId": userId }],
-      new: true
-    }
+  // STEP 1 — Acquire lock atomically. If already processing, reject immediately:
+  const locked = await User.findOneAndUpdate(
+    { telegramId: userId, isProcessingClaim: { $ne: true } },
+    { $set: { isProcessingClaim: true } },
+    { new: true }
   );
 
-  if (!updatedCampaign) {
-    const checkCampaign = await FundCampaign.findById(campaignId);
-    if (checkCampaign?.claimedUsers.includes(userId)) return 'ALREADY_CLAIMED';
-    return 'NO_CAMPAIGN';
+  if (!locked) {
+    return 'PROCESSING';
   }
 
-  // Add 5 attempts (debt-aware) and mark channel as claimed
-  await addAttemptsWithDebtCheck(userId, 5);
-  user.fundedChannels.push(channelId);
-  await user.save();
-
-  // CHANGE C — After successful claim, check if campaign is now full
-  if (updatedCampaign.claimCounter >= updatedCampaign.targetMembers) {
-    const remaining = updatedCampaign.broadcastMessages.filter(m => !m.claimed);
-    for (const { userId: uid, messageId } of remaining) {
-      try {
-        await api.deleteMessage(uid, messageId);
-      } catch (e) {
-        // Ignore: user blocked bot or deleted the chat
-      }
+  try {
+    // Verify membership via Telegram API
+    try {
+      const member = await api.getChatMember(channelId, userId);
+      const validStatuses = ['member', 'administrator', 'creator'];
+      if (!validStatuses.includes(member.status)) return 'NOT_MEMBER';
+    } catch {
+      return 'NOT_MEMBER';
     }
-    await FundCampaign.findByIdAndUpdate(campaignId, { isActive: false });
-  }
 
-  return 'REWARDED';
+    const campaign = await FundCampaign.findOne({ channelId, isActive: true });
+    if (!campaign) return 'NO_CAMPAIGN';
+
+    const user = await User.findOne({ telegramId: userId });
+    if (!user) return 'NOT_MEMBER';
+
+    // Duplicate-claim guard for legacy records
+    if (user.fundedChannels.includes(channelId)) return 'ALREADY_CLAIMED';
+
+    // ATOMIC CAMPAIGN UPDATE (Scarcity + Anti-Spam)
+    const campaignId = campaign._id;
+    const maxTarget = campaign.targetMembers;
+
+    const updatedCampaign = await FundCampaign.findOneAndUpdate(
+      {
+        _id: campaignId,
+        claimCounter: { $lt: maxTarget },
+        claimedUsers: { $ne: userId },
+        isActive: true
+      },
+      {
+        $inc: { claimCounter: 1 },
+        $push: { claimedUsers: userId },
+        $set: { "broadcastMessages.$[elem].claimed": true }
+      },
+      {
+        arrayFilters: [{ "elem.userId": userId }],
+        new: true
+      }
+    );
+
+    if (!updatedCampaign) {
+      const checkCampaign = await FundCampaign.findById(campaignId);
+      if (checkCampaign?.claimedUsers.includes(userId)) return 'ALREADY_CLAIMED';
+      return 'NO_CAMPAIGN';
+    }
+
+    // Grant reward to user
+    await User.findOneAndUpdate(
+      { telegramId: userId },
+      {
+        $inc: { dailyQuota: 5 },
+        $push: { fundedChannels: channelId },
+        $set: { channelRewardClaimed: true }
+      }
+    );
+
+    // After successful claim, check if campaign is now full
+    if (updatedCampaign.claimCounter >= updatedCampaign.targetMembers) {
+      const remaining = updatedCampaign.broadcastMessages.filter(m => !m.claimed);
+      for (const { userId: uid, messageId } of remaining) {
+        try {
+          await api.deleteMessage(uid, messageId);
+        } catch (e) {
+          // Ignore: user blocked bot or deleted the chat
+        }
+      }
+      await FundCampaign.findByIdAndUpdate(campaignId, { isActive: false });
+    }
+
+    return 'REWARDED';
+
+  } finally {
+    // ALWAYS release the lock, even if an error occurred
+    await User.findOneAndUpdate(
+      { telegramId: userId },
+      { $set: { isProcessingClaim: false } }
+    );
+  }
 }
 
 // ─── Leave / Kick Penalty ─────────────────────────────────────────────────────
@@ -260,6 +285,12 @@ export async function handleMemberLeft(
   if (!updatedUser) return;
 
   const campaign = await FundCampaign.findOne({ channelId });
+  if (campaign) {
+    await FundCampaign.findOneAndUpdate(
+      { _id: campaign._id },
+      { $pull: { claimedUsers: userId } }
+    );
+  }
   const channelLink = campaign?.channelLink || '#';
 
   const { InlineKeyboard } = await import('grammy');

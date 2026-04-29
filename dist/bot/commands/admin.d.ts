@@ -1,4 +1,5 @@
 import { BotContext } from '../../utils/validators';
+import { isFundCampaignPending, clearFundCampaignState } from '../../services/channelFundService';
 export declare function adminCommand(ctx: BotContext): Promise<void>;
 export declare function handleAdminCallback(ctx: BotContext): Promise<void>;
 export declare const isBroadcastPending: (id: number) => boolean;
@@ -6,6 +7,8 @@ export declare function executeBroadcast(ctx: BotContext): Promise<void>;
 export declare function runBroadcast(ctx: BotContext): Promise<void>;
 export declare const isAddBroadcastBtnPending: (id: number) => boolean;
 export declare function handleAddBroadcastButton(ctx: BotContext, text: string): Promise<void>;
+export { isFundCampaignPending, clearFundCampaignState };
+export declare function handleFundCampaignStep(ctx: BotContext, text: string): Promise<void>;
 export declare const isQuotaAddPending: (id: number) => boolean;
 export declare function handleQuotaAdd(ctx: BotContext, input: string): Promise<void>;
 export declare const getContentEditPending: (id: number) => string | undefined;

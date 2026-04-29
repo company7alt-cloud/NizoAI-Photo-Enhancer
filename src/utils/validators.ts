@@ -25,6 +25,9 @@ export function validateEnv(): void {
       process.exit(1);
     }
   }
+  if (!process.env.REPLICATE_AI_MODEL_ID) {
+    throw new Error('REPLICATE_AI_MODEL_ID is missing from environment variables');
+  }
 }
 
 // ─── File Size ─────────────────────────────────────────────────────────────────

@@ -1,21 +1,40 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.isUserSearchPending = exports.clearContentEditPending = exports.setContentEditPending = exports.getContentEditPending = exports.isQuotaAddPending = exports.isAddBroadcastBtnPending = exports.isBroadcastPending = void 0;
+exports.isUserSearchPending = exports.clearContentEditPending = exports.setContentEditPending = exports.getContentEditPending = exports.isQuotaAddPending = exports.clearFundCampaignState = exports.isFundCampaignPending = exports.isAddBroadcastBtnPending = exports.isBroadcastPending = void 0;
 exports.adminCommand = adminCommand;
 exports.handleAdminCallback = handleAdminCallback;
 exports.executeBroadcast = executeBroadcast;
 exports.runBroadcast = runBroadcast;
 exports.handleAddBroadcastButton = handleAddBroadcastButton;
+exports.handleFundCampaignStep = handleFundCampaignStep;
 exports.handleQuotaAdd = handleQuotaAdd;
 exports.handleContentEdit = handleContentEdit;
 exports.searchUser = searchUser;
 // src/bot/commands/admin.ts
+const grammy_1 = require("grammy");
 const User_1 = require("../../database/models/User");
 const Settings_1 = require("../../database/models/Settings");
-const grammy_1 = require("grammy");
 const validators_1 = require("../../utils/validators");
-const channelRewardService_1 = require("../../services/channelRewardService");
-// ─── Command ──────────────────────────────────────────────────────────────────
+const channelFundService_1 = require("../../services/channelFundService");
+Object.defineProperty(exports, "isFundCampaignPending", { enumerable: true, get: function () { return channelFundService_1.isFundCampaignPending; } });
+Object.defineProperty(exports, "clearFundCampaignState", { enumerable: true, get: function () { return channelFundService_1.clearFundCampaignState; } });
+// ─── Admin Main Keyboard (local — includes Fund Channel button) ───────────────
+function buildAdminMainKeyboard(active) {
+    return new grammy_1.InlineKeyboard()
+        .text('📊 الإحصائيات', 'admin_stats')
+        .text('📢 الإذاعة', 'admin_broadcast')
+        .row()
+        .text('✏️ المحتوى', 'admin_content')
+        .text('👤 المستخدمين', 'admin_users')
+        .row()
+        .text('📢 تمويل قناة', 'admin_fund_channel')
+        .row()
+        .text('⚙️ الإعدادات', 'admin_settings')
+        .text('💾 نسخة احتياطية', 'admin_backup')
+        .row()
+        .text(active ? '🟢 البوت: شغّال' : '🔴 البوت: متوقف', 'admin_toggle_bot');
+}
+// ─── /admin Command ────────────────────────────────────────────────────────────
 async function adminCommand(ctx) {
     if (!(0, validators_1.isAdmin)(ctx.from.id))
         return;
@@ -23,7 +42,7 @@ async function adminCommand(ctx) {
     const botActive = (await Settings_1.Settings.get('bot_status'));
     await ctx.reply(text, {
         parse_mode: 'Markdown',
-        reply_markup: (0, validators_1.buildAdminMainKeyboard)(botActive),
+        reply_markup: buildAdminMainKeyboard(botActive),
     });
 }
 // ─── Callback Router ───────────────────────────────────────────────────────────
@@ -61,9 +80,15 @@ async function handleAdminCallback(ctx) {
         return previewBroadcastButtons(ctx);
     if (data === 'admin_bcast_clear')
         return clearBroadcastButtons(ctx);
+    if (data === 'admin_fund_channel')
+        return renderFundChannelInit(ctx);
     if (data.startsWith('admin_toggle_')) {
         const key = data.replace('admin_toggle_', '');
-        const dbKey = key === 'notify' ? 'notify_on_join' : (key === 'autodelete' ? 'auto_delete' : 'bot_status');
+        const dbKey = key === 'notify'
+            ? 'notify_on_join'
+            : key === 'autodelete'
+                ? 'auto_delete'
+                : 'bot_status';
         const current = (await Settings_1.Settings.get(dbKey));
         await Settings_1.Settings.set(dbKey, !current);
         return renderSettings(ctx);
@@ -82,35 +107,43 @@ async function handleAdminCallback(ctx) {
         const map = {
             welcome: 'welcome_message',
             devlink: 'developerLink',
-            chanlink: 'channelLink'
+            chanlink: 'channelLink',
         };
         (0, exports.setContentEditPending)(userId, map[field]);
         await ctx.editMessageText(`✏️ أرسل القيمة الجديدة لـ *${field}*:`, { parse_mode: 'Markdown', reply_markup: (0, validators_1.buildAdminBackKeyboard)() });
     }
 }
-// ─── Logic ────────────────────────────────────────────────────────────────────
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 async function buildDashboardText() {
     const total = await User_1.User.countDocuments();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const newToday = await User_1.User.countDocuments({ joinedAt: { $gte: today } });
     const banned = await User_1.User.countDocuments({ isBanned: true });
-    const agg = await User_1.User.aggregate([{ $group: { _id: null, sum: { $sum: '$totalEnhancements' } } }]);
-    const totalOps = agg[0]?.sum || 0;
-    return `📊 *لوحة التحكم*\n\n` +
+    const agg = await User_1.User.aggregate([
+        { $group: { _id: null, sum: { $sum: '$totalEnhancements' } } },
+    ]);
+    const totalOps = agg[0]?.sum ?? 0;
+    return (`📊 *لوحة التحكم*\n\n` +
         `👥 المستخدمين: *${total}*\n` +
         `🆕 اليوم: *${newToday}*\n` +
         `🖼️ العمليات: *${totalOps}*\n` +
-        `🚫 المحظورين: *${banned}*`;
+        `🚫 المحظورين: *${banned}*`);
 }
 async function renderMain(ctx) {
     const text = await buildDashboardText();
     const botActive = (await Settings_1.Settings.get('bot_status'));
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: (0, validators_1.buildAdminMainKeyboard)(botActive) });
+    await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        reply_markup: buildAdminMainKeyboard(botActive),
+    });
 }
 async function renderStats(ctx) {
     const text = await buildDashboardText();
-    await ctx.editMessageText(text + `\n\nإحصائيات إضافية قريباً...`, { parse_mode: 'Markdown', reply_markup: (0, validators_1.buildAdminBackKeyboard)() });
+    await ctx.editMessageText(text + `\n\nإحصائيات إضافية قريباً...`, {
+        parse_mode: 'Markdown',
+        reply_markup: (0, validators_1.buildAdminBackKeyboard)(),
+    });
 }
 // ─── Broadcast ────────────────────────────────────────────────────────────────
 const broadcastState = new Map();
@@ -118,36 +151,35 @@ const broadcastMessage = new Map();
 async function renderBroadcastInit(ctx) {
     broadcastState.set(ctx.from.id, true);
     const buttons = (await Settings_1.Settings.get('broadcastButtons')) || [];
-    const btnCount = buttons.length;
-    await ctx.editMessageText(`📢 *وضع الإذاعة*\n\nأرسل الآن الرسالة (نص، صورة، فيديو).\n\n📎 أزرار مرفقة: *${btnCount}* زر`, {
+    await ctx.editMessageText(`📢 *وضع الإذاعة*\n\nأرسل الآن الرسالة (نص، صورة، فيديو).\n\n📎 أزرار مرفقة: *${buttons.length}* زر`, {
         parse_mode: 'Markdown',
         reply_markup: new grammy_1.InlineKeyboard()
-            .text('📎 إعداد أزرار الإذاعة', 'admin_broadcast_buttons').row()
+            .text('📎 إعداد أزرار الإذاعة', 'admin_broadcast_buttons')
+            .row()
             .text('↩️ رجوع', 'admin_back_main'),
     });
 }
-const isBroadcastPending = (id) => broadcastState.get(id) || false;
+const isBroadcastPending = (id) => broadcastState.get(id) ?? false;
 exports.isBroadcastPending = isBroadcastPending;
 async function executeBroadcast(ctx) {
     broadcastState.delete(ctx.from.id);
-    if (ctx.msg) {
+    if (ctx.msg)
         broadcastMessage.set(ctx.from.id, ctx.msg);
-    }
-    await ctx.reply('⚠️ هل أنت متأكد من الإذاعة؟\n\nأرسل /confirm_broadcast للتأكيد.', { parse_mode: 'Markdown' });
+    await ctx.reply('⚠️ هل أنت متأكد من الإذاعة؟\n\nأرسل /confirm_broadcast للتأكيد.', {
+        parse_mode: 'Markdown',
+    });
 }
 async function runBroadcast(ctx) {
     const msg = broadcastMessage.get(ctx.from.id);
     if (!msg)
         return;
     broadcastMessage.delete(ctx.from.id);
-    // Build inline keyboard from saved broadcast buttons
     const savedButtons = (await Settings_1.Settings.get('broadcastButtons')) || [];
     let replyMarkup;
     if (savedButtons.length > 0) {
         replyMarkup = new grammy_1.InlineKeyboard();
-        for (const btn of savedButtons) {
+        for (const btn of savedButtons)
             replyMarkup.url(btn.label, btn.url).row();
-        }
     }
     const users = await User_1.User.find({ isBanned: false }).select('telegramId');
     let s = 0, f = 0;
@@ -166,7 +198,7 @@ async function runBroadcast(ctx) {
     }
     await ctx.reply(`✅ اكتملت الإذاعة!\n\nنجح: ${s}\nفشل: ${f}`);
 }
-// ─── Broadcast Buttons Manager ────────────────────────────────────────────────
+// ─── Broadcast Buttons ────────────────────────────────────────────────────────
 async function renderBroadcastButtons(ctx) {
     const buttons = (await Settings_1.Settings.get('broadcastButtons')) || [];
     let text = `📎 *أزرار الإذاعة الحالية:*\n\n`;
@@ -184,7 +216,7 @@ async function renderBroadcastButtons(ctx) {
     await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
 }
 const addBtnState = new Map();
-const isAddBroadcastBtnPending = (id) => addBtnState.get(id) || false;
+const isAddBroadcastBtnPending = (id) => addBtnState.get(id) ?? false;
 exports.isAddBroadcastBtnPending = isAddBroadcastBtnPending;
 async function startAddBroadcastButton(ctx) {
     addBtnState.set(ctx.from.id, true);
@@ -193,11 +225,11 @@ async function startAddBroadcastButton(ctx) {
 async function handleAddBroadcastButton(ctx, text) {
     addBtnState.delete(ctx.from.id);
     const parts = text.split('|');
-    if (parts.length !== 2 || !parts[1].startsWith('http')) {
+    if (parts.length !== 2 || !parts[1].trim().startsWith('http')) {
         await ctx.reply('❌ صيغة خاطئة. أرسل: اسم الزر|https://رابط');
         return;
     }
-    const [label, url] = parts.map(p => p.trim());
+    const [label, url] = parts.map((p) => p.trim());
     const buttons = (await Settings_1.Settings.get('broadcastButtons')) || [];
     buttons.push({ label, url });
     await Settings_1.Settings.set('broadcastButtons', buttons);
@@ -206,13 +238,14 @@ async function handleAddBroadcastButton(ctx, text) {
 async function previewBroadcastButtons(ctx) {
     const buttons = (await Settings_1.Settings.get('broadcastButtons')) || [];
     if (buttons.length === 0) {
-        await ctx.editMessageText('لا توجد أزرار لمعاينتها.', { reply_markup: (0, validators_1.buildAdminBackKeyboard)() });
+        await ctx.editMessageText('لا توجد أزرار لمعاينتها.', {
+            reply_markup: (0, validators_1.buildAdminBackKeyboard)(),
+        });
         return;
     }
     const kb = new grammy_1.InlineKeyboard();
-    for (const btn of buttons) {
+    for (const btn of buttons)
         kb.url(btn.label, btn.url).row();
-    }
     await ctx.editMessageText('👁️ *معاينة الأزرار:*\n\nهكذا ستظهر للمستخدمين ⬇️', {
         parse_mode: 'Markdown',
         reply_markup: kb,
@@ -220,7 +253,47 @@ async function previewBroadcastButtons(ctx) {
 }
 async function clearBroadcastButtons(ctx) {
     await Settings_1.Settings.set('broadcastButtons', []);
-    await ctx.editMessageText('🗑️ تم مسح جميع أزرار الإذاعة.', { reply_markup: (0, validators_1.buildAdminBackKeyboard)() });
+    await ctx.editMessageText('🗑️ تم مسح جميع أزرار الإذاعة.', {
+        reply_markup: (0, validators_1.buildAdminBackKeyboard)(),
+    });
+}
+// ─── Channel Fund Campaign Setup ──────────────────────────────────────────────
+async function renderFundChannelInit(ctx) {
+    (0, channelFundService_1.startFundCampaignSetup)(ctx.from.id);
+    await ctx.editMessageText(`📢 *تمويل قناة*\n\nأرسل رابط القناة أو المجموعة المراد تمويلها:`, { parse_mode: 'Markdown', reply_markup: (0, validators_1.buildAdminBackKeyboard)() });
+}
+async function handleFundCampaignStep(ctx, text) {
+    const adminId = ctx.from.id;
+    const result = await (0, channelFundService_1.handleFundCampaignInput)(adminId, text, ctx.api);
+    if (result.status === 'not_admin_in_channel') {
+        await ctx.reply('❌ البوت ليس مشرفاً في هذه القناة. أضفه كمشرف أولاً ثم أعد المحاولة.');
+        return;
+    }
+    if (result.status === 'ask_target') {
+        await ctx.reply(`✅ تم التحقق من صلاحيات البوت في القناة.\n\nكم عدد الأعضاء المطلوب؟ (مثال: 1000)`);
+        return;
+    }
+    if (result.status === 'invalid_target') {
+        await ctx.reply('❌ أرسل رقماً صحيحاً أكبر من صفر.');
+        return;
+    }
+    if (result.status === 'done') {
+        const campaign = result.campaign;
+        await ctx.reply(`✅ تم إنشاء الحملة بنجاح!\n\n` +
+            `📢 القناة: ${campaign.channelLink}\n` +
+            `🎯 الهدف: ${campaign.targetMembers} عضو\n\n` +
+            `⏳ جاري الإذاعة لجميع المستخدمين...`);
+        // Broadcast asynchronously — do not block admin response
+        (0, channelFundService_1.broadcastFundCampaign)(ctx.api, campaign)
+            .then(({ sent, failed }) => {
+            ctx.api
+                .sendMessage(adminId, `📢 اكتملت إذاعة الحملة!\n✅ نجح: ${sent}\n❌ فشل: ${failed}`)
+                .catch(() => { });
+        })
+            .catch((err) => {
+            console.error('[Admin] Fund broadcast error:', err);
+        });
+    }
 }
 const adminQuotaStates = new Map();
 async function renderAddQuota(ctx) {
@@ -256,15 +329,12 @@ async function handleQuotaAdd(ctx, input) {
             await ctx.reply('❌ المستخدم غير موجود في قاعدة البيانات.');
             return;
         }
-        const { debtPaid } = (0, channelRewardService_1.applyDebtOnQuotaAdd)(targetUser, amount);
-        await targetUser.save();
+        // Use the shared debt-aware function for the addition
+        const newBalance = await (0, channelFundService_1.addAttemptsWithDebtCheck)(state.targetId, amount);
         let msg = `✅ تمت إضافة ${amount} محاولات للمستخدم ${state.targetId}\n`;
-        if (debtPaid > 0) {
-            msg += `💳 تم خصم ${debtPaid} محاولة لسداد الدين المتبقي\n`;
-        }
-        msg += `⚡ رصيده الحالي: ${targetUser.dailyQuota} محاولة`;
-        if (targetUser.quotaDebt > 0) {
-            msg += `\n🔴 لا يزال عليه دين: ${targetUser.quotaDebt} محاولة`;
+        msg += `⚡ رصيده الحالي: ${newBalance} محاولة`;
+        if (newBalance < 0) {
+            msg += `\n🔴 لا يزال عليه دين متراكم`;
         }
         await ctx.reply(msg);
     }
@@ -275,12 +345,10 @@ async function renderContent(ctx) {
     const welcome = (await Settings_1.Settings.get('welcome_message'));
     const kb = new grammy_1.InlineKeyboard()
         .text('✏️ رسالة الترحيب', 'admin_edit_welcome').row()
-        .text('✏️ تعديل رابط المطور', 'admin_edit_devlink').text('✏️ تعديل رابط القناة', 'admin_edit_chanlink').row()
+        .text('✏️ تعديل رابط المطور', 'admin_edit_devlink')
+        .text('✏️ تعديل رابط القناة', 'admin_edit_chanlink').row()
         .text('↩️ رجوع', 'admin_back_main');
-    await ctx.editMessageText(`📝 *إدارة المحتوى*\n\nالرسالة الحالية:\n${welcome?.substring(0, 100)}...`, {
-        parse_mode: 'Markdown',
-        reply_markup: kb
-    });
+    await ctx.editMessageText(`📝 *إدارة المحتوى*\n\nالرسالة الحالية:\n${welcome?.substring(0, 100)}...`, { parse_mode: 'Markdown', reply_markup: kb });
 }
 const getContentEditPending = (id) => editState.get(id);
 exports.getContentEditPending = getContentEditPending;
@@ -304,7 +372,7 @@ async function renderUsersPanel(ctx) {
         reply_markup: kb,
     });
 }
-const isUserSearchPending = (id) => searchState.get(id) || false;
+const isUserSearchPending = (id) => searchState.get(id) ?? false;
 exports.isUserSearchPending = isUserSearchPending;
 async function searchUser(ctx, searchId) {
     searchState.delete(ctx.from.id);
@@ -316,20 +384,26 @@ async function renderUserDetail(ctx, targetId, isNewMsg = false) {
         await ctx.reply('❌ لم يتم العثور على المستخدم.');
         return;
     }
-    const text = `👤 *معلومات المستخدم* \n\nآيدي: ${user.telegramId}\nالمحاولات: ${user.dailyQuota}\nالديون: ${user.quotaDebt}\nالحالة: ${user.isBanned ? '🚫 محظور' : '✅ نشط'}`;
+    const debtNote = user.dailyQuota < 0 ? ` (دين)` : '';
+    const text = `👤 *معلومات المستخدم*\n\n` +
+        `آيدي: ${user.telegramId}\n` +
+        `المحاولات: ${user.dailyQuota}${debtNote}\n` +
+        `الإحالات: ${user.referralCount}\n` +
+        `الحالة: ${user.isBanned ? '🚫 محظور' : '✅ نشط'}`;
     const kb = (0, validators_1.buildUserActionKeyboard)(user.telegramId, user.isBanned);
     if (isNewMsg)
         await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: kb });
     else
         await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
 }
-// ─── Settings & Others ────────────────────────────────────────────────────────
+// ─── Settings ─────────────────────────────────────────────────────────────────
 async function renderSettings(ctx) {
     const n = (await Settings_1.Settings.get('notify_on_join'));
     const a = (await Settings_1.Settings.get('auto_delete'));
     const m = !(await Settings_1.Settings.get('bot_status'));
     await ctx.editMessageText('⚙️ *الإعدادات*', {
-        reply_markup: (0, validators_1.buildAdminSettingsKeyboard)(n, a, m)
+        parse_mode: 'Markdown',
+        reply_markup: (0, validators_1.buildAdminSettingsKeyboard)(n, a, m),
     });
 }
 async function toggleBot(ctx) {
@@ -340,8 +414,9 @@ async function toggleBot(ctx) {
 async function sendBackup(ctx) {
     const users = await User_1.User.find().lean();
     const settings = await Settings_1.Settings.find().lean();
-    const backupData = { users, settings };
-    const buf = Buffer.from(JSON.stringify(backupData, null, 2));
-    await ctx.replyWithDocument(new grammy_1.InputFile(buf, 'backup.json'), { caption: '💾 نسخة احتياطية كاملة (مستخدمين + إعدادات).' });
+    const buf = Buffer.from(JSON.stringify({ users, settings }, null, 2));
+    await ctx.replyWithDocument(new grammy_1.InputFile(buf, 'backup.json'), {
+        caption: '💾 نسخة احتياطية كاملة (مستخدمين + إعدادات).',
+    });
 }
 //# sourceMappingURL=admin.js.map

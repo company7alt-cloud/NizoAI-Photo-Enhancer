@@ -97,7 +97,10 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       .row()
       .text('✨ دقة 4K — محاولتان (جودة فائقة)', 'enhance_4k')
       .row()
-      .text('🔒 دقة 8K — مقفلة', 'locked_8k');
+      .text('🔒 دقة 8K — مقفلة', 'locked_8k')
+      .row()
+      .text('✨ 4K - Ai', 'process_4k_ai')
+      .text('🔒 8K - Ai', 'locked_8k_ai');
 
     await ctx.reply(text, {
       reply_markup: keyboard,

@@ -21,6 +21,8 @@ export interface IUser extends Document {
   channelJoinDate: Date | null;
   channelRewardClaimed: boolean;
   referralRewardClaimed: boolean;
+  isProcessingClaim: boolean;
+  isProcessingImage: boolean;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -109,6 +111,14 @@ const UserSchema = new Schema<IUser>(
       default: false,
     },
     referralRewardClaimed: {
+      type: Boolean,
+      default: false,
+    },
+    isProcessingClaim: {
+      type: Boolean,
+      default: false,
+    },
+    isProcessingImage: {
       type: Boolean,
       default: false,
     },

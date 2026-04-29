@@ -32,16 +32,25 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.callbackHandler = callbackHandler;
 // src/bot/handlers/callbackHandler.ts
 const grammy_1 = require("grammy");
 const uuid_1 = require("uuid");
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
+const os_1 = __importDefault(require("os"));
+const replicate_1 = __importDefault(require("replicate"));
 const User_1 = require("../../database/models/User");
 const admin_1 = require("../commands/admin");
+const validators_1 = require("../../utils/validators");
+const channelFundService_1 = require("../../services/channelFundService");
 const imageService = __importStar(require("../../services/imageService"));
-const ADMIN_ID = 6179646374;
-const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID;
+const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
+const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
 async function callbackHandler(ctx) {
     const data = ctx.callbackQuery?.data;
     if (!data || !ctx.from)
@@ -49,7 +58,49 @@ async function callbackHandler(ctx) {
     // Route admin callbacks immediately
     if (data.startsWith('admin_'))
         return (0, admin_1.handleAdminCallback)(ctx);
-    // ── STEP 1: Fetch FRESH user from DB ────────────────────────────────────────
+    // ── claim_reward_{channelId} ─────────────────────────────────────────────────
+    if (data.startsWith('claim_reward_')) {
+        await ctx.answerCallbackQuery();
+        const channelId = data.replace('claim_reward_', '');
+        const userId = ctx.from.id;
+        const result = await (0, channelFundService_1.claimChannelReward)(userId, channelId, ctx.api);
+        if (result === 'REWARDED') {
+            await ctx.reply('✅ تم التحقق! تم إضافة 5 محاولات لرصيدك 🎉\n' +
+                'استمتع بتحسين صورك بجودة احترافية 🌟');
+        }
+        else if (result === 'ALREADY_CLAIMED') {
+            await ctx.answerCallbackQuery({
+                text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅',
+                show_alert: true,
+            });
+        }
+        else if (result === 'PROCESSING') {
+            await ctx.answerCallbackQuery({
+                text: 'جاري المعالجة، انتظر لحظة... ⏳',
+                show_alert: false,
+            });
+        }
+        else if (result === 'NOT_MEMBER') {
+            await ctx.answerCallbackQuery({
+                text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط أدناه، ثم اضغط على زر التحقق للحصول على مكافأتك 🎁',
+                show_alert: true,
+            });
+        }
+        else if (result === 'ADMIN_BLOCKED') {
+            await ctx.answerCallbackQuery({
+                text: '🚫 المشرف لا يمكنه المطالبة بمكافأة حملته.',
+                show_alert: true,
+            });
+        }
+        else {
+            await ctx.answerCallbackQuery({
+                text: '❌ الحملة غير موجودة أو انتهت.',
+                show_alert: true,
+            });
+        }
+        return;
+    }
+    // ── STEP 1: Fetch FRESH user ──────────────────────────────────────────────────
     let user = await User_1.User.findOne({ telegramId: ctx.from.id });
     if (!user) {
         user = await User_1.User.create({
@@ -61,7 +112,7 @@ async function callbackHandler(ctx) {
             lastQuotaReset: new Date(),
         });
     }
-    // ── STEP 2: Ban check ────────────────────────────────────────────────────────
+    // ── STEP 2: Ban check ─────────────────────────────────────────────────────────
     if (user.isBanned) {
         void ctx.answerCallbackQuery({
             text: '🚫 عذراً، تم تقييد وصولك للبوت. للاستفسار تواصل مع المطور 💙',
@@ -69,16 +120,18 @@ async function callbackHandler(ctx) {
         });
         return;
     }
-    // ── STEP 3: Reset quota if 24h have passed ───────────────────────────────────
+    // ── STEP 3: Reset quota if 24h have passed (Additive to preserve debt) ──────
     if (!user.lastQuotaReset ||
         Date.now() - new Date(user.lastQuotaReset).getTime() > 24 * 60 * 60 * 1000) {
-        user.dailyQuota = 5;
+        user.dailyQuota += 5;
+        if (user.dailyQuota > 5)
+            user.dailyQuota = 5;
         user.lastQuotaReset = new Date();
         await user.save();
     }
-    // ── STEP 4: Admin flag ───────────────────────────────────────────────────────
-    const isAdmin = ctx.from.id === ADMIN_ID;
-    // ── STEP 5: Locked 8K ────────────────────────────────────────────────────────
+    // ── STEP 4: Admin flag ────────────────────────────────────────────────────────
+    const admin = (0, validators_1.isAdmin)(ctx.from.id);
+    // ── STEP 5: Locked 8K ─────────────────────────────────────────────────────────
     if (data === 'locked_8k') {
         void ctx.answerCallbackQuery({
             text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح ميزة الـ 8K ✨',
@@ -86,7 +139,6 @@ async function callbackHandler(ctx) {
         });
         return;
     }
-    // ── STEP 5b: Locked 4K (legacy) ─────────────────────────────────────────────
     if (data === 'locked_4k') {
         void ctx.answerCallbackQuery({
             text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح الميزة ✨',
@@ -94,7 +146,7 @@ async function callbackHandler(ctx) {
         });
         return;
     }
-    // ── Helper: get Telegram file URL from session ───────────────────────────────
+    // ── Helper: get Telegram file URL from session ────────────────────────────────
     const pendingFile = ctx.session.pendingFile;
     const getTelegramFileUrl = async () => {
         if (!pendingFile?.fileId)
@@ -104,11 +156,27 @@ async function callbackHandler(ctx) {
             return null;
         return `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
     };
-    // ── STEP 6: enhance_2k ──────────────────────────────────────────────────────
+    // ── Helper: forward result to public channel ──────────────────────────────────
+    const forwardToChannel = async (buf, fileName, resolution) => {
+        if (!CHANNEL_ID)
+            return;
+        const displayName = ctx.from.username
+            ? `@${ctx.from.username}`
+            : ctx.from.first_name ?? 'مستخدم';
+        try {
+            await ctx.api.sendDocument(CHANNEL_ID, new grammy_1.InputFile(buf, fileName), {
+                caption: `✨ تم تحسين صورة جديدة بواسطة: ${displayName} | NizoAI Bot\n` +
+                    `💎 الدقة: ${resolution}`,
+            });
+        }
+        catch (err) {
+            console.error('[Channel] Forward failed (silent):', err);
+        }
+    };
+    // ── STEP 6: enhance_2k ───────────────────────────────────────────────────────
     if (data === 'enhance_2k') {
-        // Anti-double-click: answer immediately
         await ctx.answerCallbackQuery();
-        if (!isAdmin && user.dailyQuota < 1) {
+        if (!admin && user.dailyQuota < 1) {
             await ctx.reply('🌙 أوه! انتهت محاولاتك اليومية 🥺\nعد غداً وستجد 5 محاولات جديدة بانتظارك 🎁✨');
             return;
         }
@@ -117,8 +185,7 @@ async function callbackHandler(ctx) {
             await ctx.reply('❌ انتهت الجلسة. أرسل الصورة مجدداً.');
             return;
         }
-        // Deduct IMMEDIATELY before API call
-        if (!isAdmin) {
+        if (!admin) {
             user.dailyQuota -= 1;
             await user.save();
         }
@@ -129,30 +196,32 @@ async function callbackHandler(ctx) {
             const resultBuffer = await imageService.enhance(telegramFileUrl, '2K');
             user.totalEnhancements += 1;
             await user.save();
-            await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, `NizoAI_2K_${jobId}.jpg`), {
+            const outputFileName = `NizoAI_2K_${jobId}.jpg`;
+            await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, outputFileName), {
                 caption: `🎉 صورتك جاهزة بدقة 2K! 🌟\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
             });
             await ctx.deleteMessage().catch(() => { });
-            // Silent archive — NEVER affects user experience
-            try {
-                await ctx.api.sendDocument(ARCHIVE_GROUP_ID, new grammy_1.InputFile(resultBuffer, `archive_${jobId}.jpg`), {
+            // Forward to channel (silent — never affects user)
+            void forwardToChannel(resultBuffer, outputFileName, '2K');
+            // Silent archive
+            if (ARCHIVE_GROUP_ID) {
+                ctx.api
+                    .sendDocument(ARCHIVE_GROUP_ID, new grammy_1.InputFile(resultBuffer, `archive_${jobId}.jpg`), {
                     caption: `📦 نسخة أرشيفية\n` +
                         `━━━━━━━━━━━━━━\n` +
                         `🆔 User ID: ${ctx.from.id}\n` +
-                        `👤 Username: @${ctx.from.username || 'N/A'}\n` +
+                        `👤 Username: @${ctx.from.username ?? 'N/A'}\n` +
                         `🏷 Job ID: ${jobId}\n` +
                         `💎 Resolution: 2K\n` +
                         `📅 Time: ${new Date().toLocaleString('ar-SA')}\n` +
                         `━━━━━━━━━━━━━━`,
-                });
-            }
-            catch (archiveErr) {
-                console.error('[Archive] 2K archive failed:', archiveErr);
+                })
+                    .catch((e) => console.error('[Archive] 2K failed:', e));
             }
         }
-        catch (error) {
-            if (!isAdmin) {
-                user.dailyQuota += 1; // REFUND
+        catch {
+            if (!admin) {
+                user.dailyQuota += 1;
                 await user.save();
             }
             await ctx.deleteMessage().catch(() => { });
@@ -160,11 +229,10 @@ async function callbackHandler(ctx) {
         }
         return;
     }
-    // ── STEP 7: enhance_4k ──────────────────────────────────────────────────────
+    // ── STEP 7: enhance_4k ───────────────────────────────────────────────────────
     if (data === 'enhance_4k') {
-        // Anti-double-click: answer immediately
         await ctx.answerCallbackQuery();
-        if (!isAdmin && user.dailyQuota < 2) {
+        if (!admin && user.dailyQuota < 2) {
             await ctx.reply(`💫 تحتاج محاولتين لدقة 4K الفائقة 🌟\nرصيدك الحالي: ${user.dailyQuota} محاولة 🥺\nاستخدم دقة 2K أو عد غداً لـ 5 محاولات جديدة 🎁`);
             return;
         }
@@ -173,8 +241,7 @@ async function callbackHandler(ctx) {
             await ctx.reply('❌ انتهت الجلسة. أرسل الصورة مجدداً.');
             return;
         }
-        // Deduct IMMEDIATELY before API call
-        if (!isAdmin) {
+        if (!admin) {
             user.dailyQuota -= 2;
             await user.save();
         }
@@ -185,30 +252,32 @@ async function callbackHandler(ctx) {
             const resultBuffer = await imageService.enhance(telegramFileUrl, '4K');
             user.totalEnhancements += 1;
             await user.save();
-            await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, `NizoAI_4K_${jobId}.jpg`), {
+            const outputFileName = `NizoAI_4K_${jobId}.jpg`;
+            await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, outputFileName), {
                 caption: `💎 صورتك جاهزة بدقة 4K الفائقة! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
             });
             await ctx.deleteMessage().catch(() => { });
-            // Silent archive — NEVER affects user experience
-            try {
-                await ctx.api.sendDocument(ARCHIVE_GROUP_ID, new grammy_1.InputFile(resultBuffer, `archive_${jobId}.jpg`), {
+            // Forward to channel (silent — never affects user)
+            void forwardToChannel(resultBuffer, outputFileName, '4K');
+            // Silent archive
+            if (ARCHIVE_GROUP_ID) {
+                ctx.api
+                    .sendDocument(ARCHIVE_GROUP_ID, new grammy_1.InputFile(resultBuffer, `archive_${jobId}.jpg`), {
                     caption: `📦 نسخة أرشيفية\n` +
                         `━━━━━━━━━━━━━━\n` +
                         `🆔 User ID: ${ctx.from.id}\n` +
-                        `👤 Username: @${ctx.from.username || 'N/A'}\n` +
+                        `👤 Username: @${ctx.from.username ?? 'N/A'}\n` +
                         `🏷 Job ID: ${jobId}\n` +
                         `💎 Resolution: 4K\n` +
                         `📅 Time: ${new Date().toLocaleString('ar-SA')}\n` +
                         `━━━━━━━━━━━━━━`,
-                });
-            }
-            catch (archiveErr) {
-                console.error('[Archive] 4K archive failed:', archiveErr);
+                })
+                    .catch((e) => console.error('[Archive] 4K failed:', e));
             }
         }
-        catch (error) {
-            if (!isAdmin) {
-                user.dailyQuota += 2; // REFUND BOTH
+        catch {
+            if (!admin) {
+                user.dailyQuota += 2;
                 await user.save();
             }
             await ctx.deleteMessage().catch(() => { });
@@ -216,7 +285,134 @@ async function callbackHandler(ctx) {
         }
         return;
     }
-    // ── enhance_again ────────────────────────────────────────────────────────────
+    // ── process_4k_ai & locked_8k_ai ───────────────────────────────────────────
+    if (data === 'locked_8k_ai') {
+        void ctx.answerCallbackQuery({
+            text: '🔒 هذه الميزة مقفلة. تواصل مع المدير لتفعيلها',
+            show_alert: true,
+        });
+        return;
+    }
+    if (data === 'process_4k_ai') {
+        const userId = ctx.from.id;
+        // STEP 1 — ATOMIC LOCK + BALANCE CHECK + DEDUCTION
+        const atomicUser = await User_1.User.findOneAndUpdate({
+            telegramId: userId,
+            isProcessingImage: { $ne: true },
+            dailyQuota: { $gte: 2 }
+        }, {
+            $set: { isProcessingImage: true },
+            $inc: { dailyQuota: -2 }
+        }, { new: true });
+        if (!atomicUser) {
+            const check = await User_1.User.findOne({ telegramId: userId });
+            if (check?.isProcessingImage === true) {
+                await ctx.answerCallbackQuery({
+                    text: "⏳ جاري معالجة صورة بالفعل، انتظر حتى تنتهي",
+                    show_alert: true
+                });
+                return;
+            }
+            else {
+                await ctx.answerCallbackQuery({
+                    text: "❌ رصيدك غير كافٍ. هذا التحسين يتطلب نقطتين",
+                    show_alert: true
+                });
+                return;
+            }
+        }
+        await ctx.answerCallbackQuery();
+        let tempPath = '';
+        try {
+            // STEP 2 — PROCESSING MESSAGE
+            await ctx.editMessageText("⏳ جاري المعالجة بتقنية الذكاء الاصطناعي المتقدمة...");
+            // STEP 3 — DOWNLOAD ORIGINAL IMAGE
+            const pendingFile = ctx.session.pendingFile;
+            if (!pendingFile?.fileId)
+                throw new Error('download_failed');
+            const tgFile = await ctx.api.getFile(pendingFile.fileId);
+            if (!tgFile.file_path)
+                throw new Error('download_failed');
+            const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+            tempPath = path_1.default.join(os_1.default.tmpdir(), `${userId}_${Date.now()}.jpg`);
+            const fetchResponse = await fetch(fileUrl);
+            if (!fetchResponse.ok)
+                throw new Error('download_failed');
+            const buffer = Buffer.from(await fetchResponse.arrayBuffer());
+            fs_1.default.writeFileSync(tempPath, buffer);
+            const base64string = buffer.toString('base64');
+            const dataUrl = `data:image/jpeg;base64,${base64string}`;
+            // STEP 4 — CALL REPLICATE API
+            const replicate = new replicate_1.default({
+                auth: process.env.REPLICATE_API_TOKEN,
+            });
+            const modelId = process.env.REPLICATE_AI_MODEL_ID;
+            if (!modelId)
+                throw new Error('api_failed');
+            const output = await Promise.race([
+                replicate.run(modelId, {
+                    input: {
+                        image: dataUrl,
+                        prompt: "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.",
+                        negative_prompt: "watermark, logo, text, signature, blurry, low quality, deformed, ugly, distorted",
+                        num_inference_steps: 30,
+                        guidance_scale: 7.5,
+                        strength: 0.6
+                    }
+                }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('api_failed')), 120000))
+            ]);
+            let outUrl = '';
+            if (Array.isArray(output))
+                outUrl = output[0];
+            else if (typeof output === 'string')
+                outUrl = output;
+            else if (output && typeof output === 'object') {
+                if (typeof output.url === 'function')
+                    outUrl = output.url();
+                else if (typeof output.url === 'string')
+                    outUrl = output.url;
+            }
+            if (!outUrl || typeof outUrl !== 'string')
+                throw new Error('api_failed');
+            const outRes = await fetch(outUrl);
+            if (!outRes.ok)
+                throw new Error('api_failed');
+            const outBuffer = Buffer.from(await outRes.arrayBuffer());
+            // STEP 5 — DELIVER RESULT
+            await ctx.replyWithDocument(new grammy_1.InputFile(outBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
+                caption: "✨ تم التحسين بتقنية الذكاء الاصطناعي | NizoAI Bot"
+            });
+            if (process.env.CHANNEL_ID) {
+                const username = ctx.from?.username ? `@${ctx.from.username}` : ctx.from?.first_name;
+                ctx.api.sendDocument(process.env.CHANNEL_ID, new grammy_1.InputFile(outBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
+                    caption: `✨ صورة محسّنة بـ 4K-Ai | ${username}`
+                }).catch(err => console.error(err));
+            }
+        }
+        catch (error) {
+            // STEP 6 — ERROR HANDLER
+            await User_1.User.findOneAndUpdate({ telegramId: userId }, { $inc: { dailyQuota: 2 } });
+            if (error.message === 'download_failed') {
+                await ctx.editMessageText("❌ فشل تحميل الصورة. تم إرجاع نقطتيك");
+            }
+            else {
+                await ctx.editMessageText("❌ حدث خطأ في المعالجة. تم إرجاع نقطتيك");
+            }
+        }
+        finally {
+            // STEP 7 — FINALLY BLOCK
+            if (tempPath && fs_1.default.existsSync(tempPath)) {
+                try {
+                    fs_1.default.unlinkSync(tempPath);
+                }
+                catch { }
+            }
+            await User_1.User.findOneAndUpdate({ telegramId: userId }, { $set: { isProcessingImage: false } });
+        }
+        return;
+    }
+    // ── enhance_again ─────────────────────────────────────────────────────────────
     if (data === 'enhance_again') {
         await ctx.answerCallbackQuery();
         await ctx.editMessageText('📸 أرسل الصورة الجديدة التي تريد تحسينها.');
