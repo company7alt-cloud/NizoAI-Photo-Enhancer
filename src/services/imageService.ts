@@ -182,23 +182,18 @@ export async function process4KAi(imageUrl: string): Promise<Buffer> {
   const HIDDEN_PROMPT = "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.";
 
   const output = await replicate.run(
-    "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+    "nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164c1d5be36ff74576ee2d209f07a6bfa4cdf96",
     {
       input: {
         image: imageUrl,
-        prompt: HIDDEN_PROMPT,
-        prompt_strength: 0.65,
-        num_inference_steps: 30,
-        guidance_scale: 7.5,
-        output_format: "jpg",
-        output_quality: 95
+        scale: 2,
+        face_enhance: false
       }
     }
   );
 
   const imageOutput = Array.isArray(output) ? output[0] : output;
   if (!imageOutput) throw new Error('No output from Replicate');
-  
   const response = await fetch(imageOutput.toString());
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
