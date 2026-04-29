@@ -1,4 +1,4 @@
-import { Context, Markup } from 'telegraf';
+import { Context } from 'grammy';
 
 export async function sendAdminAlert(ctx: Context, errorDetails: string): Promise<void> {
   try {
@@ -18,15 +18,15 @@ export async function sendAdminAlert(ctx: Context, errorDetails: string): Promis
       `🆔 <b>الـ ID:</b> <code>${userId}</code>\n\n` +
       `⚠️ <b>تفاصيل الخلل:</b>\n<code>${errorDetails.slice(0, 800)}</code>`;
 
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🚫 حظر العميل', `admin_ban_${userId}`)],
-      [Markup.button.callback('🔒 تقييد العميل', `admin_restrict_${userId}`)],
-    ]);
-
     for (const adminId of adminIds) {
-      await ctx.telegram.sendMessage(adminId, message, {
+      await ctx.api.sendMessage(adminId, message, {
         parse_mode: 'HTML',
-        ...keyboard,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` }],
+            [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` }],
+          ],
+        },
       });
     }
   } catch (err) {
