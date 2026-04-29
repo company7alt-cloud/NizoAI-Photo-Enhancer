@@ -52,10 +52,17 @@ export async function enhance(
       }
     );
 
-    const resultUrl = output as unknown as string;
-    if (!resultUrl || typeof resultUrl !== 'string') {
-      throw new Error('Replicate returned no output URL');
+    let resultUrl: string;
+    if (Array.isArray(output)) {
+      resultUrl = output[0] as string;
+    } else if (typeof output === 'string') {
+      resultUrl = output;
+    } else {
+      console.error('[ImageService] Unexpected output format:', JSON.stringify(output));
+      throw new Error('Replicate returned unexpected output format');
     }
+    if (!resultUrl) throw new Error('Replicate returned empty URL');
+    console.log(`[ImageService] Result URL: ${resultUrl}`);
 
     const resultResponse = await fetch(resultUrl);
     if (!resultResponse.ok) throw new Error(`Result download failed: ${resultResponse.status}`);
