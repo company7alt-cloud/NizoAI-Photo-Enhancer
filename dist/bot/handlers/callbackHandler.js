@@ -349,17 +349,16 @@ async function callbackHandler(ctx) {
             const modelId = process.env.REPLICATE_AI_MODEL_ID;
             if (!modelId)
                 throw new Error('api_failed');
+            const input = {
+                image: dataUrl,
+                prompt: "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.",
+                negative_prompt: "watermark, logo, text, signature, blurry, low quality, deformed, ugly, distorted",
+                prompt_strength: 0.65,
+                num_inference_steps: 30,
+                guidance_scale: 7.5
+            };
             const output = await Promise.race([
-                replicate.run(modelId, {
-                    input: {
-                        image: dataUrl,
-                        prompt: "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.",
-                        negative_prompt: "watermark, logo, text, signature, blurry, low quality, deformed, ugly, distorted",
-                        num_inference_steps: 30,
-                        guidance_scale: 7.5,
-                        strength: 0.6
-                    }
-                }),
+                replicate.run(process.env.REPLICATE_AI_MODEL_ID, { input }),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('api_failed')), 120000))
             ]);
             let outUrl = '';
@@ -392,6 +391,11 @@ async function callbackHandler(ctx) {
         }
         catch (error) {
             // STEP 6 — ERROR HANDLER
+            console.error('[4K-Ai] Replicate error details:', {
+                message: error instanceof Error ? error.message : String(error),
+                model: process.env.REPLICATE_AI_MODEL_ID,
+                timestamp: new Date().toISOString()
+            });
             await User_1.User.findOneAndUpdate({ telegramId: userId }, { $inc: { dailyQuota: 2 } });
             if (error.message === 'download_failed') {
                 await ctx.editMessageText("❌ فشل تحميل الصورة. تم إرجاع نقطتيك");
