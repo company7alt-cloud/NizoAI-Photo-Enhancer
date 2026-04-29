@@ -46,10 +46,20 @@ async function enhance(telegramFileUrl, resolution) {
                 face_enhance: false
             }
         });
-        const resultUrl = output;
-        if (!resultUrl || typeof resultUrl !== 'string') {
-            throw new Error('Replicate returned no output URL');
+        let resultUrl;
+        if (Array.isArray(output)) {
+            resultUrl = output[0];
         }
+        else if (typeof output === 'string') {
+            resultUrl = output;
+        }
+        else {
+            console.error('[ImageService] Unexpected output format:', JSON.stringify(output));
+            throw new Error('Replicate returned unexpected output format');
+        }
+        if (!resultUrl)
+            throw new Error('Replicate returned empty URL');
+        console.log(`[ImageService] Result URL: ${resultUrl}`);
         const resultResponse = await fetch(resultUrl);
         if (!resultResponse.ok)
             throw new Error(`Result download failed: ${resultResponse.status}`);
