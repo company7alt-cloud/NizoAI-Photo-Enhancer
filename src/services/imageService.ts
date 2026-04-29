@@ -78,7 +78,7 @@ export async function enhance(
     }
 
     const base64Image = `data:image/jpeg;base64,${processedBuffer.toString('base64')}`;
-    const scale = resolution === '2K' ? 2 : 4;
+    const scale = (resolution as string) === '2K' ? 2 : 4;
     console.log(`[ImageService] Sending to Replicate — ${resolution}, Scale: ${scale}x`);
 
     // STEP 3: Create prediction and poll for result
