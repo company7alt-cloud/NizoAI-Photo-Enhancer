@@ -179,7 +179,6 @@ export async function enhanceWithNanoBanana(base64Image: string, aiPrompt: strin
 }
 
 export async function process4KAi(imageUrl: string): Promise<Buffer> {
-  const HIDDEN_PROMPT = "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.";
 
   const output = await replicate.run(
     "nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164c1d5be36ff74576ee2d209f07a6bfa4cdf96",
