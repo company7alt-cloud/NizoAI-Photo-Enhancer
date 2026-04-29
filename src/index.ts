@@ -212,6 +212,7 @@ async function bootstrap(): Promise<void> {
 
     bot.start({
       allowed_updates: ['message', 'callback_query', 'chat_member'],
+      drop_pending_updates: true,
       onStart: (info) => {
         console.log(`[Bot] 🚀 Polling started for @${info.username}`);
       },
