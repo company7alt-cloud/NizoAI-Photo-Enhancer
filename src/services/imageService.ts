@@ -5,6 +5,39 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY || '',
 });
 
+async function enhance2K(inputBuffer: Buffer): Promise<Buffer> {
+  const metadata = await sharp(inputBuffer).metadata();
+  const newWidth  = (metadata.width  || 1920) * 2;
+  const newHeight = (metadata.height || 1080) * 2;
+
+  const enhanced = await sharp(inputBuffer)
+    .resize(newWidth, newHeight, {
+      kernel: sharp.kernel.lanczos3,   // Best upscaling algorithm
+      fastShrinkOnLoad: false
+    })
+    .sharpen({
+      sigma: 1.2,      // Sharpness radius
+      m1: 1.5,         // Flat area sharpening
+      m2: 0.7,         // Edge sharpening
+      x1: 2.0,
+      y2: 10.0,
+      y3: 20.0
+    })
+    .clahe({
+      width: 8,        // Contrast enhancement tile width
+      height: 8,       // Contrast enhancement tile height
+      maxSlope: 3      // Prevents over-brightening
+    })
+    .jpeg({
+      quality: 82,
+      chromaSubsampling: '4:4:4',  // Preserve full color detail
+      mozjpeg: true                // Better compression algorithm
+    })
+    .toBuffer();
+
+  return enhanced;
+}
+
 const MAX_INPUT_DIMENSION = 1400;
 export async function enhance(
   telegramFileUrl: string,
@@ -16,6 +49,13 @@ export async function enhance(
     if (!imageResponse.ok) throw new Error(`Download failed: ${imageResponse.status}`);
     const rawBuffer = Buffer.from(await imageResponse.arrayBuffer());
     console.log(`[ImageService] Downloaded: ${(rawBuffer.length / 1024).toFixed(1)} KB`);
+
+    if (resolution === '2K') {
+      console.log(`[ImageService] Enhancing 2K locally using sharp`);
+      const finalBuffer = await enhance2K(rawBuffer);
+      console.log(`[ImageService] ✅ Final 2K size: ${(finalBuffer.length / 1024).toFixed(1)} KB`);
+      return finalBuffer;
+    }
 
     // STEP 2: Resize if needed
     const metadata = await sharp(rawBuffer).metadata();
