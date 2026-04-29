@@ -333,32 +333,32 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       }
 
       if (!fileId) {
-        await ctx.answerCbQuery('عذراً، لم أتمكن من العثور على الصورة ❌', { show_alert: true });
+        await ctx.answerCallbackQuery({ text: 'عذراً، لم أتمكن من العثور على الصورة ❌', show_alert: true });
         return;
       }
 
-      await ctx.answerCbQuery('بدأ التحسين... ⏳');
+      await ctx.answerCallbackQuery('بدأ التحسين... ⏳');
       await ctx.reply('⏳ جاري تحسين صورتك بتقنية 4K-Ai...');
 
-      const fileUrl = await ctx.telegram.getFileLink(fileId);
-      const telegramImageUrl = fileUrl.toString();
+      const tgFile = await ctx.api.getFile(fileId);
+      const telegramImageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
 
       const resultBuffer = await imageService.process4KAi(telegramImageUrl);
 
       // Send as high-quality document (no compression)
       await ctx.replyWithDocument(
-        { source: resultBuffer, filename: fileName },
+        new InputFile(resultBuffer, fileName),
         { caption: '✨ تم تحسين صورتك بنجاح! جودة 4K-Ai 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة' }
       );
 
       // Send as photo preview
       await ctx.replyWithPhoto(
-        { source: resultBuffer },
+        new InputFile(resultBuffer, fileName),
         { caption: '🖼 معاينة سريعة' }
       );
 
       // Backup copy to channel
-      await ctx.telegram.sendDocument(BACKUP_CHANNEL_ID, { source: resultBuffer, filename: fileName });
+      await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new InputFile(resultBuffer, fileName));
 
     } catch (error) {
       console.error('4K-Ai Error:', error);

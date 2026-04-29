@@ -175,6 +175,7 @@ export async function enhanceWithNanoBanana(base64Image: string, aiPrompt: strin
   else throw new Error('SDXL returned invalid format');
 
   const resultResponse = await fetch(resultUrl);
+  return Buffer.from(await resultResponse.arrayBuffer());
 }
 
 export async function process4KAi(imageUrl: string): Promise<Buffer> {
@@ -196,6 +197,8 @@ export async function process4KAi(imageUrl: string): Promise<Buffer> {
   );
 
   const imageOutput = Array.isArray(output) ? output[0] : output;
+  if (!imageOutput) throw new Error('No output from Replicate');
+  
   const response = await fetch(imageOutput.toString());
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
