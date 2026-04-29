@@ -6,8 +6,6 @@ const replicate = new Replicate({
 });
 
 const MAX_INPUT_DIMENSION = 1400;
-const MAX_OUTPUT_SIZE_BYTES = 2 * 1024 * 1024;
-
 export async function enhance(
   telegramFileUrl: string,
   resolution: '2K' | '4K' | '8K'
