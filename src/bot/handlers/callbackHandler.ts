@@ -13,6 +13,7 @@ import { generateNanoBananaPrompt } from '../../services/geminiService';
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
+const BACKUP_CHANNEL_ID = ARCHIVE_GROUP_ID || CHANNEL_ID;
 
 export async function callbackHandler(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
@@ -313,111 +314,55 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'process_4k_ai') {
-    const userId = ctx.from.id;
-
-    // STEP 1 — ATOMIC LOCK + BALANCE CHECK + DEDUCTION
-    const atomicUser = await User.findOneAndUpdate(
-      {
-        telegramId: userId,
-        isProcessingImage: { $ne: true },
-        dailyQuota: { $gte: 2 }
-      },
-      {
-        $set: { isProcessingImage: true },
-        $inc: { dailyQuota: -2 }
-      },
-      { new: true }
-    );
-
-    if (!atomicUser) {
-      const check = await User.findOne({ telegramId: userId });
-      if (check?.isProcessingImage === true) {
-        await ctx.answerCallbackQuery({
-          text: "⏳ جاري معالجة صورة بالفعل، انتظر حتى تنتهي",
-          show_alert: true
-        });
-        return;
-      } else {
-        await ctx.answerCallbackQuery({
-          text: "❌ رصيدك غير كافٍ. هذا التحسين يتطلب نقطتين",
-          show_alert: true
-        });
-        return;
-      }
-    }
-
-    await ctx.answerCallbackQuery();
-    
-    let tempPath = '';
     try {
-      // STEP 2 — PROCESSING MESSAGE
-      await ctx.editMessageText("⏳ جاري المعالجة بتقنية الذكاء الاصطناعي المتقدمة...");
+      const msg = (ctx.callbackQuery as any)?.message;
 
-      // STEP 3 — DOWNLOAD ORIGINAL IMAGE
-      const pendingFile = ctx.session.pendingFile;
-      if (!pendingFile?.fileId) throw new Error('download_failed');
+      let fileId: string | undefined;
+      let fileName = '4K_Ai_Enhanced.jpg';
 
-      const tgFile = await ctx.api.getFile(pendingFile.fileId);
-      if (!tgFile.file_path) throw new Error('download_failed');
-
-      const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
-      tempPath = path.join(os.tmpdir(), `${userId}_${Date.now()}.jpg`);
-      
-      const fetchResponse = await fetch(fileUrl);
-      if (!fetchResponse.ok) throw new Error('download_failed');
-      
-      const buffer = Buffer.from(await fetchResponse.arrayBuffer());
-      fs.writeFileSync(tempPath, buffer);
-      
-      const base64string = buffer.toString('base64');
-
-      const aiPrompt = await generateNanoBananaPrompt(base64string);
-      const finalBuffer = await imageService.enhanceWithNanoBanana(base64string, aiPrompt);
-
-      // STEP 5 — DELIVER RESULT
-      await ctx.replyWithDocument(new InputFile(finalBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
-        caption: "✨ تم التحسين بتقنية الذكاء الاصطناعي | NizoAI Bot"
-      });
-
-      try {
-        if (process.env.CHANNEL_ID) {
-          await ctx.api.sendDocument(process.env.CHANNEL_ID, new InputFile(finalBuffer, 'NizoAI_Result.jpg'), {
-            disable_notification: true, // SILENT FORWARDING
-            caption: `✨ تمت المعالجة بنجاح`
-          });
-        }
-      } catch (fwdErr) {
-        console.error('[Forwarding Error]', fwdErr);
+      if (msg?.photo && msg.photo.length > 0) {
+        fileId = msg.photo[msg.photo.length - 1].file_id;
+      } else if (msg?.reply_to_message?.photo && msg.reply_to_message.photo.length > 0) {
+        fileId = msg.reply_to_message.photo[msg.reply_to_message.photo.length - 1].file_id;
+      } else if (msg?.document?.mime_type?.startsWith('image/')) {
+        fileId = msg.document.file_id;
+        fileName = (msg.document.file_name?.replace(/\.[^/.]+$/, "") || "4K_Ai_Enhanced") + ".jpg";
+      } else if (msg?.reply_to_message?.document?.mime_type?.startsWith('image/')) {
+        fileId = msg.reply_to_message.document.file_id;
+        fileName = (msg.reply_to_message.document.file_name?.replace(/\.[^/.]+$/, "") || "4K_Ai_Enhanced") + ".jpg";
       }
 
+      if (!fileId) {
+        await ctx.answerCbQuery('عذراً، لم أتمكن من العثور على الصورة ❌', { show_alert: true });
+        return;
+      }
 
-      
-    } catch (error: any) {
-      // STEP 6 — ERROR HANDLER
-      console.error('[4K-Ai] Replicate error details:', {
-        message: error instanceof Error ? error.message : String(error),
-        model: process.env.REPLICATE_AI_MODEL_ID,
-        timestamp: new Date().toISOString()
-      });
+      await ctx.answerCbQuery('بدأ التحسين... ⏳');
+      await ctx.reply('⏳ جاري تحسين صورتك بتقنية 4K-Ai...');
 
-      await User.findOneAndUpdate(
-        { telegramId: userId },
-        { $inc: { dailyQuota: 2 } }
+      const fileUrl = await ctx.telegram.getFileLink(fileId);
+      const telegramImageUrl = fileUrl.toString();
+
+      const resultBuffer = await imageService.process4KAi(telegramImageUrl);
+
+      // Send as high-quality document (no compression)
+      await ctx.replyWithDocument(
+        { source: resultBuffer, filename: fileName },
+        { caption: '✨ تم تحسين صورتك بنجاح! جودة 4K-Ai 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة' }
       );
-      if (error.message === 'download_failed') {
-        await ctx.editMessageText("❌ فشل تحميل الصورة. تم إرجاع نقطتيك");
-      } else {
-        await ctx.editMessageText("❌ حدث خطأ في المعالجة. تم إرجاع نقطتيك");
-      }
-    } finally {
-      // STEP 7 — FINALLY BLOCK
-      if (tempPath && fs.existsSync(tempPath)) {
-        try { fs.unlinkSync(tempPath); } catch {}
-      }
-      await User.findOneAndUpdate(
-        { telegramId: userId },
-        { $set: { isProcessingImage: false } }
+
+      // Send as photo preview
+      await ctx.replyWithPhoto(
+        { source: resultBuffer },
+        { caption: '🖼 معاينة سريعة' }
       );
+
+      // Backup copy to channel
+      await ctx.telegram.sendDocument(BACKUP_CHANNEL_ID, { source: resultBuffer, filename: fileName });
+
+    } catch (error) {
+      console.error('4K-Ai Error:', error);
+      await ctx.reply('عذراً، حدث خطأ أثناء المعالجة. حاول مجدداً ❌');
     }
     return;
   }
