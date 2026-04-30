@@ -26,6 +26,11 @@ export interface IUser extends Document {
   isProcessingClaim: boolean;
   isProcessingImage: boolean;
   awaitingReport: boolean;
+  supportSessionActive: boolean;
+  supportSessionAdminId: string | null;
+  adminAwaitingInput: string | null;
+  isBlocked: boolean;
+  lastSeenAt: Date | null;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -128,6 +133,11 @@ const UserSchema = new Schema<IUser>(
       type: Boolean,
       default: false,
     },
+    supportSessionActive: { type: Boolean, default: false },
+    supportSessionAdminId: { type: String, default: null },
+    adminAwaitingInput: { type: String, default: null },
+    isBlocked: { type: Boolean, default: false },
+    lastSeenAt: { type: Date, default: null },
   },
   {
     timestamps: false,

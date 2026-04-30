@@ -24,6 +24,65 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     const existingUser = await User.findOne({ telegramId });
     const isActuallyNew = !existingUser;
 
+    const adminIdsRaw = process.env.ADMIN_IDS || '';
+    const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
+
+    const userId = ctx.from?.id;
+    const userLink = `tg://user?id=${userId}`;
+    const now = new Date();
+    const timeStr = now.toLocaleString('ar-SA');
+    const displayFirstName = ctx.from?.first_name || 'مجهول';
+    const displayUsername = ctx.from?.username ? `@${ctx.from.username}` : 'لا يوجد معرف';
+
+    let notifMessage = '';
+
+    if (!existingUser) {
+      // 🆕 Brand new user
+      notifMessage =
+        `🆕 <b>مستخدم جديد انضم!</b>\n\n` +
+        `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
+        `🔗 <b>المعرف:</b> ${displayUsername}\n` +
+        `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
+        `📅 <b>وقت الانضمام:</b> ${timeStr}`;
+    } else {
+      const lastSeen = existingUser.lastSeenAt ? new Date(existingUser.lastSeenAt) : null;
+      const isToday = lastSeen &&
+        lastSeen.toDateString() === now.toDateString();
+
+      if (!isToday) {
+        // 👁 Opened bot (returning after being away)
+        notifMessage =
+          `👁 <b>مستخدم فتح البوت</b>\n\n` +
+          `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
+          `🔗 <b>المعرف:</b> ${displayUsername}\n` +
+          `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
+          `📅 <b>الوقت:</b> ${timeStr}`;
+      } else {
+        // 🔄 Returned again same day
+        notifMessage =
+          `🔄 <b>مستخدم رجع من جديد</b>\n\n` +
+          `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
+          `🔗 <b>المعرف:</b> ${displayUsername}\n` +
+          `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
+          `📅 <b>الوقت:</b> ${timeStr}`;
+      }
+    }
+
+    // Update lastSeenAt
+    await User.findOneAndUpdate(
+      { telegramId: userId },
+      { $set: { lastSeenAt: now } }
+    );
+
+    for (const adminId of adminIds) {
+      if (!adminId) continue;
+      try {
+        await ctx.api.sendMessage(adminId, notifMessage, { parse_mode: 'HTML' });
+      } catch (e) {
+        console.error('[Start Notify] Error:', e);
+      }
+    }
+
     // ── 3. Find or create user ─────────────────────────────────────────────────
     const { user, isNew } = await User.findOrCreate({
       telegramId,
@@ -117,7 +176,6 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
     if (chanLink) keyboard.row().url('القناة', chanLink);
 
-    keyboard.row().text('🏠 عملة', 'show_welcome');
     keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
 
     await ctx.reply(greeting, {

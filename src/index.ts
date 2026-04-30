@@ -14,24 +14,10 @@ import { BotContext, isAdmin } from './utils/validators';
 import { connectDatabase, closeDatabaseConnection } from './database/connection';
 import { Settings } from './database/models/Settings';
 import { User } from './database/models/User';
+import { BotSettings } from './database/models/BotSettings';
 
 import { startCommand, inviteCommand } from './bot/commands/start';
-import {
-  adminCommand,
-  isBroadcastPending,
-  executeBroadcast,
-  isUserSearchPending,
-  searchUser,
-  getContentEditPending,
-  handleContentEdit,
-  clearContentEditPending,
-  isAddBroadcastBtnPending,
-  handleAddBroadcastButton,
-  isQuotaAddPending,
-  handleQuotaAdd,
-  isFundCampaignPending,
-  handleFundCampaignStep,
-} from './bot/commands/admin';
+import { registerAdminCommands } from './bot/commands/admin';
 import { imageHandler } from './bot/handlers/imageHandler';
 import { callbackHandler } from './bot/handlers/callbackHandler';
 import { handleMemberLeft } from './services/channelFundService';
@@ -90,56 +76,166 @@ bot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
 // ─── Commands ──────────────────────────────────────────────────────────────────
 
 bot.command('start', startCommand);
-bot.command('admin', adminCommand);
+registerAdminCommands(bot);
 bot.command('invite', inviteCommand);
 
-// ─── Admin Message Interceptors ────────────────────────────────────────────────
+// ─── Live Support Interceptor ──────────────────────────────────────────────────
 
-bot.on('message', async (ctx, next) => {
-  const adminId = ctx.from.id;
-  if (!isAdmin(adminId)) return next();
+bot.on('message:text', async (ctx, next) => {
+  const telegramId = ctx.from?.id.toString();
+  const user = await User.findOne({ telegramId });
+  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+  const isAdm = adminIds.includes(telegramId || '');
+  const messageText = ctx.message?.text || '';
 
-  const text = ctx.message.text ?? '';
+  if (isAdm && user?.adminAwaitingInput) {
+    const inputType = user.adminAwaitingInput;
+    const inputText = messageText;
 
-  // 1. Broadcast capture
-  if (isBroadcastPending(adminId)) {
-    return executeBroadcast(ctx);
-  }
+    // Clear the waiting state first
+    await User.findOneAndUpdate(
+      { telegramId: telegramId },
+      { $set: { adminAwaitingInput: null } }
+    );
 
-  // 2. Broadcast button add
-  if (isAddBroadcastBtnPending(adminId)) {
-    if (text) await handleAddBroadcastButton(ctx, text);
-    return;
-  }
-
-  // 3. Quota add flow
-  if (isQuotaAddPending(adminId)) {
-    if (text) await handleQuotaAdd(ctx, text);
-    return;
-  }
-
-  // 4. Fund campaign setup flow
-  if (isFundCampaignPending(adminId)) {
-    if (text) await handleFundCampaignStep(ctx, text);
-    return;
-  }
-
-  // 5. User search
-  if (isUserSearchPending(adminId)) {
-    const searchId = parseInt(text, 10);
-    if (!isNaN(searchId)) {
-      return searchUser(ctx, searchId);
-    }
-  }
-
-  // 6. Content edit
-  const editingField = getContentEditPending(adminId);
-  if (editingField) {
-    if (text) {
-      await handleContentEdit(ctx, editingField, text);
-      clearContentEditPending(adminId);
+    if (inputType === 'welcome_message') {
+      await BotSettings.findOneAndUpdate(
+        { key: 'welcome_message' },
+        { value: inputText },
+        { upsert: true }
+      );
+      await ctx.reply('✅ تم تحديث رسالة الترحيب بنجاح!');
       return;
     }
+
+    if (inputType === 'daily_reward_amount') {
+      const num = parseInt(inputText);
+      if (isNaN(num) || num < 1) {
+        await ctx.reply('❌ أرسل رقماً صحيحاً أكبر من صفر');
+        return;
+      }
+      await BotSettings.findOneAndUpdate(
+        { key: 'daily_reward_amount' },
+        { value: inputText },
+        { upsert: true }
+      );
+      await ctx.reply(`✅ تم تحديث المحاولات اليومية إلى ${num} محاولات`);
+      return;
+    }
+
+    if (inputType === 'low_attempts_warning') {
+      await BotSettings.findOneAndUpdate(
+        { key: 'low_attempts_warning' },
+        { value: inputText },
+        { upsert: true }
+      );
+      await ctx.reply('✅ تم تحديث رسالة انتهاء المحاولات');
+      return;
+    }
+
+    if (inputType === 'broadcast') {
+      const allUsers = await User.find({ isBanned: { $ne: true } });
+      let successCount = 0;
+      let failCount = 0;
+      for (const u of allUsers) {
+        try {
+          await ctx.api.sendMessage(u.telegramId, inputText);
+          successCount++;
+        } catch {
+          failCount++;
+        }
+      }
+      await ctx.reply(
+        `📢 <b>تم إرسال الإشعار</b>\n✅ نجح: ${successCount}\n❌ فشل: ${failCount}`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    if (inputType === 'search_user') {
+      const query = inputText.startsWith('@')
+        ? { username: inputText.replace('@', '') }
+        : { telegramId: inputText };
+      const foundUser = await User.findOne(query);
+      if (!foundUser) {
+        await ctx.reply('❌ المستخدم غير موجود');
+        return;
+      }
+      await ctx.reply(
+        `🔍 <b>معلومات المستخدم</b>\n\n` +
+        `🆔 ID: <code>${foundUser.telegramId}</code>\n` +
+        `👤 Username: @${foundUser.username || 'غير محدد'}\n` +
+        `⚡ المحاولات: ${foundUser.dailyQuota}\n` +
+        `🚫 محظور: ${foundUser.isBanned ? 'نعم' : 'لا'}\n` +
+        `📅 الانضمام: ${new Date(foundUser.joinedAt || Date.now()).toLocaleDateString('ar-SA')}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🚫 حظر', callback_data: `admin_ban_${foundUser.telegramId}` }],
+              [{ text: '🔓 رفع الحظر', callback_data: `admin_unban_${foundUser.telegramId}` }],
+              [{ text: '➕ إضافة محاولات', callback_data: `admin_addattempts_${foundUser.telegramId}` }],
+            ],
+          },
+        }
+      );
+      return;
+    }
+  }
+
+  // ── إغلاق المحادثة (من الأدمن) ──
+  if (isAdm && messageText === 'اغلق المحادثة') {
+    // Find the active support session this admin has open
+    const activeUser = await User.findOne({
+      supportSessionActive: true,
+      supportSessionAdminId: telegramId,
+    });
+
+    if (activeUser) {
+      await User.findOneAndUpdate(
+        { telegramId: activeUser.telegramId },
+        { $set: { supportSessionActive: false, supportSessionAdminId: null } }
+      );
+
+      // Notify admin
+      await ctx.reply('✅ تم إغلاق المحادثة');
+
+      // Notify user
+      await ctx.api.sendMessage(
+        activeUser.telegramId,
+        `✅ <b>تم إغلاق جلسة الدعم</b>\n\nشكراً لتواصلك معنا 🌹\nسوف يتم حل مشكلتك قريباً.\nنتمنى لك يوماً طيباً 😊`,
+        { parse_mode: 'HTML' }
+      );
+    } else {
+      await ctx.reply('⚠️ لا توجد جلسة دعم مفتوحة حالياً');
+    }
+    return;
+  }
+
+  // ── رسائل الأدمن تروح للعميل ──
+  if (isAdm) {
+    const activeUser = await User.findOne({
+      supportSessionActive: true,
+      supportSessionAdminId: telegramId,
+    });
+    if (activeUser) {
+      await ctx.api.sendMessage(
+        activeUser.telegramId,
+        `💬 <b>المطور:</b> ${messageText}`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+  }
+
+  // ── رسائل العميل تروح للأدمن ──
+  if (user?.supportSessionActive && user.supportSessionAdminId) {
+    await ctx.api.sendMessage(
+      user.supportSessionAdminId,
+      `💬 <b>العميل (${ctx.from?.first_name || 'مجهول'}):</b> ${messageText}`,
+      { parse_mode: 'HTML' }
+    );
+    return; // Stop — don't process as image or command
   }
 
   await next();

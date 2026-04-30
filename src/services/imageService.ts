@@ -179,7 +179,7 @@ export async function process4KAi(imageUrl: string): Promise<Buffer> {
 
   const metadata = await sharp(imageBuffer).metadata();
   const totalPixels = (metadata.width || 1920) * (metadata.height || 1080);
-  const MAX_PIXELS = 1_800_000;
+  const MAX_PIXELS = 1_000_000;
 
   let processBuffer = imageBuffer;
   if (totalPixels > MAX_PIXELS) {

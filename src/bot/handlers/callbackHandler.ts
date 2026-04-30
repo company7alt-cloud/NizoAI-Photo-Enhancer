@@ -2,11 +2,11 @@
 import { InputFile } from 'grammy';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/models/User';
-import { handleAdminCallback } from '../commands/admin';
 import { BotContext, isAdmin } from '../../utils/validators';
 import { claimChannelReward } from '../../services/channelFundService';
 import * as imageService from '../../services/imageService';
 import { sendAdminAlert } from '../../utils/adminAlert';
+import { BotSettings } from '../../database/models/BotSettings';
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
@@ -16,8 +16,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
   if (!data || !ctx.from) return;
 
-  // Route admin callbacks immediately
-  if (data.startsWith('admin_')) return handleAdminCallback(ctx);
+  // Admin callbacks are now handled at the bottom of this file
 
   // ── claim_reward_{channelId} ─────────────────────────────────────────────────
   if (data.startsWith('claim_reward_')) {
@@ -518,4 +517,152 @@ if (data === 'cancel_report') {
   await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
   return;
 }
+
+// ══════════════════════════════════════
+// 💬 فتح جلسة دعم مع العميل
+// ══════════════════════════════════════
+if (data.startsWith('admin_support_')) {
+  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+  if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
+
+  const targetUserId = data.replace('admin_support_', '');
+
+  // Activate support session in DB
+  await User.findOneAndUpdate(
+    { telegramId: targetUserId },
+    { $set: { supportSessionActive: true, supportSessionAdminId: ctx.from?.id.toString() } }
+  );
+
+  // Notify admin
+  await ctx.answerCallbackQuery({ text: '✅ تم فتح جلسة الدعم' });
+  await ctx.editMessageReplyMarkup(undefined);
+  await ctx.api.sendMessage(
+    ctx.from!.id,
+    `💬 <b>جلسة الدعم مفتوحة</b>\nأي رسالة ترسلها الآن ستصل للعميل مباشرة.\nعند الانتهاء أرسل: <b>اغلق المحادثة</b>`,
+    { parse_mode: 'HTML' }
+  );
+
+  // Notify user
+  await ctx.api.sendMessage(
+    targetUserId,
+    `🛠 <b>تنبيه من فريق الدعم</b>\n\nلقد وصلنا تنبيهاً بأنك تواجه مشكلة.\nأحد مطوري البوت معك الآن وسيتم حل مشكلتك في أسرع وقت 💙`,
+    { parse_mode: 'HTML' }
+  );
+  return;
+}
+
+// ══════════════════════════════════════
+// 🛠 ADMIN PANEL HANDLERS
+// ══════════════════════════════════════
+const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+const isAdminUser = adminIds.includes(ctx.from?.id.toString() || '');
+
+// ── Stats ──
+if (data === 'admin_stats' && isAdminUser) {
+  const totalUsers = await User.countDocuments();
+  const bannedUsers = await User.countDocuments({ isBanned: true });
+  const activeToday = await User.countDocuments({
+    lastRewardDate: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+  });
+  await ctx.answerCallbackQuery();
+  await ctx.reply(
+    `📊 <b>إحصائيات البوت</b>\n\n` +
+    `👥 إجمالي المستخدمين: <b>${totalUsers}</b>\n` +
+    `🚫 المحظورون: <b>${bannedUsers}</b>\n` +
+    `🟢 نشطون اليوم: <b>${activeToday}</b>`,
+    { parse_mode: 'HTML' }
+  );
+  return;
+}
+
+// ── Edit Welcome Message ──
+if (data === 'admin_edit_welcome' && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  await User.findOneAndUpdate(
+    { telegramId: ctx.from!.id.toString() },
+    { $set: { awaitingReport: false, adminAwaitingInput: 'welcome_message' } }
+  );
+  await ctx.reply('✏️ أرسل الآن النص الجديد لرسالة الترحيب:');
+  return;
+}
+
+// ── Edit Daily Reward Amount ──
+if (data === 'admin_edit_daily' && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  await User.findOneAndUpdate(
+    { telegramId: ctx.from!.id.toString() },
+    { $set: { adminAwaitingInput: 'daily_reward_amount' } }
+  );
+  await ctx.reply('🎁 أرسل العدد الجديد للمحاولات اليومية (مثال: 5):');
+  return;
+}
+
+// ── Edit Low Attempts Warning ──
+if (data === 'admin_edit_low' && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  await User.findOneAndUpdate(
+    { telegramId: ctx.from!.id.toString() },
+    { $set: { adminAwaitingInput: 'low_attempts_warning' } }
+  );
+  await ctx.reply('⚠️ أرسل الآن نص رسالة انتهاء المحاولات:');
+  return;
+}
+
+// ── Broadcast ──
+if (data === 'admin_broadcast' && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  await User.findOneAndUpdate(
+    { telegramId: ctx.from!.id.toString() },
+    { $set: { adminAwaitingInput: 'broadcast' } }
+  );
+  await ctx.reply('📢 أرسل الآن الرسالة التي تريد إرسالها لجميع المستخدمين:');
+  return;
+}
+
+// ── Search User ──
+if (data === 'admin_search_user' && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  await User.findOneAndUpdate(
+    { telegramId: ctx.from!.id.toString() },
+    { $set: { adminAwaitingInput: 'search_user' } }
+  );
+  await ctx.reply('🔍 أرسل الـ ID أو username للمستخدم:');
+  return;
+}
+
+// ── Maintenance Mode ──
+if (data === 'admin_maintenance' && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  const current = await BotSettings.findOne({ key: 'maintenance_mode' });
+  const currentVal = current?.value === 'true';
+  await BotSettings.findOneAndUpdate(
+    { key: 'maintenance_mode' },
+    { value: currentVal ? 'false' : 'true' },
+    { upsert: true }
+  );
+  await ctx.reply(
+    currentVal
+      ? '✅ تم إيقاف وضع الصيانة — البوت يعمل الآن'
+      : '🔧 تم تفعيل وضع الصيانة — البوت متوقف مؤقتاً'
+  );
+  return;
+}
+
+// ── Unban user ──
+if (data.startsWith('admin_unban_') && isAdminUser) {
+  const targetId = data.replace('admin_unban_', '');
+  await User.findOneAndUpdate({ telegramId: targetId }, { isBanned: false });
+  await ctx.answerCallbackQuery({ text: '✅ تم رفع الحظر' });
+  await ctx.editMessageReplyMarkup(undefined);
+  return;
+}
+
+// ── Add attempts to user ──
+if (data.startsWith('admin_addattempts_') && isAdminUser) {
+  const targetId = data.replace('admin_addattempts_', '');
+  await User.findOneAndUpdate({ telegramId: targetId }, { $inc: { dailyQuota: 5 } });
+  await ctx.answerCallbackQuery({ text: '✅ تمت إضافة 5 محاولات' });
+  return;
+}
+
 }
