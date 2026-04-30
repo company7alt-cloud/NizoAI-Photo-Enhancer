@@ -25,32 +25,36 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     const isActuallyNew = !existingUser;
 
     const now = new Date();
-    const adminIdsRaw = process.env.ADMIN_IDS || '';
-    const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
-
     const userId = ctx.from?.id;
     const displayFirstName = ctx.from?.first_name || 'مجهول';
     const displayUsername = ctx.from?.username ? `@${ctx.from.username}` : 'لا يوجد معرف';
     const userLink = `tg://user?id=${userId}`;
     const timeStr = now.toLocaleString('ar-SA');
 
-    const ALERT_CHANNEL = process.env.ALERT_CHANNEL_ID || '';
-    const targets = ALERT_CHANNEL ? [ALERT_CHANNEL] : adminIds;
-
     if (!existingUser) {
+      // Count total users AFTER creating the new user
+      // Since this runs before user creation in the DB, we add +1 to reflect the true count
+      const totalUsers = (await User.countDocuments()) + 1;
+
       const notifMessage =
-        `🆕 <b>مستخدم جديد انضم!</b>\n\n` +
+        `🆕 <b>مستخدم جديد انضم للبوت!</b>\n\n` +
         `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
         `🔗 <b>المعرف:</b> ${displayUsername}\n` +
         `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
-        `📅 <b>وقت الانضمام:</b> ${timeStr}`;
+        `📅 <b>وقت الانضمام:</b> ${timeStr}\n\n` +
+        `👥 <b>إجمالي المستخدمين الآن: ${totalUsers}</b>`;
+
+      const ALERT_CHANNEL = process.env.ALERT_CHANNEL_ID;
+      const adminIdsRaw = process.env.ADMIN_IDS || '';
+      const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
+      const targets: string[] = ALERT_CHANNEL ? [ALERT_CHANNEL] : adminIds;
 
       for (const target of targets) {
         if (!target) continue;
         try {
           await ctx.api.sendMessage(target, notifMessage, { parse_mode: 'HTML' });
         } catch (e) {
-          console.error('[Start Notify] Error:', e);
+          console.error('[NewUser Notify] Error:', e);
         }
       }
     }
