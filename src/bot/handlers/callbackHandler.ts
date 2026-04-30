@@ -101,20 +101,38 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   const forwardToChannel = async (
     buf: Buffer,
     fileName: string,
-    _resolution: string
+    resolution: string,
+    jobId: string
   ): Promise<void> => {
-    if (!CHANNEL_ID) return;
+    if (!BACKUP_CHANNEL_ID) return;
+
+    const actionUser = ctx.from;
+    const userLink = actionUser?.username
+      ? `@${actionUser.username}`
+      : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+
+    const caption =
+      `📦 <b>نسخة أرشيفية</b>\n` +
+      `━━━━━━━━━━━━━━\n` +
+      `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
+      `👤 <b>Username:</b> ${userLink}\n` +
+      `🏷 <b>Job ID:</b> <code>${jobId}</code>\n` +
+      `💎 <b>Resolution:</b> ${resolution}\n` +
+      `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+      `━━━━━━━━━━━━━━`;
+
     try {
       await ctx.api.sendDocument(
-        CHANNEL_ID,
+        BACKUP_CHANNEL_ID,
         new InputFile(buf, fileName),
         {
-          disable_notification: true, // SILENT FORWARDING
-          caption: `✨ تمت المعالجة بنجاح`
+          disable_notification: true,
+          caption: caption,
+          parse_mode: 'HTML',
         }
       );
     } catch (fwdErr: unknown) {
-      console.error('[Forwarding Error]', fwdErr);
+      console.error('[Archive Error]', fwdErr);
     }
   };
 
@@ -162,28 +180,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.deleteMessage().catch(() => { });
 
       // Forward to channel (silent — never affects user)
-      void forwardToChannel(resultBuffer, outputFileName, '2K');
-
-      // Silent archive
-      if (ARCHIVE_GROUP_ID) {
-        ctx.api
-          .sendDocument(
-            ARCHIVE_GROUP_ID,
-            new InputFile(resultBuffer, `archive_${jobId}.jpg`),
-            {
-              caption:
-                `📦 نسخة أرشيفية\n` +
-                `━━━━━━━━━━━━━━\n` +
-                `🆔 User ID: ${ctx.from.id}\n` +
-                `👤 Username: @${ctx.from.username ?? 'N/A'}\n` +
-                `🏷 Job ID: ${jobId}\n` +
-                `💎 Resolution: 2K\n` +
-                `📅 Time: ${new Date().toLocaleString('ar-SA')}\n` +
-                `━━━━━━━━━━━━━━`,
-            }
-          )
-          .catch((e: unknown) => console.error('[Archive] 2K failed:', e));
-      }
+      void forwardToChannel(resultBuffer, outputFileName, '2K', jobId);
     } catch {
       if (resolution !== '2K') {
         if (!admin) {
@@ -240,28 +237,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.deleteMessage().catch(() => { });
 
       // Forward to channel (silent — never affects user)
-      void forwardToChannel(resultBuffer, outputFileName, '4K');
-
-      // Silent archive
-      if (ARCHIVE_GROUP_ID) {
-        ctx.api
-          .sendDocument(
-            ARCHIVE_GROUP_ID,
-            new InputFile(resultBuffer, `archive_${jobId}.jpg`),
-            {
-              caption:
-                `📦 نسخة أرشيفية\n` +
-                `━━━━━━━━━━━━━━\n` +
-                `🆔 User ID: ${ctx.from.id}\n` +
-                `👤 Username: @${ctx.from.username ?? 'N/A'}\n` +
-                `🏷 Job ID: ${jobId}\n` +
-                `💎 Resolution: 4K\n` +
-                `📅 Time: ${new Date().toLocaleString('ar-SA')}\n` +
-                `━━━━━━━━━━━━━━`,
-            }
-          )
-          .catch((e: unknown) => console.error('[Archive] 4K failed:', e));
-      }
+      void forwardToChannel(resultBuffer, outputFileName, '4K', jobId);
     } catch {
       if (!admin) {
         user.dailyQuota += 2;

@@ -77,7 +77,7 @@ export async function handleFundCampaignInput(
     fundState.set(adminId, {
       step: 'awaiting_target',
       channelId,
-      channelLink: text.trim(),
+      channelLink: formatChannelUrl(text),
     });
     return { status: 'ask_target', channelId };
   }
@@ -313,10 +313,23 @@ export async function handleMemberLeft(
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
 
 function extractChannelIdentifier(input: string): string {
-  // https://t.me/channelname  → @channelname
-  if (input.startsWith('https://t.me/') && !input.includes('+')) {
-    return '@' + input.replace('https://t.me/', '').split('/')[0];
+  const trimmed = input.trim();
+  if (trimmed.startsWith('https://t.me/') && !trimmed.includes('+')) {
+    return '@' + trimmed.replace('https://t.me/', '').split('/')[0];
   }
-  // @channelname or numeric ID — pass through
-  return input;
+  if (trimmed.startsWith('t.me/') && !trimmed.includes('+')) {
+    return '@' + trimmed.replace('t.me/', '').split('/')[0];
+  }
+  return trimmed;
+}
+
+function formatChannelUrl(input: string): string {
+  const trimmed = input.trim();
+  if (trimmed.startsWith('@')) {
+    return `https://t.me/${trimmed.substring(1)}`;
+  }
+  if (!trimmed.startsWith('http')) {
+    return `https://t.me/${trimmed}`;
+  }
+  return trimmed;
 }
