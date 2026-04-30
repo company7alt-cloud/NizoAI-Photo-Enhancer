@@ -340,8 +340,6 @@ bot.on('message:text', async (ctx, next) => {
 
 bot.on([':photo', ':document'], async (ctx, next) => {
   const telegramId = ctx.from?.id.toString();
-  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-  const isAdm = adminIds.includes(telegramId || '');
 
   // Admin media tunnel moved to global bot.on('message') middleware.
 
