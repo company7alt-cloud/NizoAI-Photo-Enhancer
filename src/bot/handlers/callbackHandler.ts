@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin } from '../../utils/validators';
 import * as imageService from '../../services/imageService';
-import { processProEnhance } from '../../services/imageService';
 import { sendAdminAlert } from '../../utils/adminAlert';
 import { BotSettings } from '../../database/models/BotSettings';
 import {
