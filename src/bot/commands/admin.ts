@@ -24,6 +24,7 @@ export function registerAdminCommands(bot: any) {
             [{ text: '📢 إرسال إشعار لجميع المستخدمين', callback_data: 'admin_broadcast' }],
             [{ text: '🔧 وضع الصيانة', callback_data: 'admin_maintenance' }],
             [{ text: '📢 تمويل أعضاء قناة', callback_data: 'start_fund_campaign' }],
+            [{ text: '⚙️ إدارة أزرار البوت (قفل/فتح)', callback_data: 'admin_panel' }],
           ],
         },
       }

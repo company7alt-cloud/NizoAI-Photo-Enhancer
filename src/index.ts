@@ -111,6 +111,67 @@ bot.command('endchat', async (ctx) => {
 
 // ─── Live Support Interceptor ──────────────────────────────────────────────────
 
+bot.on('message', async (ctx, next) => {
+  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+  const isAdminUser = adminIds.includes(ctx.from?.id.toString() || '');
+
+  if (isAdminUser) {
+    const text = ctx.message?.text || ctx.message?.caption || '';
+
+    // ── End session command ─────────────────────────────────────
+    if (text === '/endchat' || text === 'اغلق المحادثة') {
+      const activeUser = await User.findOne({
+        supportSessionActive: true,
+        supportSessionAdminId: ctx.from!.id.toString()
+      });
+
+      if (activeUser) {
+        await User.findOneAndUpdate(
+          { telegramId: activeUser.telegramId },
+          { $set: { supportSessionActive: false, supportSessionAdminId: null } }
+        );
+        await ctx.reply('✅ تم إغلاق المحادثة مع العميل.');
+        try {
+          await ctx.api.sendMessage(
+            activeUser.telegramId,
+            '🔔 تم إغلاق جلسة الدعم. شكراً لتواصلك معنا 💙'
+          );
+        } catch (e) {}
+      } else {
+        await ctx.reply('❌ لا توجد محادثة نشطة حالياً.');
+      }
+      return;
+    }
+
+    // ── Check if admin has active support session ───────────────
+    const activeUser = await User.findOne({
+      supportSessionActive: true,
+      supportSessionAdminId: ctx.from!.id.toString()
+    });
+
+    if (activeUser) {
+      // Send confirmation AS A REPLY to admin's original message
+      // reply_parameters ensures we can copy the exact message later
+      await ctx.reply(
+        `📤 <b>هل تريد إرسال هذه الرسالة للعميل؟</b>\n\n` +
+        `👤 العميل: <code>${activeUser.telegramId}</code>`,
+        {
+          parse_mode: 'HTML',
+          reply_parameters: { message_id: ctx.message!.message_id },
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '✅ نعم، أرسل', callback_data: `confirm_support_send_${activeUser.telegramId}` },
+              { text: '❌ لا، إلغاء', callback_data: 'cancel_support_send' }
+            ]]
+          }
+        }
+      );
+      return;
+    }
+  }
+  return next();
+});
+
 bot.on('message:text', async (ctx, next) => {
   const telegramId = ctx.from?.id.toString();
   const user = await User.findOne({ telegramId });
@@ -162,55 +223,7 @@ bot.on('message:text', async (ctx, next) => {
     return;
   }
 
-  // ── إغلاق المحادثة (من الأدمن) — PRIORITY: before adminAwaitingInput ──
-  if (isAdm && messageText === 'اغلق المحادثة') {
-    // Find the active support session this admin has open
-    const activeUser = await User.findOne({
-      supportSessionActive: true,
-      supportSessionAdminId: telegramId,
-    });
-
-    if (activeUser) {
-      await User.findOneAndUpdate(
-        { telegramId: activeUser.telegramId },
-        { $set: { supportSessionActive: false, supportSessionAdminId: null } }
-      );
-
-      // Notify admin
-      await ctx.reply('✅ تم إغلاق المحادثة');
-
-      // Notify user
-      await ctx.api.sendMessage(
-        activeUser.telegramId,
-        `✅ <b>تم إغلاق جلسة الدعم</b>\n\nشكراً لتواصلك معنا 🌹\nسوف يتم حل مشكلتك قريباً.\nنتمنى لك يوماً طيباً 😊`,
-        { parse_mode: 'HTML' }
-      );
-    } else {
-      await ctx.reply('⚠️ لا توجد جلسة دعم مفتوحة حالياً');
-    }
-    return;
-  }
-
-  // ── رسائل الأدمن تروح للعميل — PRIORITY: before adminAwaitingInput ──
-  // This MUST run before adminAwaitingInput so support replies are NEVER
-  // misrouted to the broadcast or other admin-input handlers.
-  if (isAdm) {
-    const activeUser = await User.findOne({
-      supportSessionActive: true,
-      supportSessionAdminId: telegramId,
-    });
-    if (activeUser) {
-      // Send ONLY to the specific target user — never broadcast
-      await ctx.api.sendMessage(
-        activeUser.telegramId,
-        `💬 <b>المطور:</b> ${messageText}`,
-        { parse_mode: 'HTML' }
-      );
-      // Confirm to admin that message was delivered
-      await ctx.reply('✅ تم إرسال رسالتك إلى العميل بنجاح.');
-      return;
-    }
-  }
+  // Support tunnel logic moved to global bot.on('message') middleware.
 
   if (isAdm && user?.adminAwaitingInput) {
     const inputType = user.adminAwaitingInput;
@@ -330,22 +343,7 @@ bot.on([':photo', ':document'], async (ctx, next) => {
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
   const isAdm = adminIds.includes(telegramId || '');
 
-  // ── Admin → User: forward media to the target user ──
-  if (isAdm) {
-    const activeUser = await User.findOne({
-      supportSessionActive: true,
-      supportSessionAdminId: telegramId,
-    });
-    if (activeUser) {
-      try {
-        await ctx.forwardMessage(activeUser.telegramId);
-        await ctx.reply('✅ تم إرسال الملف إلى العميل بنجاح.');
-      } catch (e) {
-        console.error('[SupportTunnel] Admin→User media error:', e);
-      }
-      return; // do NOT fall through to imageHandler
-    }
-  }
+  // Admin media tunnel moved to global bot.on('message') middleware.
 
   // ── User → Admin: forward media to the admin who opened the session ──
   const sessionUser = await User.findOne({ telegramId, supportSessionActive: true });

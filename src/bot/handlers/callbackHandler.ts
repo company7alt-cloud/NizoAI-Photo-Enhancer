@@ -950,6 +950,42 @@ if (data.startsWith('atoggle_') && isAdminUser) {
   return;
 }
 
+// ── Support Send Confirmation ─────────────────────────────────
+  if (data.startsWith('confirm_support_send_') && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const targetUserId = data.replace('confirm_support_send_', '');
+
+    // The original message is the one this confirmation was replied to
+    const originalMessage = ctx.callbackQuery?.message?.reply_to_message;
+
+    if (!originalMessage) {
+      await ctx.reply('❌ لم أتمكن من العثور على الرسالة الأصلية.');
+      return;
+    }
+
+    try {
+      // Copy the exact original message (text/photo/file) to the target user
+      await ctx.api.copyMessage(
+        targetUserId,
+        originalMessage.chat.id,
+        originalMessage.message_id
+      );
+
+      await ctx.editMessageReplyMarkup(undefined);
+      await ctx.reply('✅ تم إرسال الرسالة للعميل بنجاح 💙');
+    } catch (e) {
+      await ctx.reply('❌ فشل إرسال الرسالة. ربما حظر العميل البوت.');
+    }
+    return;
+  }
+
+  if (data === 'cancel_support_send' && isAdminUser) {
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await ctx.editMessageReplyMarkup(undefined);
+    return;
+  }
+
 if (data === 'admin_close' && isAdminUser) {
   await ctx.answerCallbackQuery().catch(() => {});
   await ctx.deleteMessage();
