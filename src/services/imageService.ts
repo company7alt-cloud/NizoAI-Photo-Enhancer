@@ -54,7 +54,8 @@ export async function enhance(
     // STEP 1: Download from Telegram
     const imageResponse = await fetch(telegramFileUrl);
     if (!imageResponse.ok) throw new Error(`Download failed: ${imageResponse.status}`);
-    const rawBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    const rawArray = await imageResponse.arrayBuffer();
+    const rawBuffer = Buffer.from(new Uint8Array(rawArray)) as Buffer;
     console.log(`[ImageService] Downloaded: ${(rawBuffer.length / 1024).toFixed(1)} KB`);
 
     if (resolution === '2K') {
@@ -137,7 +138,8 @@ export async function enhance(
     console.log(`[ImageService] Downloading result from: ${resultUrl}`);
     const resultResponse = await fetch(resultUrl);
     if (!resultResponse.ok) throw new Error(`Result download failed: ${resultResponse.status}`);
-    const resultBuffer = Buffer.from(await resultResponse.arrayBuffer());
+    const resultRawArray = await resultResponse.arrayBuffer();
+    const resultBuffer = Buffer.from(new Uint8Array(resultRawArray)) as Buffer;
     console.log(`[ImageService] Result: ${(resultBuffer.length / 1024).toFixed(1)} KB`);
 
     // STEP 6: Post-process
@@ -195,7 +197,8 @@ export async function enhanceWithNanoBanana(base64Image: string, aiPrompt: strin
   else throw new Error('SDXL returned invalid format');
 
   const resultResponse = await fetch(resultUrl);
-  return Buffer.from(await resultResponse.arrayBuffer());
+  const resultRawData = await resultResponse.arrayBuffer();
+  return Buffer.from(new Uint8Array(resultRawData)) as Buffer;
 }
 
 export async function process4KAi(imageUrl: string): Promise<Buffer> {
@@ -265,7 +268,7 @@ export async function processProEnhance(
   const imgResponse = await fetch(imageUrl);
   const arrayBuffer = await imgResponse.arrayBuffer();
   // Fixes TS2322 (Type casting to ArrayBuffer)
-  const inputBuffer = Buffer.from(arrayBuffer as ArrayBuffer);
+  const inputBuffer = Buffer.from(new Uint8Array(arrayBuffer)) as Buffer;
 
   const metadata = await sharp(inputBuffer).metadata();
   const w = metadata.width || 800;
@@ -315,7 +318,7 @@ export async function processProEnhance(
   const resultResponse = await fetch(outputUrl);
   const resultArray = await resultResponse.arrayBuffer();
 
-  return await sharp(Buffer.from(resultArray as ArrayBuffer))
+  return await sharp(Buffer.from(new Uint8Array(resultArray)) as Buffer)
     .sharpen({ sigma: 0.8 })
     .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true, mozjpeg: true })
     .toBuffer();

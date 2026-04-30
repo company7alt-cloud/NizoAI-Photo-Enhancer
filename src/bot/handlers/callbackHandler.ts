@@ -996,7 +996,11 @@ if (data.startsWith('atoggle_') && isAdminUser) {
     ]
   });
 
-  await ctx.editMessageReplyMarkup(buildAdminKeyboard(newLocks));
+  await ctx.api.editMessageReplyMarkup(
+    ctx.chat!.id,
+    ctx.msgId!,
+    { inline_keyboard: buildAdminKeyboard(newLocks).inline_keyboard }
+  );
   return;
 }
 
