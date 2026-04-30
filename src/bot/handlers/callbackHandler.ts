@@ -3,10 +3,14 @@ import { InputFile } from 'grammy';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin } from '../../utils/validators';
-import { claimChannelReward } from '../../services/channelFundService';
 import * as imageService from '../../services/imageService';
 import { sendAdminAlert } from '../../utils/adminAlert';
 import { BotSettings } from '../../database/models/BotSettings';
+import {
+  startFundCampaignSetup,
+  clearFundCampaignState,
+  claimChannelReward,
+} from '../../services/channelFundService';
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
@@ -17,48 +21,6 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   if (!data || !ctx.from) return;
 
   // Admin callbacks are now handled at the bottom of this file
-
-  // ── claim_reward_{channelId} ─────────────────────────────────────────────────
-  if (data.startsWith('claim_reward_')) {
-    await ctx.answerCallbackQuery();
-    const channelId = data.replace('claim_reward_', '');
-    const userId = ctx.from.id;
-
-    const result = await claimChannelReward(userId, channelId, ctx.api);
-
-    if (result === 'REWARDED') {
-      await ctx.reply(
-        '✅ تم التحقق! تم إضافة 5 محاولات لرصيدك 🎉\n' +
-          'استمتع بتحسين صورك بجودة احترافية 🌟'
-      );
-    } else if (result === 'ALREADY_CLAIMED') {
-      await ctx.answerCallbackQuery({
-        text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅',
-        show_alert: true,
-      });
-    } else if (result === 'PROCESSING') {
-      await ctx.answerCallbackQuery({
-        text: 'جاري المعالجة، انتظر لحظة... ⏳',
-        show_alert: false,
-      });
-    } else if (result === 'NOT_MEMBER') {
-      await ctx.answerCallbackQuery({
-        text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط أدناه، ثم اضغط على زر التحقق للحصول على مكافأتك 🎁',
-        show_alert: true,
-      });
-    } else if (result === 'ADMIN_BLOCKED') {
-      await ctx.answerCallbackQuery({
-        text: '🚫 المشرف لا يمكنه المطالبة بمكافأة حملته.',
-        show_alert: true,
-      });
-    } else {
-      await ctx.answerCallbackQuery({
-        text: '❌ الحملة غير موجودة أو انتهت.',
-        show_alert: true,
-      });
-    }
-    return;
-  }
 
   // ── STEP 1: Fetch FRESH user ──────────────────────────────────────────────────
   let user = await User.findOne({ telegramId: ctx.from.id });
@@ -662,6 +624,74 @@ if (data.startsWith('admin_addattempts_') && isAdminUser) {
   const targetId = data.replace('admin_addattempts_', '');
   await User.findOneAndUpdate({ telegramId: targetId }, { $inc: { dailyQuota: 5 } });
   await ctx.answerCallbackQuery({ text: '✅ تمت إضافة 5 محاولات' });
+  return;
+}
+
+// ══════════════════════════════════════
+// 📢 تمويل أعضاء — بدء الحملة
+// ══════════════════════════════════════
+if (data === 'start_fund_campaign' && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  startFundCampaignSetup(ctx.from!.id);
+  await ctx.reply(
+    '📢 <b>إنشاء حملة تمويل أعضاء</b>\n\nأرسل رابط القناة أو المجموعة المراد تمويلها:',
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]],
+      },
+    }
+  );
+  return;
+}
+
+if (data === 'cancel_fund_campaign' && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  clearFundCampaignState(ctx.from!.id);
+  await ctx.reply('❌ تم إلغاء إنشاء الحملة.');
+  return;
+}
+
+// ══════════════════════════════════════
+// 🎁 claim_reward_{channelId}
+// ══════════════════════════════════════
+if (data.startsWith('claim_reward_')) {
+  await ctx.answerCallbackQuery();
+  const channelId = data.replace('claim_reward_', '');
+  const userId = ctx.from!.id;
+
+  const result = await claimChannelReward(userId, channelId, ctx.api);
+
+  if (result === 'REWARDED') {
+    await ctx.reply(
+      '✅ تم التحقق! تم إضافة 5 محاولات لرصيدك 🎉\nاستمتع بتحسين صورك بجودة احترافية 🌟'
+    );
+  } else if (result === 'ALREADY_CLAIMED') {
+    await ctx.answerCallbackQuery({
+      text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅',
+      show_alert: true,
+    });
+  } else if (result === 'PROCESSING') {
+    await ctx.answerCallbackQuery({
+      text: 'جاري المعالجة، انتظر لحظة... ⏳',
+      show_alert: false,
+    });
+  } else if (result === 'NOT_MEMBER') {
+    await ctx.answerCallbackQuery({
+      text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط أدناه، ثم اضغط على زر التحقق للحصول على مكافأتك 🎁',
+      show_alert: true,
+    });
+  } else if (result === 'ADMIN_BLOCKED') {
+    await ctx.answerCallbackQuery({
+      text: '🚫 المشرف لا يمكنه المطالبة بمكافأة حملته.',
+      show_alert: true,
+    });
+  } else {
+    await ctx.answerCallbackQuery({
+      text: '❌ الحملة غير موجودة أو انتهت.',
+      show_alert: true,
+    });
+  }
   return;
 }
 

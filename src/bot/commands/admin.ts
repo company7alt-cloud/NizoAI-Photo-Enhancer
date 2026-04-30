@@ -23,6 +23,7 @@ export function registerAdminCommands(bot: any) {
             [{ text: '🔍 البحث عن مستخدم', callback_data: 'admin_search_user' }],
             [{ text: '📢 إرسال إشعار لجميع المستخدمين', callback_data: 'admin_broadcast' }],
             [{ text: '🔧 وضع الصيانة', callback_data: 'admin_maintenance' }],
+            [{ text: '📢 تمويل أعضاء قناة', callback_data: 'start_fund_campaign' }],
           ],
         },
       }

@@ -20,7 +20,6 @@ import { startCommand, inviteCommand } from './bot/commands/start';
 import { registerAdminCommands } from './bot/commands/admin';
 import { imageHandler } from './bot/handlers/imageHandler';
 import { callbackHandler } from './bot/handlers/callbackHandler';
-import { handleMemberLeft } from './services/channelFundService';
 
 // ─── Bot Instance ──────────────────────────────────────────────────────────────
 
@@ -87,6 +86,47 @@ bot.on('message:text', async (ctx, next) => {
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
   const isAdm = adminIds.includes(telegramId || '');
   const messageText = ctx.message?.text || '';
+
+  const { isFundCampaignPending, handleFundCampaignInput, broadcastFundCampaign } =
+    await import('./services/channelFundService');
+
+  if (isAdm && isFundCampaignPending(ctx.from!.id)) {
+    const result = await handleFundCampaignInput(
+      ctx.from!.id,
+      ctx.message!.text || '',
+      ctx.api
+    );
+
+    if (result.status === 'ask_target') {
+      await ctx.reply(
+        `✅ تم التحقق من صلاحيات البوت في القناة.\n\nكم عدد الأعضاء المطلوب؟ (مثال: 1000)`,
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]],
+          },
+        }
+      );
+    } else if (result.status === 'not_admin_in_channel') {
+      await ctx.reply(
+        '❌ البوت ليس مشرفاً في هذه القناة. أضفه كمشرف أولاً ثم أعد المحاولة.'
+      );
+    } else if (result.status === 'done' && 'campaign' in result) {
+      const campaign = result.campaign;
+      await ctx.reply(
+        `✅ تم إنشاء الحملة بنجاح!\n\n` +
+        `📢 القناة: ${campaign.channelLink}\n` +
+        `🎯 الهدف: ${campaign.targetMembers} عضو\n\n` +
+        `⏳ جاري الإذاعة لجميع المستخدمين...`
+      );
+      const { sent, failed } = await broadcastFundCampaign(ctx.api, campaign);
+      await ctx.reply(
+        `📢 اكتملت إذاعة الحملة!\n✅ نجح: ${sent}\n❌ فشل: ${failed}`
+      );
+    } else if (result.status === 'invalid_target') {
+      await ctx.reply('❌ عدد غير صحيح. أرسل رقماً صحيحاً أكبر من صفر.');
+    }
+    return;
+  }
 
   if (isAdm && user?.adminAwaitingInput) {
     const inputType = user.adminAwaitingInput;
@@ -247,21 +287,22 @@ bot.on([':photo', ':document'], imageHandler);
 bot.callbackQuery(/.*/, callbackHandler);
 
 // ─── chat_member: Leave / Kick Penalty ────────────────────────────────────────
-// Only "left" and "kicked" statuses trigger penalties — spec rule.
 
 bot.on('chat_member', async (ctx) => {
-  try {
-    const update = ctx.chatMember;
-    const newStatus = update.new_chat_member.status;
+  const update = ctx.update.chat_member;
+  if (!update) return;
 
-    if (newStatus !== 'left' && newStatus !== 'kicked') return;
+  const newStatus = update.new_chat_member.status;
+  const oldStatus = update.old_chat_member.status;
+  const userId = update.new_chat_member.user.id;
+  const channelId = String(update.chat.id);
 
-    const userId = update.new_chat_member.user.id;
-    const channelId = String(ctx.chat.id);
+  const wasActive = ['member', 'administrator', 'creator'].includes(oldStatus);
+  const hasLeft = ['left', 'kicked', 'restricted'].includes(newStatus);
 
+  if (wasActive && hasLeft) {
+    const { handleMemberLeft } = await import('./services/channelFundService');
     await handleMemberLeft(userId, channelId, ctx.api);
-  } catch (err: unknown) {
-    console.error('[ChatMember] Handler error:', err);
   }
 });
 
