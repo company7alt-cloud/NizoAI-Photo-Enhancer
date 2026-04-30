@@ -6,21 +6,42 @@ const replicate = new Replicate({
 });
 
 async function enhance2K(inputBuffer: Buffer): Promise<Buffer> {
+  const metadata = await sharp(inputBuffer).metadata();
+  const width = metadata.width || 1000;
+  const height = metadata.height || 1000;
+  const pixels = width * height;
+
+  // Only upscale if image is smaller than 2K
+  const TARGET_PIXELS = 2048 * 2048;
+  const needsUpscale = pixels < TARGET_PIXELS;
+
+  const scale = needsUpscale ? Math.sqrt(TARGET_PIXELS / pixels) : 1;
+  const newWidth = Math.round(width * Math.min(scale, 4));
+  const newHeight = Math.round(height * Math.min(scale, 4));
+
   const processed = await sharp(inputBuffer)
-    .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: false })
-    .sharpen({ sigma: 1.2, m1: 0.5, m2: 0.5 })
-    .jpeg({ quality: 94, chromaSubsampling: '4:4:4', force: true })
+    .resize({
+      width: newWidth,
+      height: newHeight,
+      fit: 'fill',
+      kernel: sharp.kernel.lanczos3,
+    })
+    .sharpen({ sigma: 0.8, m1: 0.3, m2: 0.3 })
+    .jpeg({
+      quality: 95,
+      chromaSubsampling: '4:4:4',
+      force: true,
+      mozjpeg: true,
+    })
     .toBuffer();
 
   const MAX_SIZE = 2 * 1024 * 1024;
   if (processed.length > MAX_SIZE) {
     return await sharp(inputBuffer)
-      .resize({ width: 2048, height: 2048, fit: 'inside' })
-      .sharpen({ sigma: 1.0 })
-      .jpeg({ quality: 85, chromaSubsampling: '4:4:4', force: true })
+      .resize({ width: newWidth, height: newHeight, fit: 'fill', kernel: sharp.kernel.lanczos3 })
+      .jpeg({ quality: 88, chromaSubsampling: '4:4:4', force: true, mozjpeg: true })
       .toBuffer();
   }
-
   return processed;
 }
 
