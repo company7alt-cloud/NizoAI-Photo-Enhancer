@@ -18,8 +18,11 @@ export async function sendAdminAlert(ctx: Context, errorDetails: string): Promis
       `🆔 <b>الـ ID:</b> <code>${userId}</code>\n\n` +
       `⚠️ <b>تفاصيل الخلل:</b>\n<code>${errorDetails.slice(0, 800)}</code>`;
 
-    for (const adminId of adminIds) {
-      await ctx.api.sendMessage(adminId, message, {
+    const ALERT_CHANNEL = process.env.ALERT_CHANNEL_ID || '';
+    const targets = ALERT_CHANNEL ? [ALERT_CHANNEL] : adminIds;
+
+    for (const target of targets) {
+      await ctx.api.sendMessage(target, message, {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [

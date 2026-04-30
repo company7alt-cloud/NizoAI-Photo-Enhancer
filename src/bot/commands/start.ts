@@ -24,64 +24,59 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     const existingUser = await User.findOne({ telegramId });
     const isActuallyNew = !existingUser;
 
+    const now = new Date();
     const adminIdsRaw = process.env.ADMIN_IDS || '';
     const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
 
     const userId = ctx.from?.id;
-    const userLink = `tg://user?id=${userId}`;
-    const now = new Date();
-    const timeStr = now.toLocaleString('ar-SA');
     const displayFirstName = ctx.from?.first_name || 'مجهول';
     const displayUsername = ctx.from?.username ? `@${ctx.from.username}` : 'لا يوجد معرف';
+    const userLink = `tg://user?id=${userId}`;
+    const timeStr = now.toLocaleString('ar-SA');
 
-    let notifMessage = '';
+    const ALERT_CHANNEL = process.env.ALERT_CHANNEL_ID || '';
+    const targets = ALERT_CHANNEL ? [ALERT_CHANNEL] : adminIds;
 
-    if (!existingUser) {
-      // 🆕 Brand new user
-      notifMessage =
-        `🆕 <b>مستخدم جديد انضم!</b>\n\n` +
-        `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
-        `🔗 <b>المعرف:</b> ${displayUsername}\n` +
-        `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
-        `📅 <b>وقت الانضمام:</b> ${timeStr}`;
-    } else {
-      const lastSeen = existingUser.lastSeenAt ? new Date(existingUser.lastSeenAt) : null;
-      const isToday = lastSeen &&
-        lastSeen.toDateString() === now.toDateString();
+    // Only send notification if this is the FIRST visit today
+    const lastSeen = existingUser?.lastSeenAt ? new Date(existingUser.lastSeenAt) : null;
+    const isFirstVisitToday = !lastSeen || lastSeen.toDateString() !== now.toDateString();
 
-      if (!isToday) {
-        // 👁 Opened bot (returning after being away)
+    if (isFirstVisitToday) {
+      let notifMessage = '';
+
+      if (!existingUser) {
+        // 🆕 Brand new user
+        notifMessage =
+          `🆕 <b>مستخدم جديد انضم!</b>\n\n` +
+          `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
+          `🔗 <b>المعرف:</b> ${displayUsername}\n` +
+          `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
+          `📅 <b>وقت الانضمام:</b> ${timeStr}`;
+      } else {
+        // Returning user — first visit today
         notifMessage =
           `👁 <b>مستخدم فتح البوت</b>\n\n` +
           `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
           `🔗 <b>المعرف:</b> ${displayUsername}\n` +
           `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
           `📅 <b>الوقت:</b> ${timeStr}`;
-      } else {
-        // 🔄 Returned again same day
-        notifMessage =
-          `🔄 <b>مستخدم رجع من جديد</b>\n\n` +
-          `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
-          `🔗 <b>المعرف:</b> ${displayUsername}\n` +
-          `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
-          `📅 <b>الوقت:</b> ${timeStr}`;
+      }
+
+      for (const target of targets) {
+        if (!target) continue;
+        try {
+          await ctx.api.sendMessage(target, notifMessage, { parse_mode: 'HTML' });
+        } catch (e) {
+          console.error('[Start Notify] Error:', e);
+        }
       }
     }
 
-    // Update lastSeenAt
+    // Update lastSeenAt every visit
     await User.findOneAndUpdate(
-      { telegramId: userId },
+      { telegramId: userId?.toString() },
       { $set: { lastSeenAt: now } }
     );
-
-    for (const adminId of adminIds) {
-      if (!adminId) continue;
-      try {
-        await ctx.api.sendMessage(adminId, notifMessage, { parse_mode: 'HTML' });
-      } catch (e) {
-        console.error('[Start Notify] Error:', e);
-      }
-    }
 
     // ── 3. Find or create user ─────────────────────────────────────────────────
     const { user, isNew } = await User.findOrCreate({
