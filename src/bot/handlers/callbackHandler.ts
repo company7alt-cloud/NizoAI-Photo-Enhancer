@@ -137,7 +137,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.replyWithDocument(new InputFile(resultBuffer, outputFileName), {
         caption: `🎉 صورتك جاهزة بدقة 2K! 🌟\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
       });
-      await ctx.deleteMessage().catch(() => {});
+      await ctx.deleteMessage().catch(() => { });
 
       // Forward to channel (silent — never affects user)
       void forwardToChannel(resultBuffer, outputFileName, '2K');
@@ -169,7 +169,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           await user.save();
         }
       }
-      await ctx.deleteMessage().catch(() => {});
+      await ctx.deleteMessage().catch(() => { });
       await ctx.reply(
         '😔 عذراً حدث خطأ أثناء معالجة صورتك 🌸\nتم إعادة محاولتك تلقائياً ✨\nجرب مرة أخرى وسنكون معك 💙'
       );
@@ -215,7 +215,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.replyWithDocument(new InputFile(resultBuffer, outputFileName), {
         caption: `💎 صورتك جاهزة بدقة 4K الفائقة! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
       });
-      await ctx.deleteMessage().catch(() => {});
+      await ctx.deleteMessage().catch(() => { });
 
       // Forward to channel (silent — never affects user)
       void forwardToChannel(resultBuffer, outputFileName, '4K');
@@ -245,7 +245,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         user.dailyQuota += 2;
         await user.save();
       }
-      await ctx.deleteMessage().catch(() => {});
+      await ctx.deleteMessage().catch(() => { });
       await ctx.reply(
         '😔 عذراً حدث خطأ أثناء معالجة صورتك بدقة 4K 🌸\nتم إعادة المحاولتين تلقائياً ✨\nجرب مرة أخرى وسنكون معك 💙'
       );
@@ -286,8 +286,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         return;
       }
 
-      if (!admin && user.dailyQuota < 2) {
-        await ctx.answerCallbackQuery({ text: 'رصيدك غير كافٍ! تحتاج محاولتين لاستخدام 4K-Ai 💎', show_alert: true });
+      if (!admin && user.dailyQuota < 3) {
+        await ctx.answerCallbackQuery({ text: 'رصيدك غير كافٍ! تحتاج 3 محاولات لاستخدام 4K-Ai 💎', show_alert: true });
         return;
       }
 
@@ -299,7 +299,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       } catch (e) { /* ignore */ }
 
       if (!admin) {
-        user.dailyQuota -= 2;
+        user.dailyQuota -= 3;
         await user.save();
       }
 
@@ -353,6 +353,18 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         { caption, parse_mode: 'HTML' }
       );
 
+      if (CHANNEL_ID && CHANNEL_ID !== BACKUP_CHANNEL_ID) {
+        try {
+          await ctx.api.sendDocument(
+            CHANNEL_ID,
+            new InputFile(resultBuffer, fileName),
+            { caption: '✨ تمت المعالجة بنجاح', disable_notification: true }
+          );
+        } catch (e) {
+          console.error('[4K-Ai Channel Forward]', e);
+        }
+      }
+
     } catch (error) {
       await sendAdminAlert(ctx as any, (error as Error).message || 'Unknown Error in 4K-Ai');
       console.error('4K-Ai Error:', error);
@@ -368,331 +380,331 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-// ══════════════════════════════════════
-// 🎁 الهدية اليومية
-// ══════════════════════════════════════
-if (data === 'claim_daily_reward') {
-  try {
-    const telegramId = ctx.from?.id.toString();
-    if (!telegramId) return;
+  // ══════════════════════════════════════
+  // 🎁 الهدية اليومية
+  // ══════════════════════════════════════
+  if (data === 'claim_daily_reward') {
+    try {
+      const telegramId = ctx.from?.id.toString();
+      if (!telegramId) return;
 
-    const user = await User.findOne({ telegramId });
-    if (!user) return;
+      const user = await User.findOne({ telegramId });
+      if (!user) return;
 
-    const now = new Date();
-    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+      const now = new Date();
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
-    if (user.lastRewardDate) {
-      const timePassed = now.getTime() - new Date(user.lastRewardDate).getTime();
-      if (timePassed < TWENTY_FOUR_HOURS) {
-        const timeLeft = TWENTY_FOUR_HOURS - timePassed;
-        const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
-        const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-        const claimTime = new Date(user.lastRewardDate).toLocaleTimeString('ar-SA', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-        });
+      if (user.lastRewardDate) {
+        const timePassed = now.getTime() - new Date(user.lastRewardDate).getTime();
+        if (timePassed < TWENTY_FOUR_HOURS) {
+          const timeLeft = TWENTY_FOUR_HOURS - timePassed;
+          const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
+          const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+          const claimTime = new Date(user.lastRewardDate).toLocaleTimeString('ar-SA', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+          });
 
-        await ctx.answerCallbackQuery({
-          text: `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
-          show_alert: true
-        });
-        return;
+          await ctx.answerCallbackQuery({
+            text: `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
+            show_alert: true
+          });
+          return;
+        }
       }
-    }
 
-    // Atomic update — prevents race conditions from double clicks
+      // Atomic update — prevents race conditions from double clicks
+      await User.findOneAndUpdate(
+        { telegramId },
+        {
+          $inc: { dailyQuota: 5 },
+          $set: { lastRewardDate: now },
+        }
+      );
+
+      await ctx.answerCallbackQuery({
+        text: '🎉 مبروك! تمت إضافة 5 محاولات مجانية لحسابك.\nعُد غداً لاستلام هديتك الجديدة 🎁',
+        show_alert: true
+      });
+    } catch (error) {
+      console.error('[DailyReward] Error:', error);
+      await sendAdminAlert(ctx as any, `Daily Reward Error: ${(error as Error).message}`);
+    }
+    return;
+  }
+
+  // ══════════════════════════════════════
+  // 🛡️ أزرار الأدمن — حظر وتقييد
+  // ══════════════════════════════════════
+  if (data.startsWith('admin_ban_')) {
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
+    if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
+
+    const targetId = data.replace('admin_ban_', '');
+    await User.findOneAndUpdate({ telegramId: targetId }, { isBanned: true });
+
+    await ctx.answerCallbackQuery({ text: '✅ تم حظر العميل بنجاح!', show_alert: true });
+    await ctx.editMessageReplyMarkup(undefined);
+    return;
+  }
+
+  if (data.startsWith('admin_restrict_')) {
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
+    if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
+
+    const targetId = data.replace('admin_restrict_', '');
     await User.findOneAndUpdate(
-      { telegramId },
+      { telegramId: targetId },
+      { $set: { dailyQuota: 0, isRestricted: true } }
+    );
+
+    await ctx.answerCallbackQuery({ text: '✅ تم تقييد العميل وتصفير محاولاته بنجاح!', show_alert: true });
+    await ctx.editMessageReplyMarkup(undefined);
+    return;
+  }
+  if (data === 'show_welcome') {
+    await ctx.answerCallbackQuery();
+    const { startCommand } = await import('../commands/start');
+    await startCommand(ctx);
+    return;
+  }
+
+  if (data === 'report_to_dev') {
+    await ctx.answerCallbackQuery();
+    const telegramId = ctx.from?.id.toString();
+    await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: true } });
+    await ctx.reply(
+      '🌹 فضلاً أرسل لنا بلاغك (رسالة أو صورة)\nوسيتم الرد عليك في أسرع وقت ممكن 💬',
       {
-        $inc: { dailyQuota: 5 },
-        $set: { lastRewardDate: now },
+        reply_markup: {
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_report' }]],
+        },
       }
     );
-
-    await ctx.answerCallbackQuery({
-      text: '🎉 مبروك! تمت إضافة 5 محاولات مجانية لحسابك.\nعُد غداً لاستلام هديتك الجديدة 🎁',
-      show_alert: true
-    });
-  } catch (error) {
-    console.error('[DailyReward] Error:', error);
-    await sendAdminAlert(ctx as any, `Daily Reward Error: ${(error as Error).message}`);
+    return;
   }
-  return;
-}
 
-// ══════════════════════════════════════
-// 🛡️ أزرار الأدمن — حظر وتقييد
-// ══════════════════════════════════════
-if (data.startsWith('admin_ban_')) {
-  const adminIds = (process.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
-  if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
+  if (data === 'cancel_report') {
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء' });
+    const telegramId = ctx.from?.id.toString();
+    await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
+    return;
+  }
 
-  const targetId = data.replace('admin_ban_', '');
-  await User.findOneAndUpdate({ telegramId: targetId }, { isBanned: true });
+  // ══════════════════════════════════════
+  // 💬 فتح جلسة دعم مع العميل
+  // ══════════════════════════════════════
+  if (data.startsWith('admin_support_')) {
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
 
-  await ctx.answerCallbackQuery({ text: '✅ تم حظر العميل بنجاح!', show_alert: true });
-  await ctx.editMessageReplyMarkup(undefined);
-  return;
-}
+    const targetUserId = data.replace('admin_support_', '');
 
-if (data.startsWith('admin_restrict_')) {
-  const adminIds = (process.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
-  if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
-
-  const targetId = data.replace('admin_restrict_', '');
-  await User.findOneAndUpdate(
-    { telegramId: targetId },
-    { $set: { dailyQuota: 0, isRestricted: true } }
-  );
-
-  await ctx.answerCallbackQuery({ text: '✅ تم تقييد العميل وتصفير محاولاته بنجاح!', show_alert: true });
-  await ctx.editMessageReplyMarkup(undefined);
-  return;
-}
-if (data === 'show_welcome') {
-  await ctx.answerCallbackQuery();
-  const { startCommand } = await import('../commands/start');
-  await startCommand(ctx);
-  return;
-}
-
-if (data === 'report_to_dev') {
-  await ctx.answerCallbackQuery();
-  const telegramId = ctx.from?.id.toString();
-  await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: true } });
-  await ctx.reply(
-    '🌹 فضلاً أرسل لنا بلاغك (رسالة أو صورة)\nوسيتم الرد عليك في أسرع وقت ممكن 💬',
-    {
-      reply_markup: {
-        inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_report' }]],
-      },
-    }
-  );
-  return;
-}
-
-if (data === 'cancel_report') {
-  await ctx.answerCallbackQuery({ text: 'تم الإلغاء' });
-  const telegramId = ctx.from?.id.toString();
-  await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
-  return;
-}
-
-// ══════════════════════════════════════
-// 💬 فتح جلسة دعم مع العميل
-// ══════════════════════════════════════
-if (data.startsWith('admin_support_')) {
-  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-  if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
-
-  const targetUserId = data.replace('admin_support_', '');
-
-  // Activate support session in DB
-  await User.findOneAndUpdate(
-    { telegramId: targetUserId },
-    { $set: { supportSessionActive: true, supportSessionAdminId: ctx.from?.id.toString() } }
-  );
-
-  // Notify admin
-  await ctx.answerCallbackQuery({ text: '✅ تم فتح جلسة الدعم' });
-  await ctx.editMessageReplyMarkup(undefined);
-  await ctx.api.sendMessage(
-    ctx.from!.id,
-    `💬 <b>جلسة الدعم مفتوحة</b>\nأي رسالة ترسلها الآن ستصل للعميل مباشرة.\nعند الانتهاء أرسل: <b>اغلق المحادثة</b>`,
-    { parse_mode: 'HTML' }
-  );
-
-  // Notify user
-  await ctx.api.sendMessage(
-    targetUserId,
-    `🛠 <b>تنبيه من فريق الدعم</b>\n\nلقد وصلنا تنبيهاً بأنك تواجه مشكلة.\nأحد مطوري البوت معك الآن وسيتم حل مشكلتك في أسرع وقت 💙`,
-    { parse_mode: 'HTML' }
-  );
-  return;
-}
-
-// ══════════════════════════════════════
-// 🛠 ADMIN PANEL HANDLERS
-// ══════════════════════════════════════
-const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-const isAdminUser = adminIds.includes(ctx.from?.id.toString() || '');
-
-// ── Stats ──
-if (data === 'admin_stats' && isAdminUser) {
-  const totalUsers = await User.countDocuments();
-  const bannedUsers = await User.countDocuments({ isBanned: true });
-  const activeToday = await User.countDocuments({
-    lastRewardDate: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-  });
-  await ctx.answerCallbackQuery();
-  await ctx.reply(
-    `📊 <b>إحصائيات البوت</b>\n\n` +
-    `👥 إجمالي المستخدمين: <b>${totalUsers}</b>\n` +
-    `🚫 المحظورون: <b>${bannedUsers}</b>\n` +
-    `🟢 نشطون اليوم: <b>${activeToday}</b>`,
-    { parse_mode: 'HTML' }
-  );
-  return;
-}
-
-// ── Edit Welcome Message ──
-if (data === 'admin_edit_welcome' && isAdminUser) {
-  await ctx.answerCallbackQuery();
-  await User.findOneAndUpdate(
-    { telegramId: ctx.from!.id.toString() },
-    { $set: { awaitingReport: false, adminAwaitingInput: 'welcome_message' } }
-  );
-  await ctx.reply('✏️ أرسل الآن النص الجديد لرسالة الترحيب:');
-  return;
-}
-
-// ── Edit Daily Reward Amount ──
-if (data === 'admin_edit_daily' && isAdminUser) {
-  await ctx.answerCallbackQuery();
-  await User.findOneAndUpdate(
-    { telegramId: ctx.from!.id.toString() },
-    { $set: { adminAwaitingInput: 'daily_reward_amount' } }
-  );
-  await ctx.reply('🎁 أرسل العدد الجديد للمحاولات اليومية (مثال: 5):');
-  return;
-}
-
-// ── Edit Low Attempts Warning ──
-if (data === 'admin_edit_low' && isAdminUser) {
-  await ctx.answerCallbackQuery();
-  await User.findOneAndUpdate(
-    { telegramId: ctx.from!.id.toString() },
-    { $set: { adminAwaitingInput: 'low_attempts_warning' } }
-  );
-  await ctx.reply('⚠️ أرسل الآن نص رسالة انتهاء المحاولات:');
-  return;
-}
-
-// ── Broadcast ──
-if (data === 'admin_broadcast' && isAdminUser) {
-  await ctx.answerCallbackQuery();
-  await User.findOneAndUpdate(
-    { telegramId: ctx.from!.id.toString() },
-    { $set: { adminAwaitingInput: 'broadcast' } }
-  );
-  await ctx.reply('📢 أرسل الآن الرسالة التي تريد إرسالها لجميع المستخدمين:');
-  return;
-}
-
-// ── Search User ──
-if (data === 'admin_search_user' && isAdminUser) {
-  await ctx.answerCallbackQuery();
-  await User.findOneAndUpdate(
-    { telegramId: ctx.from!.id.toString() },
-    { $set: { adminAwaitingInput: 'search_user' } }
-  );
-  await ctx.reply('🔍 أرسل الـ ID أو username للمستخدم:');
-  return;
-}
-
-// ── Maintenance Mode ──
-if (data === 'admin_maintenance' && isAdminUser) {
-  await ctx.answerCallbackQuery();
-  const current = await BotSettings.findOne({ key: 'maintenance_mode' });
-  const currentVal = current?.value === 'true';
-  await BotSettings.findOneAndUpdate(
-    { key: 'maintenance_mode' },
-    { value: currentVal ? 'false' : 'true' },
-    { upsert: true }
-  );
-  await ctx.reply(
-    currentVal
-      ? '✅ تم إيقاف وضع الصيانة — البوت يعمل الآن'
-      : '🔧 تم تفعيل وضع الصيانة — البوت متوقف مؤقتاً'
-  );
-  return;
-}
-
-// ── Unban user ──
-if (data.startsWith('admin_unban_') && isAdminUser) {
-  const targetId = data.replace('admin_unban_', '');
-  await User.findOneAndUpdate({ telegramId: targetId }, { isBanned: false });
-  await ctx.answerCallbackQuery({ text: '✅ تم رفع الحظر' });
-  await ctx.editMessageReplyMarkup(undefined);
-  return;
-}
-
-// ── Add attempts to user ──
-if (data.startsWith('admin_addattempts_') && isAdminUser) {
-  const targetId = data.replace('admin_addattempts_', '');
-  await User.findOneAndUpdate({ telegramId: targetId }, { $inc: { dailyQuota: 5 } });
-  await ctx.answerCallbackQuery({ text: '✅ تمت إضافة 5 محاولات' });
-  return;
-}
-
-// ══════════════════════════════════════
-// 📢 تمويل أعضاء — بدء الحملة
-// ══════════════════════════════════════
-if (data === 'start_fund_campaign' && isAdminUser) {
-  await ctx.answerCallbackQuery();
-  startFundCampaignSetup(ctx.from!.id);
-  await ctx.reply(
-    '📢 <b>إنشاء حملة تمويل أعضاء</b>\n\nأرسل رابط القناة أو المجموعة المراد تمويلها:',
-    {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]],
-      },
-    }
-  );
-  return;
-}
-
-if (data === 'cancel_fund_campaign' && isAdminUser) {
-  await ctx.answerCallbackQuery();
-  clearFundCampaignState(ctx.from!.id);
-  await ctx.reply('❌ تم إلغاء إنشاء الحملة.');
-  return;
-}
-
-// ══════════════════════════════════════
-// 🎁 claim_reward_{channelId}
-// ══════════════════════════════════════
-if (data.startsWith('claim_reward_')) {
-  await ctx.answerCallbackQuery();
-  const channelId = data.replace('claim_reward_', '');
-  const userId = ctx.from!.id;
-
-  const result = await claimChannelReward(userId, channelId, ctx.api);
-
-  if (result === 'REWARDED') {
-    await ctx.reply(
-      '✅ تم التحقق! تم إضافة 5 محاولات لرصيدك 🎉\nاستمتع بتحسين صورك بجودة احترافية 🌟'
+    // Activate support session in DB
+    await User.findOneAndUpdate(
+      { telegramId: targetUserId },
+      { $set: { supportSessionActive: true, supportSessionAdminId: ctx.from?.id.toString() } }
     );
-  } else if (result === 'ALREADY_CLAIMED') {
-    await ctx.answerCallbackQuery({
-      text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅',
-      show_alert: true,
-    });
-  } else if (result === 'PROCESSING') {
-    await ctx.answerCallbackQuery({
-      text: 'جاري المعالجة، انتظر لحظة... ⏳',
-      show_alert: false,
-    });
-  } else if (result === 'NOT_MEMBER') {
-    await ctx.answerCallbackQuery({
-      text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط أدناه، ثم اضغط على زر التحقق للحصول على مكافأتك 🎁',
-      show_alert: true,
-    });
-  } else if (result === 'ADMIN_BLOCKED') {
-    await ctx.answerCallbackQuery({
-      text: '🚫 المشرف لا يمكنه المطالبة بمكافأة حملته.',
-      show_alert: true,
-    });
-  } else {
-    await ctx.answerCallbackQuery({
-      text: '❌ الحملة غير موجودة أو انتهت.',
-      show_alert: true,
-    });
+
+    // Notify admin
+    await ctx.answerCallbackQuery({ text: '✅ تم فتح جلسة الدعم' });
+    await ctx.editMessageReplyMarkup(undefined);
+    await ctx.api.sendMessage(
+      ctx.from!.id,
+      `💬 <b>جلسة الدعم مفتوحة</b>\nأي رسالة ترسلها الآن ستصل للعميل مباشرة.\nعند الانتهاء أرسل: <b>اغلق المحادثة</b>`,
+      { parse_mode: 'HTML' }
+    );
+
+    // Notify user
+    await ctx.api.sendMessage(
+      targetUserId,
+      `🛠 <b>تنبيه من فريق الدعم</b>\n\nلقد وصلنا تنبيهاً بأنك تواجه مشكلة.\nأحد مطوري البوت معك الآن وسيتم حل مشكلتك في أسرع وقت 💙`,
+      { parse_mode: 'HTML' }
+    );
+    return;
   }
-  return;
-}
+
+  // ══════════════════════════════════════
+  // 🛠 ADMIN PANEL HANDLERS
+  // ══════════════════════════════════════
+  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+  const isAdminUser = adminIds.includes(ctx.from?.id.toString() || '');
+
+  // ── Stats ──
+  if (data === 'admin_stats' && isAdminUser) {
+    const totalUsers = await User.countDocuments();
+    const bannedUsers = await User.countDocuments({ isBanned: true });
+    const activeToday = await User.countDocuments({
+      lastRewardDate: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+    });
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `📊 <b>إحصائيات البوت</b>\n\n` +
+      `👥 إجمالي المستخدمين: <b>${totalUsers}</b>\n` +
+      `🚫 المحظورون: <b>${bannedUsers}</b>\n` +
+      `🟢 نشطون اليوم: <b>${activeToday}</b>`,
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
+  // ── Edit Welcome Message ──
+  if (data === 'admin_edit_welcome' && isAdminUser) {
+    await ctx.answerCallbackQuery();
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingReport: false, adminAwaitingInput: 'welcome_message' } }
+    );
+    await ctx.reply('✏️ أرسل الآن النص الجديد لرسالة الترحيب:');
+    return;
+  }
+
+  // ── Edit Daily Reward Amount ──
+  if (data === 'admin_edit_daily' && isAdminUser) {
+    await ctx.answerCallbackQuery();
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'daily_reward_amount' } }
+    );
+    await ctx.reply('🎁 أرسل العدد الجديد للمحاولات اليومية (مثال: 5):');
+    return;
+  }
+
+  // ── Edit Low Attempts Warning ──
+  if (data === 'admin_edit_low' && isAdminUser) {
+    await ctx.answerCallbackQuery();
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'low_attempts_warning' } }
+    );
+    await ctx.reply('⚠️ أرسل الآن نص رسالة انتهاء المحاولات:');
+    return;
+  }
+
+  // ── Broadcast ──
+  if (data === 'admin_broadcast' && isAdminUser) {
+    await ctx.answerCallbackQuery();
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'broadcast' } }
+    );
+    await ctx.reply('📢 أرسل الآن الرسالة التي تريد إرسالها لجميع المستخدمين:');
+    return;
+  }
+
+  // ── Search User ──
+  if (data === 'admin_search_user' && isAdminUser) {
+    await ctx.answerCallbackQuery();
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'search_user' } }
+    );
+    await ctx.reply('🔍 أرسل الـ ID أو username للمستخدم:');
+    return;
+  }
+
+  // ── Maintenance Mode ──
+  if (data === 'admin_maintenance' && isAdminUser) {
+    await ctx.answerCallbackQuery();
+    const current = await BotSettings.findOne({ key: 'maintenance_mode' });
+    const currentVal = current?.value === 'true';
+    await BotSettings.findOneAndUpdate(
+      { key: 'maintenance_mode' },
+      { value: currentVal ? 'false' : 'true' },
+      { upsert: true }
+    );
+    await ctx.reply(
+      currentVal
+        ? '✅ تم إيقاف وضع الصيانة — البوت يعمل الآن'
+        : '🔧 تم تفعيل وضع الصيانة — البوت متوقف مؤقتاً'
+    );
+    return;
+  }
+
+  // ── Unban user ──
+  if (data.startsWith('admin_unban_') && isAdminUser) {
+    const targetId = data.replace('admin_unban_', '');
+    await User.findOneAndUpdate({ telegramId: targetId }, { isBanned: false });
+    await ctx.answerCallbackQuery({ text: '✅ تم رفع الحظر' });
+    await ctx.editMessageReplyMarkup(undefined);
+    return;
+  }
+
+  // ── Add attempts to user ──
+  if (data.startsWith('admin_addattempts_') && isAdminUser) {
+    const targetId = data.replace('admin_addattempts_', '');
+    await User.findOneAndUpdate({ telegramId: targetId }, { $inc: { dailyQuota: 5 } });
+    await ctx.answerCallbackQuery({ text: '✅ تمت إضافة 5 محاولات' });
+    return;
+  }
+
+  // ══════════════════════════════════════
+  // 📢 تمويل أعضاء — بدء الحملة
+  // ══════════════════════════════════════
+  if (data === 'start_fund_campaign' && isAdminUser) {
+    await ctx.answerCallbackQuery();
+    startFundCampaignSetup(ctx.from!.id);
+    await ctx.reply(
+      '📢 <b>إنشاء حملة تمويل أعضاء</b>\n\nأرسل رابط القناة أو المجموعة المراد تمويلها:',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]],
+        },
+      }
+    );
+    return;
+  }
+
+  if (data === 'cancel_fund_campaign' && isAdminUser) {
+    await ctx.answerCallbackQuery();
+    clearFundCampaignState(ctx.from!.id);
+    await ctx.reply('❌ تم إلغاء إنشاء الحملة.');
+    return;
+  }
+
+  // ══════════════════════════════════════
+  // 🎁 claim_reward_{channelId}
+  // ══════════════════════════════════════
+  if (data.startsWith('claim_reward_')) {
+    await ctx.answerCallbackQuery();
+    const channelId = data.replace('claim_reward_', '');
+    const userId = ctx.from!.id;
+
+    const result = await claimChannelReward(userId, channelId, ctx.api);
+
+    if (result === 'REWARDED') {
+      await ctx.reply(
+        '✅ تم التحقق! تم إضافة 5 محاولات لرصيدك 🎉\nاستمتع بتحسين صورك بجودة احترافية 🌟'
+      );
+    } else if (result === 'ALREADY_CLAIMED') {
+      await ctx.answerCallbackQuery({
+        text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅',
+        show_alert: true,
+      });
+    } else if (result === 'PROCESSING') {
+      await ctx.answerCallbackQuery({
+        text: 'جاري المعالجة، انتظر لحظة... ⏳',
+        show_alert: false,
+      });
+    } else if (result === 'NOT_MEMBER') {
+      await ctx.answerCallbackQuery({
+        text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط أدناه، ثم اضغط على زر التحقق للحصول على مكافأتك 🎁',
+        show_alert: true,
+      });
+    } else if (result === 'ADMIN_BLOCKED') {
+      await ctx.answerCallbackQuery({
+        text: '🚫 المشرف لا يمكنه المطالبة بمكافأة حملته.',
+        show_alert: true,
+      });
+    } else {
+      await ctx.answerCallbackQuery({
+        text: '❌ الحملة غير موجودة أو انتهت.',
+        show_alert: true,
+      });
+    }
+    return;
+  }
 
 }

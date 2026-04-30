@@ -7,25 +7,17 @@ const replicate = new Replicate({
 
 async function enhance2K(inputBuffer: Buffer): Promise<Buffer> {
   const processed = await sharp(inputBuffer)
-    .resize({
-      width: 2048,
-      height: 2048,
-      fit: 'inside',         // keep aspect ratio, never crop
-      withoutEnlargement: false, // allow upscaling for small images
-    })
-    .jpeg({
-      quality: 92,           // high quality, no visible degradation
-      chromaSubsampling: '4:4:4', // preserve color accuracy
-      force: true,
-    })
+    .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: false })
+    .sharpen({ sigma: 1.2, m1: 0.5, m2: 0.5 })
+    .jpeg({ quality: 94, chromaSubsampling: '4:4:4', force: true })
     .toBuffer();
 
-  // Cap output at 2MB — if larger, reduce quality slightly
-  const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+  const MAX_SIZE = 2 * 1024 * 1024;
   if (processed.length > MAX_SIZE) {
     return await sharp(inputBuffer)
       .resize({ width: 2048, height: 2048, fit: 'inside' })
-      .jpeg({ quality: 82, chromaSubsampling: '4:4:4', force: true })
+      .sharpen({ sigma: 1.0 })
+      .jpeg({ quality: 85, chromaSubsampling: '4:4:4', force: true })
       .toBuffer();
   }
 
@@ -130,9 +122,22 @@ export async function enhance(
     // STEP 6: Post-process
     let finalBuffer: Buffer;
     if (resolution === '4K') {
-      finalBuffer = await sharp(resultBuffer)
-        .jpeg({ quality: 92, chromaSubsampling: '4:4:4' })
+      const processed = await sharp(resultBuffer)
+        .resize({ width: 3840, height: 3840, fit: 'inside', withoutEnlargement: false })
+        .sharpen({ sigma: 1.5, m1: 0.8, m2: 0.8 })
+        .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true })
         .toBuffer();
+
+      const MAX_SIZE = 4 * 1024 * 1024;
+      if (processed.length > MAX_SIZE) {
+        finalBuffer = await sharp(resultBuffer)
+          .resize({ width: 3840, height: 3840, fit: 'inside' })
+          .sharpen({ sigma: 1.2 })
+          .jpeg({ quality: 88, chromaSubsampling: '4:4:4', force: true })
+          .toBuffer();
+      } else {
+        finalBuffer = processed;
+      }
     } else {
       finalBuffer = await sharp(resultBuffer)
         .jpeg({ quality: 80, chromaSubsampling: '4:2:0' })
