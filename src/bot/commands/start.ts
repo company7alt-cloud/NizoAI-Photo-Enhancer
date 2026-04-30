@@ -44,17 +44,20 @@ export async function startCommand(ctx: BotContext): Promise<void> {
         `📅 <b>وقت الانضمام:</b> ${timeStr}\n\n` +
         `👥 <b>إجمالي المستخدمين الآن: ${totalUsers}</b>`;
 
-      const ALERT_CHANNEL = process.env.ALERT_CHANNEL_ID;
+      const ALERT_CHANNEL = process.env.ALERT_CHANNEL_ID?.trim();
       const adminIdsRaw = process.env.ADMIN_IDS || '';
       const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
-      const targets: string[] = ALERT_CHANNEL ? [ALERT_CHANNEL] : adminIds;
+      
+      // Send to channel AND admin DMs
+      const targets: string[] = [];
+      if (ALERT_CHANNEL) targets.push(ALERT_CHANNEL);
+      if (!ALERT_CHANNEL) targets.push(...adminIds);
 
       for (const target of targets) {
-        if (!target) continue;
         try {
-          await ctx.api.sendMessage(target, notifMessage, { parse_mode: 'HTML' });
+          await ctx.api.sendMessage(String(target), notifMessage, { parse_mode: 'HTML' });
         } catch (e) {
-          console.error('[NewUser Notify] Error:', e);
+          console.error('[NewUser Notify] failed for target', target, e);
         }
       }
     }
