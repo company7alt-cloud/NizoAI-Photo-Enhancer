@@ -2,6 +2,7 @@
 import { InlineKeyboard } from 'grammy';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
+import { getSettings } from '../../services/settingsService';
 
 export async function imageHandler(ctx: BotContext): Promise<void> {
   const telegramId = ctx.from?.id.toString();
@@ -124,16 +125,25 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     const quotaDisplay = admin ? '∞ (مدير)' : String(user.dailyQuota);
     const text = `اختر الدقة المطلوبة 🎯\n\n⚡ محاولاتك المتبقية اليوم: ${quotaDisplay} من أصل 5`;
 
+    const settings = await getSettings();
+    const locks = settings.locks;
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isAdminUser = adminIds.includes(ctx.from!.id.toString());
+
     const keyboard = new InlineKeyboard()
       .row()
-      .text('🚀 دقة 2K — محاولة واحدة', 'enhance_2k')
+      .text(locks.btn_2k ? '🔒 دقة 2K — مقفلة' : '🚀 دقة 2K — محاولة واحدة', 'enhance_2k')
       .row()
-      .text('✨ دقة 4K — محاولتان (جودة فائقة)', 'enhance_4k')
+      .text(locks.btn_4k ? '🔒 دقة 4K — مقفلة' : '✨ دقة 4K — محاولتان (جودة فائقة)', 'enhance_4k')
       .row()
-      .text('🔒 دقة 8K — مقفلة', 'locked_8k')
+      .text(locks.btn_8k ? '🔒 دقة 8K — مقفلة' : '💎 دقة 8K', 'locked_8k')
       .row()
-      .text('✨ 4K - Ai', 'process_4k_ai')
-      .text('🔒 8K - Ai', 'locked_8k_ai');
+      .text(locks.btn_4kai ? '🔒 4K-Ai — مقفل' : '✨ 4K - Ai', 'process_4k_ai')
+      .text(locks.btn_8kai ? '🔒 8K-Ai — مقفل' : '🔒 8K - Ai', 'locked_8k_ai');
+
+    if (isAdminUser) {
+      keyboard.row().text('⚙️ لوحة تحكم الأدمن', 'admin_panel');
+    }
 
     await ctx.reply(text, {
       reply_markup: keyboard,

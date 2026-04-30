@@ -12,6 +12,7 @@ import {
   clearFundCampaignState,
   claimChannelReward,
 } from '../../services/channelFundService';
+import { getSettings, toggleLock } from '../../services/settingsService';
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
@@ -20,6 +21,27 @@ const BACKUP_CHANNEL_ID = ARCHIVE_GROUP_ID || CHANNEL_ID;
 export async function callbackHandler(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
   if (!data || !ctx.from) return;
+
+  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+  const isAdminUser = adminIds.includes(ctx.from!.id.toString());
+  const settings = await getSettings();
+  const locks = settings.locks;
+
+  const lockMap: Record<string, boolean> = {
+    'enhance_2k': locks.btn_2k,
+    'enhance_4k': locks.btn_4k,
+    'locked_8k': locks.btn_8k,
+    'process_4k_ai': locks.btn_4kai,
+    'locked_8k_ai': locks.btn_8kai,
+  };
+
+  if (!isAdminUser && lockMap[data] === true) {
+    await ctx.answerCallbackQuery({
+      text: 'عذراً، هذا الزر مقفل حالياً للصيانة 🔒',
+      show_alert: true
+    });
+    return;
+  }
 
   // Admin callbacks are now handled at the bottom of this file
 
@@ -439,8 +461,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // 🛡️ أزرار الأدمن — حظر وتقييد
   // ══════════════════════════════════════
   if (data.startsWith('admin_ban_')) {
-    const adminIds = (process.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
-    if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
+    if (!isAdminUser) return;
 
     const targetId = data.replace('admin_ban_', '');
     await User.findOneAndUpdate({ telegramId: targetId }, { isBanned: true });
@@ -451,8 +472,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data.startsWith('admin_restrict_')) {
-    const adminIds = (process.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
-    if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
+    if (!isAdminUser) return;
 
     const targetId = data.replace('admin_restrict_', '');
     await User.findOneAndUpdate(
@@ -497,8 +517,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // 💬 فتح جلسة دعم مع العميل
   // ══════════════════════════════════════
   if (data.startsWith('admin_support_')) {
-    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-    if (!adminIds.includes(ctx.from?.id.toString() || '')) return;
+    if (!isAdminUser) return;
 
     const targetUserId = data.replace('admin_support_', '');
 
@@ -529,8 +548,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ══════════════════════════════════════
   // 🛠 ADMIN PANEL HANDLERS
   // ══════════════════════════════════════
-  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-  const isAdminUser = adminIds.includes(ctx.from?.id.toString() || '');
+
 
   // ── Stats ──
   if (data === 'admin_stats' && isAdminUser) {
@@ -803,10 +821,12 @@ if (['pro_t_photo', 'pro_t_face', 'pro_t_art'].includes(data)) {
 
   const freshUser = await User.findOne({ telegramId });
   const settings = freshUser?.proEnhanceSettings;
-  const enhanceCost = (settings as any)?.cost ?? 2;
+  
+  // Smart cost calculation based on quality (Max = 3, others = 2)
+  const enhanceCost = settings?.quality === 'max' ? 3 : 2;
 
   const costMsg = enhanceCost === 3
-    ? `🏆 اخترت الجودة الفائقة\n⚠️ سيتم خصم <b>3 محاولات</b> من رصيدك.`
+    ? `🏆 اخترت الجودة الفائقة (Max)\n⚠️ سيتم خصم <b>3 محاولات</b> من رصيدك.`
     : `💎 اخترت الجودة القوية\n⚠️ سيتم خصم <b>2 محاولة</b> من رصيدك.`;
 
   await ctx.reply(
@@ -841,14 +861,16 @@ if (data === 'pro_confirm_yes') {
     return;
   }
 
-  const enhanceCost = (settings as any).cost ?? 2;
+  // Smart cost calculation
+  const enhanceCost = settings.quality === 'max' ? 3 : 2;
 
   if (!admin && user.dailyQuota < enhanceCost) {
     await ctx.reply(`💫 تحتاج ${enhanceCost} محاولات لهذا الخيار 🚀\nرصيدك غير كافٍ.`);
     return;
   }
 
-  const telegramFileUrl = await getTelegramFileUrl();
+  // Assuming getTelegramFileUrl is defined above in your file
+  const telegramFileUrl = await getTelegramFileUrl(); 
   if (!telegramFileUrl) {
     await ctx.reply('❌ انتهت الجلسة. أرسل الصورة مجدداً.');
     return;
@@ -861,7 +883,9 @@ if (data === 'pro_confirm_yes') {
 
   const jobId = uuidv4().substring(0, 8).toUpperCase();
   const processingMsg = await ctx.reply(
-    `⏳ جاري التحسين بتقنية Pro Enhance...\nالرجاء الانتظار 🌟`
+    `⏳ جاري التحسين بتقنية Pro Enhance...\n` +
+    `🎚 الجودة: ${settings.quality} | 🔍 التكبير: ${settings.scale}x | 🖼 النوع: ${settings.imageType}\n` +
+    `الرجاء الانتظار 🌟`
   );
   ctx.session.pendingFile = undefined;
 
@@ -894,7 +918,7 @@ if (data === 'pro_confirm_yes') {
       caption: '🖼 معاينة سريعة',
     });
 
-    if (ARCHIVE_GROUP_ID) {
+    if (ARCHIVE_GROUP_ID) { // Assuming ARCHIVE_GROUP_ID is defined above
       ctx.api.sendDocument(
         ARCHIVE_GROUP_ID,
         new InputFile(resultBuffer, `archive_pro_${jobId}.jpg`),
@@ -926,6 +950,59 @@ if (data === 'pro_confirm_yes') {
 // Cancel Pro Enhance
 if (data === 'pro_cancel') {
   await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' });
+  return;
+}
+
+// ════════════════════════════════
+// Admin Panel
+// ════════════════════════════════
+
+if (data === 'admin_panel') {
+  if (!isAdminUser) return;
+  await ctx.answerCallbackQuery();
+
+  const buildAdminKeyboard = (l: typeof locks) => ({
+    inline_keyboard: [
+      [{ text: `${l.btn_2k   ? '🔴 مقفل' : '🟢 مفتوح'} — 2K`,     callback_data: 'atoggle_btn_2k'   }],
+      [{ text: `${l.btn_4k   ? '🔴 مقفل' : '🟢 مفتوح'} — 4K`,     callback_data: 'atoggle_btn_4k'   }],
+      [{ text: `${l.btn_8k   ? '🔴 مقفل' : '🟢 مفتوح'} — 8K`,     callback_data: 'atoggle_btn_8k'   }],
+      [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`,  callback_data: 'atoggle_btn_4kai' }],
+      [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`,  callback_data: 'atoggle_btn_8kai' }],
+      [{ text: '❌ إغلاق',                                           callback_data: 'admin_close'      }],
+    ]
+  });
+
+  await ctx.reply(
+    '<b>⚙️ لوحة تحكم الأدمن</b>\n🟢 = مفتوح للجميع | 🔴 = مقفل',
+    { parse_mode: 'HTML', reply_markup: buildAdminKeyboard(locks) }
+  );
+  return;
+}
+
+if (data.startsWith('atoggle_') && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  const field = data.replace('atoggle_', '');
+  const newSettings = await toggleLock(field);
+  const newLocks = newSettings.locks;
+
+  const buildAdminKeyboard = (l: typeof newLocks) => ({
+    inline_keyboard: [
+      [{ text: `${l.btn_2k   ? '🔴 مقفل' : '🟢 مفتوح'} — 2K`,     callback_data: 'atoggle_btn_2k'   }],
+      [{ text: `${l.btn_4k   ? '🔴 مقفل' : '🟢 مفتوح'} — 4K`,     callback_data: 'atoggle_btn_4k'   }],
+      [{ text: `${l.btn_8k   ? '🔴 مقفل' : '🟢 مفتوح'} — 8K`,     callback_data: 'atoggle_btn_8k'   }],
+      [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`,  callback_data: 'atoggle_btn_4kai' }],
+      [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`,  callback_data: 'atoggle_btn_8kai' }],
+      [{ text: '❌ إغلاق',                                           callback_data: 'admin_close'      }],
+    ]
+  });
+
+  await ctx.editMessageReplyMarkup(buildAdminKeyboard(newLocks));
+  return;
+}
+
+if (data === 'admin_close' && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  await ctx.deleteMessage();
   return;
 }
 

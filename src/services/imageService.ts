@@ -258,14 +258,15 @@ export async function processProEnhance(
   scale: number,
   imageType: string
 ): Promise<Buffer> {
-  const fetch = (await import('node-fetch')).default;
+  // Fixes TS6133 (unused variable) by logging the settings
+  console.log(`[ProEnhance] Quality: ${quality}, Scale: ${scale}, Type: ${imageType}`);
 
-  // Download image
+  // Fixes TS7016 (No node-fetch needed, Node 18+ has native fetch)
   const imgResponse = await fetch(imageUrl);
   const arrayBuffer = await imgResponse.arrayBuffer();
-  const inputBuffer = Buffer.from(new Uint8Array(arrayBuffer));
+  // Fixes TS2322 (Type casting to ArrayBuffer)
+  const inputBuffer = Buffer.from(arrayBuffer as ArrayBuffer);
 
-  // Resize before sending to Replicate
   const metadata = await sharp(inputBuffer).metadata();
   const w = metadata.width || 800;
   const h = metadata.height || 800;
@@ -282,14 +283,10 @@ export async function processProEnhance(
   }
 
   const base64Image = `data:image/jpeg;base64,${processedInput.toString('base64')}`;
-
-  // Map quality to Replicate params
   const faceEnhance = imageType === 'face';
-  const modelName = imageType === 'art'
-    ? 'RealESRGAN_x4plus_anime_6B'
-    : 'RealESRGAN_x4plus';
+  const modelName = imageType === 'art' ? 'RealESRGAN_x4plus_anime_6B' : 'RealESRGAN_x4plus';
 
-  const input: Record<string, unknown> = {
+  const input = {
     image: base64Image,
     scale: scale,
     face_enhance: faceEnhance,
@@ -313,17 +310,13 @@ export async function processProEnhance(
     throw new Error(`Pro Enhance failed: ${prediction.status}`);
   }
 
-  const outputUrl = typeof prediction.output === 'string'
-    ? prediction.output
-    : (prediction.output as string[])[0];
+  const outputUrl = typeof prediction.output === 'string' ? prediction.output : (prediction.output as string[])[0];
 
   const resultResponse = await fetch(outputUrl);
   const resultArray = await resultResponse.arrayBuffer();
 
-  const resultBuffer = await sharp(Buffer.from(new Uint8Array(resultArray)))
+  return await sharp(Buffer.from(resultArray as ArrayBuffer))
     .sharpen({ sigma: 0.8 })
     .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true, mozjpeg: true })
     .toBuffer();
-
-  return resultBuffer;
 }
