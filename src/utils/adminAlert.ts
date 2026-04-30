@@ -1,6 +1,14 @@
 import { Context } from 'grammy';
 
 export async function sendAdminAlert(ctx: Context, errorDetails: string): Promise<void> {
+  // ── Silently ignore routine Telegram timeouts — not real bugs ──
+  if (
+    errorDetails.includes('query is too old') ||
+    errorDetails.includes('Bad Request: query is too old')
+  ) {
+    return;
+  }
+
   try {
     const adminIdsRaw = process.env.ADMIN_IDS;
     if (!adminIdsRaw) return;

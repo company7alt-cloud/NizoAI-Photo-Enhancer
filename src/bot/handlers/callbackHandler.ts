@@ -38,7 +38,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery({
       text: 'عذراً، هذا الزر مقفل حالياً للصيانة 🔒',
       show_alert: true
-    });
+    }).catch(() => {});
     return;
   }
 
@@ -62,7 +62,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     void ctx.answerCallbackQuery({
       text: '🚫 عذراً، تم تقييد وصولك للبوت. للاستفسار تواصل مع المطور 💙',
       show_alert: true,
-    });
+    }).catch(() => {});
     return;
   }
 
@@ -76,7 +76,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     void ctx.answerCallbackQuery({
       text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح ميزة الـ 8K ✨',
       show_alert: true,
-    });
+    }).catch(() => {});
     return;
   }
 
@@ -84,7 +84,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     void ctx.answerCallbackQuery({
       text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح الميزة ✨',
       show_alert: true,
-    });
+    }).catch(() => {});
     return;
   }
 
@@ -121,7 +121,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ── STEP 6: enhance_2k ───────────────────────────────────────────────────────
   if (data === 'enhance_2k') {
     const resolution = '2K';
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
 
     if (resolution !== '2K') {
       if (!admin && user.dailyQuota < 1) {
@@ -201,7 +201,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── STEP 7: enhance_4k ───────────────────────────────────────────────────────
   if (data === 'enhance_4k') {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
 
     if (!admin && user.dailyQuota < 2) {
       await ctx.reply(
@@ -280,7 +280,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     void ctx.answerCallbackQuery({
       text: '🔒 هذه الميزة مقفلة. تواصل مع المدير لتفعيلها',
       show_alert: true,
-    });
+    }).catch(() => {});
     return;
   }
 
@@ -304,12 +304,12 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       }
 
       if (!fileId) {
-        await ctx.answerCallbackQuery({ text: 'عذراً، لم أتمكن من العثور على الصورة ❌', show_alert: true });
+        await ctx.answerCallbackQuery({ text: 'عذراً، لم أتمكن من العثور على الصورة ❌', show_alert: true }).catch(() => {});
         return;
       }
 
       if (!admin && user.dailyQuota < 3) {
-        await ctx.answerCallbackQuery({ text: 'رصيدك غير كافٍ! تحتاج 3 محاولات لاستخدام 4K-Ai 💎', show_alert: true });
+        await ctx.answerCallbackQuery({ text: 'رصيدك غير كافٍ! تحتاج 3 محاولات لاستخدام 4K-Ai 💎', show_alert: true }).catch(() => {});
         return;
       }
 
@@ -327,7 +327,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
       // 2. Acknowledge button press
       try {
-        await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' });
+        await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' }).catch(() => {});
       } catch (e) { /* ignore if already deleted */ }
 
       // 3. Get image URL
@@ -397,7 +397,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── enhance_again ─────────────────────────────────────────────────────────────
   if (data === 'enhance_again') {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await ctx.editMessageText('📸 أرسل الصورة الجديدة التي تريد تحسينها.');
     return;
   }
@@ -431,7 +431,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           await ctx.answerCallbackQuery({
             text: `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
             show_alert: true
-          });
+          }).catch(() => {});
           return;
         }
       }
@@ -448,7 +448,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.answerCallbackQuery({
         text: '🎉 مبروك! تمت إضافة 5 محاولات مجانية لحسابك.\nعُد غداً لاستلام هديتك الجديدة 🎁',
         show_alert: true
-      });
+      }).catch(() => {});
     } catch (error) {
       console.error('[DailyReward] Error:', error);
       await sendAdminAlert(ctx as any, `Daily Reward Error: ${(error as Error).message}`);
@@ -465,7 +465,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const targetId = data.replace('admin_ban_', '');
     await User.findOneAndUpdate({ telegramId: targetId }, { isBanned: true });
 
-    await ctx.answerCallbackQuery({ text: '✅ تم حظر العميل بنجاح!', show_alert: true });
+    await ctx.answerCallbackQuery({ text: '✅ تم حظر العميل بنجاح!', show_alert: true }).catch(() => {});
     await ctx.editMessageReplyMarkup(undefined);
     return;
   }
@@ -479,19 +479,19 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       { $set: { dailyQuota: 0, isRestricted: true } }
     );
 
-    await ctx.answerCallbackQuery({ text: '✅ تم تقييد العميل وتصفير محاولاته بنجاح!', show_alert: true });
+    await ctx.answerCallbackQuery({ text: '✅ تم تقييد العميل وتصفير محاولاته بنجاح!', show_alert: true }).catch(() => {});
     await ctx.editMessageReplyMarkup(undefined);
     return;
   }
   if (data === 'show_welcome') {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     const { startCommand } = await import('../commands/start');
     await startCommand(ctx);
     return;
   }
 
   if (data === 'report_to_dev') {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     const telegramId = ctx.from?.id.toString();
     await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: true } });
     await ctx.reply(
@@ -506,7 +506,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'cancel_report') {
-    await ctx.answerCallbackQuery({ text: 'تم الإلغاء' });
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء' }).catch(() => {});
     const telegramId = ctx.from?.id.toString();
     await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
     return;
@@ -527,11 +527,13 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
 
     // Notify admin
-    await ctx.answerCallbackQuery({ text: '✅ تم فتح جلسة الدعم' });
+    await ctx.answerCallbackQuery({ text: '✅ تم فتح المحادثة المباشرة' }).catch(() => {});
     await ctx.editMessageReplyMarkup(undefined);
     await ctx.api.sendMessage(
       ctx.from!.id,
-      `💬 <b>جلسة الدعم مفتوحة</b>\nأي رسالة ترسلها الآن ستصل للعميل مباشرة.\nعند الانتهاء أرسل: <b>اغلق المحادثة</b>`,
+      `✅ <b>تم فتح المحادثة المباشرة مع العميل.</b>\n` +
+      `أي رسالة أو صورة أو ملف ترسله الآن سيصل إليه مباشرة.\n` +
+      `لإغلاق المحادثة، أرسل <code>/endchat</code> أو <b>اغلق المحادثة</b>`,
       { parse_mode: 'HTML' }
     );
 
@@ -556,7 +558,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const activeToday = await User.countDocuments({
       lastRewardDate: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
     });
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await ctx.reply(
       `📊 <b>إحصائيات البوت</b>\n\n` +
       `👥 إجمالي المستخدمين: <b>${totalUsers}</b>\n` +
@@ -569,7 +571,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── Edit Welcome Message ──
   if (data === 'admin_edit_welcome' && isAdminUser) {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { awaitingReport: false, adminAwaitingInput: 'welcome_message' } }
@@ -580,7 +582,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── Edit Daily Reward Amount ──
   if (data === 'admin_edit_daily' && isAdminUser) {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'daily_reward_amount' } }
@@ -591,7 +593,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── Edit Low Attempts Warning ──
   if (data === 'admin_edit_low' && isAdminUser) {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'low_attempts_warning' } }
@@ -602,7 +604,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── Broadcast ──
   if (data === 'admin_broadcast' && isAdminUser) {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'broadcast' } }
@@ -613,7 +615,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── Search User ──
   if (data === 'admin_search_user' && isAdminUser) {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'search_user' } }
@@ -624,7 +626,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── Maintenance Mode ──
   if (data === 'admin_maintenance' && isAdminUser) {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     const current = await BotSettings.findOne({ key: 'maintenance_mode' });
     const currentVal = current?.value === 'true';
     await BotSettings.findOneAndUpdate(
@@ -644,7 +646,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   if (data.startsWith('admin_unban_') && isAdminUser) {
     const targetId = data.replace('admin_unban_', '');
     await User.findOneAndUpdate({ telegramId: targetId }, { isBanned: false });
-    await ctx.answerCallbackQuery({ text: '✅ تم رفع الحظر' });
+    await ctx.answerCallbackQuery({ text: '✅ تم رفع الحظر' }).catch(() => {});
     await ctx.editMessageReplyMarkup(undefined);
     return;
   }
@@ -653,7 +655,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   if (data.startsWith('admin_addattempts_') && isAdminUser) {
     const targetId = data.replace('admin_addattempts_', '');
     await User.findOneAndUpdate({ telegramId: targetId }, { $inc: { dailyQuota: 5 } });
-    await ctx.answerCallbackQuery({ text: '✅ تمت إضافة 5 محاولات' });
+    await ctx.answerCallbackQuery({ text: '✅ تمت إضافة 5 محاولات' }).catch(() => {});
     return;
   }
 
@@ -661,7 +663,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // 📢 تمويل أعضاء — بدء الحملة
   // ══════════════════════════════════════
   if (data === 'start_fund_campaign' && isAdminUser) {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     startFundCampaignSetup(ctx.from!.id);
     await ctx.reply(
       '📢 <b>إنشاء حملة تمويل أعضاء</b>\n\nأرسل رابط القناة أو المجموعة المراد تمويلها:',
@@ -676,7 +678,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'cancel_fund_campaign' && isAdminUser) {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     clearFundCampaignState(ctx.from!.id);
     await ctx.reply('❌ تم إلغاء إنشاء الحملة.');
     return;
@@ -686,7 +688,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // 🎁 claim_reward_{channelId}
   // ══════════════════════════════════════
   if (data.startsWith('claim_reward_')) {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     const channelId = data.replace('claim_reward_', '');
     const userId = ctx.from!.id;
 
@@ -700,27 +702,27 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.answerCallbackQuery({
         text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅',
         show_alert: true,
-      });
+      }).catch(() => {});
     } else if (result === 'PROCESSING') {
       await ctx.answerCallbackQuery({
         text: 'جاري المعالجة، انتظر لحظة... ⏳',
         show_alert: false,
-      });
+      }).catch(() => {});
     } else if (result === 'NOT_MEMBER') {
       await ctx.answerCallbackQuery({
         text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط أدناه، ثم اضغط على زر التحقق للحصول على مكافأتك 🎁',
         show_alert: true,
-      });
+      }).catch(() => {});
     } else if (result === 'ADMIN_BLOCKED') {
       await ctx.answerCallbackQuery({
         text: '🚫 المشرف لا يمكنه المطالبة بمكافأة حملته.',
         show_alert: true,
-      });
+      }).catch(() => {});
     } else {
       await ctx.answerCallbackQuery({
         text: '❌ الحملة غير موجودة أو انتهت.',
         show_alert: true,
-      });
+      }).catch(() => {});
     }
     return;
   }
@@ -729,7 +731,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 // 🚀 Pro Enhance — Step 1: Quality
 // ══════════════════════════════════════
 if (data === 'pro_enhance_start') {
-  await ctx.answerCallbackQuery();
+  await ctx.answerCallbackQuery().catch(() => {});
   await ctx.reply(
     '🚀 <b>Pro Enhance</b>\n\n<b>الخطوة 1/3 — اختر جودة التحسين:</b>',
     {
@@ -749,7 +751,7 @@ if (data === 'pro_enhance_start') {
 
 // Step 1 answers → Step 2: Scale
 if (['pro_q_fast', 'pro_q_pro', 'pro_q_max'].includes(data)) {
-  await ctx.answerCallbackQuery();
+  await ctx.answerCallbackQuery().catch(() => {});
   const qualityMap: Record<string, string> = {
     pro_q_fast: 'fast',
     pro_q_pro: 'pro',
@@ -778,7 +780,7 @@ if (['pro_q_fast', 'pro_q_pro', 'pro_q_max'].includes(data)) {
 
 // Step 2 answers → Step 3: Image Type
 if (['pro_s_2', 'pro_s_4'].includes(data)) {
-  await ctx.answerCallbackQuery();
+  await ctx.answerCallbackQuery().catch(() => {});
   const scale = data === 'pro_s_2' ? '2' : '4';
   await User.findOneAndUpdate(
     { telegramId: ctx.from!.id.toString() },
@@ -803,7 +805,7 @@ if (['pro_s_2', 'pro_s_4'].includes(data)) {
 
 // Step 3 answers → Process
 if (['pro_t_photo', 'pro_t_face', 'pro_t_art'].includes(data)) {
-  await ctx.answerCallbackQuery();
+  await ctx.answerCallbackQuery().catch(() => {});
 
   const typeMap: Record<string, string> = {
     pro_t_photo: 'photo',
@@ -849,7 +851,7 @@ if (['pro_t_photo', 'pro_t_face', 'pro_t_art'].includes(data)) {
 // ✅ Pro Enhance — Confirmed, start processing
 // ══════════════════════════════════════
 if (data === 'pro_confirm_yes') {
-  await ctx.answerCallbackQuery();
+  await ctx.answerCallbackQuery().catch(() => {});
 
   const userId = ctx.from!.id;
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
@@ -896,7 +898,7 @@ if (data === 'pro_confirm_yes') {
 
 // Cancel Pro Enhance
 if (data === 'pro_cancel') {
-  await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' });
+  await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
   return;
 }
 
@@ -906,7 +908,7 @@ if (data === 'pro_cancel') {
 
 if (data === 'admin_panel') {
   if (!isAdminUser) return;
-  await ctx.answerCallbackQuery();
+  await ctx.answerCallbackQuery().catch(() => {});
 
   const buildAdminKeyboard = (l: typeof locks) => ({
     inline_keyboard: [
@@ -927,7 +929,7 @@ if (data === 'admin_panel') {
 }
 
 if (data.startsWith('atoggle_') && isAdminUser) {
-  await ctx.answerCallbackQuery();
+  await ctx.answerCallbackQuery().catch(() => {});
   const field = data.replace('atoggle_', '');
   const newSettings = await toggleLock(field);
   const newLocks = newSettings.locks;
@@ -952,7 +954,7 @@ if (data.startsWith('atoggle_') && isAdminUser) {
 }
 
 if (data === 'admin_close' && isAdminUser) {
-  await ctx.answerCallbackQuery();
+  await ctx.answerCallbackQuery().catch(() => {});
   await ctx.deleteMessage();
   return;
 }
