@@ -204,21 +204,26 @@ export async function process4KAi(imageUrl: string): Promise<Buffer> {
   const imageBuffer = Buffer.from(new Uint8Array(rawImage)) as Buffer;
 
   const metadata = await sharp(imageBuffer).metadata();
-  const totalPixels = (metadata.width || 1920) * (metadata.height || 1080);
-  const MAX_PIXELS = 1_000_000;
+  const width = metadata.width || 1000;
+  const height = metadata.height || 1000;
+  const pixels = width * height;
 
-  let processBuffer = imageBuffer;
-  if (totalPixels > MAX_PIXELS) {
-    const scale = Math.sqrt(MAX_PIXELS / totalPixels);
-    const newWidth = Math.floor((metadata.width || 1920) * scale);
-    const newHeight = Math.floor((metadata.height || 1080) * scale);
-    processBuffer = await sharp(imageBuffer)
-      .resize(newWidth, newHeight, { kernel: sharp.kernel.lanczos3 })
-      .jpeg({ quality: 90 })
+  // Cap at 1,200,000 pixels before sending to Replicate to avoid CUDA OOM
+  const MAX_PIXELS = 1_200_000;
+  let processedInput = imageBuffer;
+
+  if (pixels > MAX_PIXELS) {
+    const scale = Math.sqrt(MAX_PIXELS / pixels);
+    const newWidth = Math.round(width * scale);
+    const newHeight = Math.round(height * scale);
+    processedInput = await sharp(imageBuffer)
+      .resize({ width: newWidth, height: newHeight, fit: 'fill', kernel: sharp.kernel.lanczos3 })
+      .jpeg({ quality: 98, chromaSubsampling: '4:4:4', force: true })
       .toBuffer();
   }
 
-  const base64Image = `data:image/jpeg;base64,${processBuffer.toString('base64')}`;
+  // Convert to base64 for Replicate
+  const base64Image = `data:image/jpeg;base64,${processedInput.toString('base64')}`;
 
   const output = await replicate.run(
     "nightmareai/real-esrgan",
@@ -234,6 +239,91 @@ export async function process4KAi(imageUrl: string): Promise<Buffer> {
   const imageOutput = Array.isArray(output) ? output[0] : output;
   if (!imageOutput) throw new Error('No output from Replicate');
   const response = await fetch(imageOutput.toString());
-  const rawData = await response.arrayBuffer();
-  return Buffer.from(new Uint8Array(rawData)) as Buffer;
+  const arrayBuffer = await response.arrayBuffer();
+  const resultBuffer = await sharp(Buffer.from(new Uint8Array(arrayBuffer)))
+    .sharpen({ sigma: 0.6, m1: 0.2, m2: 0.2 })
+    .jpeg({
+      quality: 97,
+      chromaSubsampling: '4:4:4',
+      force: true,
+      mozjpeg: true,
+    })
+    .toBuffer();
+  return resultBuffer;
+}
+
+export async function processProEnhance(
+  imageUrl: string,
+  quality: string,
+  scale: number,
+  imageType: string
+): Promise<Buffer> {
+  const fetch = (await import('node-fetch')).default;
+
+  // Download image
+  const imgResponse = await fetch(imageUrl);
+  const arrayBuffer = await imgResponse.arrayBuffer();
+  const inputBuffer = Buffer.from(new Uint8Array(arrayBuffer));
+
+  // Resize before sending to Replicate
+  const metadata = await sharp(inputBuffer).metadata();
+  const w = metadata.width || 800;
+  const h = metadata.height || 800;
+  const pixels = w * h;
+  const MAX_PIXELS = 1_000_000;
+
+  let processedInput = inputBuffer;
+  if (pixels > MAX_PIXELS) {
+    const s = Math.sqrt(MAX_PIXELS / pixels);
+    processedInput = await sharp(inputBuffer)
+      .resize({ width: Math.round(w * s), height: Math.round(h * s), fit: 'fill', kernel: sharp.kernel.lanczos3 })
+      .jpeg({ quality: 98, force: true })
+      .toBuffer();
+  }
+
+  const base64Image = `data:image/jpeg;base64,${processedInput.toString('base64')}`;
+
+  // Map quality to Replicate params
+  const faceEnhance = imageType === 'face';
+  const modelName = imageType === 'art'
+    ? 'RealESRGAN_x4plus_anime_6B'
+    : 'RealESRGAN_x4plus';
+
+  const input: Record<string, unknown> = {
+    image: base64Image,
+    scale: scale,
+    face_enhance: faceEnhance,
+    model: modelName,
+  };
+
+  const Replicate = (await import('replicate')).default;
+  const replicate = new Replicate({ auth: process.env.REPLICATE_API_KEY });
+
+  let prediction = await replicate.predictions.create({
+    version: 'nightmareai/real-esrgan',
+    input,
+  });
+
+  while (!['succeeded', 'failed', 'canceled'].includes(prediction.status)) {
+    await new Promise((r) => setTimeout(r, 2000));
+    prediction = await replicate.predictions.get(prediction.id);
+  }
+
+  if (prediction.status !== 'succeeded' || !prediction.output) {
+    throw new Error(`Pro Enhance failed: ${prediction.status}`);
+  }
+
+  const outputUrl = typeof prediction.output === 'string'
+    ? prediction.output
+    : (prediction.output as string[])[0];
+
+  const resultResponse = await fetch(outputUrl);
+  const resultArray = await resultResponse.arrayBuffer();
+
+  const resultBuffer = await sharp(Buffer.from(new Uint8Array(resultArray)))
+    .sharpen({ sigma: 0.8 })
+    .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true, mozjpeg: true })
+    .toBuffer();
+
+  return resultBuffer;
 }

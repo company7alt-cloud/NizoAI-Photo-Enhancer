@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin } from '../../utils/validators';
 import * as imageService from '../../services/imageService';
+import { processProEnhance } from '../../services/imageService';
 import { sendAdminAlert } from '../../utils/adminAlert';
 import { BotSettings } from '../../database/models/BotSettings';
 import {
@@ -706,5 +707,226 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     }
     return;
   }
+
+// ══════════════════════════════════════
+// 🚀 Pro Enhance — Step 1: Quality
+// ══════════════════════════════════════
+if (data === 'pro_enhance_start') {
+  await ctx.answerCallbackQuery();
+  await ctx.reply(
+    '🚀 <b>Pro Enhance</b>\n\n<b>الخطوة 1/3 — اختر جودة التحسين:</b>',
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '⚡ سريع (جودة عالية)', callback_data: 'pro_q_fast' }],
+          [{ text: '💎 احترافي (جودة فائقة)', callback_data: 'pro_q_pro' }],
+          [{ text: '🏆 ماكس (أعلى جودة)', callback_data: 'pro_q_max' }],
+          [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
+        ],
+      },
+    }
+  );
+  return;
+}
+
+// Step 1 answers → Step 2: Scale
+if (['pro_q_fast', 'pro_q_pro', 'pro_q_max'].includes(data)) {
+  await ctx.answerCallbackQuery();
+  const qualityMap: Record<string, string> = {
+    pro_q_fast: 'fast',
+    pro_q_pro: 'pro',
+    pro_q_max: 'max',
+  };
+  const quality = qualityMap[data];
+  await User.findOneAndUpdate(
+    { telegramId: ctx.from!.id.toString() },
+    { $set: { 'proEnhanceSettings.quality': quality, 'proEnhanceSettings.scale': null, 'proEnhanceSettings.imageType': null } }
+  );
+  await ctx.reply(
+    '🚀 <b>Pro Enhance</b>\n\n<b>الخطوة 2/3 — اختر مقياس التكبير:</b>',
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '2x — تكبير مضاعف', callback_data: 'pro_s_2' }],
+          [{ text: '4x — تكبير رباعي (موصى به)', callback_data: 'pro_s_4' }],
+          [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
+        ],
+      },
+    }
+  );
+  return;
+}
+
+// Step 2 answers → Step 3: Image Type
+if (['pro_s_2', 'pro_s_4'].includes(data)) {
+  await ctx.answerCallbackQuery();
+  const scale = data === 'pro_s_2' ? '2' : '4';
+  await User.findOneAndUpdate(
+    { telegramId: ctx.from!.id.toString() },
+    { $set: { 'proEnhanceSettings.scale': scale } }
+  );
+  await ctx.reply(
+    '🚀 <b>Pro Enhance</b>\n\n<b>الخطوة 3/3 — نوع الصورة:</b>',
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🖼 صورة عادية', callback_data: 'pro_t_photo' }],
+          [{ text: '👤 وجه / بورتريه', callback_data: 'pro_t_face' }],
+          [{ text: '🎨 رسم / أنمي / فن', callback_data: 'pro_t_art' }],
+          [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
+        ],
+      },
+    }
+  );
+  return;
+}
+
+// Step 3 answers → Process
+if (['pro_t_photo', 'pro_t_face', 'pro_t_art'].includes(data)) {
+  await ctx.answerCallbackQuery();
+
+  const typeMap: Record<string, string> = {
+    pro_t_photo: 'photo',
+    pro_t_face: 'face',
+    pro_t_art: 'art',
+  };
+  const imageType = typeMap[data];
+  const telegramId = ctx.from!.id.toString();
+
+  await User.findOneAndUpdate(
+    { telegramId },
+    { $set: { 'proEnhanceSettings.imageType': imageType } }
+  );
+
+  const freshUser = await User.findOne({ telegramId });
+  const settings = freshUser?.proEnhanceSettings;
+  const enhanceCost = (settings as any)?.cost ?? 2;
+
+  const costMsg = enhanceCost === 3
+    ? `🏆 اخترت الجودة الفائقة\n⚠️ سيتم خصم <b>3 محاولات</b> من رصيدك.`
+    : `💎 اخترت الجودة القوية\n⚠️ سيتم خصم <b>2 محاولة</b> من رصيدك.`;
+
+  await ctx.reply(
+    `🚀 <b>Pro Enhance — تأكيد</b>\n\n${costMsg}\n\nهل أنت موافق؟`,
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✅ نعم، ابدأ التحسين', callback_data: 'pro_confirm_yes' },
+            { text: '❌ لا، إلغاء', callback_data: 'pro_cancel' },
+          ],
+        ],
+      },
+    }
+  );
+  return;
+}
+
+// ══════════════════════════════════════
+// ✅ Pro Enhance — Confirmed, start processing
+// ══════════════════════════════════════
+if (data === 'pro_confirm_yes') {
+  await ctx.answerCallbackQuery();
+
+  const telegramId = ctx.from!.id.toString();
+  const freshUser = await User.findOne({ telegramId });
+  const settings = freshUser?.proEnhanceSettings;
+
+  if (!settings?.quality || !settings?.scale || !settings?.imageType) {
+    await ctx.reply('❌ حدث خطأ في الإعدادات. ابدأ من جديد.');
+    return;
+  }
+
+  const enhanceCost = (settings as any).cost ?? 2;
+
+  if (!admin && user.dailyQuota < enhanceCost) {
+    await ctx.reply(`💫 تحتاج ${enhanceCost} محاولات لهذا الخيار 🚀\nرصيدك غير كافٍ.`);
+    return;
+  }
+
+  const telegramFileUrl = await getTelegramFileUrl();
+  if (!telegramFileUrl) {
+    await ctx.reply('❌ انتهت الجلسة. أرسل الصورة مجدداً.');
+    return;
+  }
+
+  if (!admin) {
+    user.dailyQuota -= enhanceCost;
+    await user.save();
+  }
+
+  const jobId = uuidv4().substring(0, 8).toUpperCase();
+  const processingMsg = await ctx.reply(
+    `⏳ جاري التحسين بتقنية Pro Enhance...\nالرجاء الانتظار 🌟`
+  );
+  ctx.session.pendingFile = undefined;
+
+  try {
+    const resultBuffer = await processProEnhance(
+      telegramFileUrl,
+      settings.quality,
+      parseInt(settings.scale),
+      settings.imageType
+    );
+
+    user.totalEnhancements += 1;
+    await user.save();
+
+    const outputFileName = `NizoAI_Pro_${jobId}.jpg`;
+
+    try {
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id);
+    } catch {}
+
+    await ctx.replyWithDocument(new InputFile(resultBuffer, outputFileName), {
+      caption:
+        `🚀 <b>Pro Enhance مكتمل!</b>\n` +
+        `🏷 Job ID: ${jobId}\n` +
+        `⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
+      parse_mode: 'HTML',
+    });
+
+    await ctx.replyWithPhoto(new InputFile(resultBuffer, outputFileName), {
+      caption: '🖼 معاينة سريعة',
+    });
+
+    if (ARCHIVE_GROUP_ID) {
+      ctx.api.sendDocument(
+        ARCHIVE_GROUP_ID,
+        new InputFile(resultBuffer, `archive_pro_${jobId}.jpg`),
+        {
+          caption:
+            `📦 نسخة أرشيفية\n━━━━━━━━━━━━━━\n` +
+            `🆔 User ID: ${ctx.from!.id}\n` +
+            `👤 Username: @${ctx.from!.username ?? 'N/A'}\n` +
+            `🏷 Job ID: ${jobId}\n` +
+            `💎 Resolution: Pro Enhance (${settings.scale}x)\n` +
+            `📅 Time: ${new Date().toLocaleString('ar-SA')}\n` +
+            `━━━━━━━━━━━━━━`,
+        }
+      ).catch((e: unknown) => console.error('[Archive] Pro failed:', e));
+    }
+
+  } catch (error) {
+    if (!admin) {
+      user.dailyQuota += enhanceCost;
+      await user.save();
+    }
+    try { await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id); } catch {}
+    await sendAdminAlert(ctx as any, `Pro Enhance Error: ${(error as Error).message}`);
+    await ctx.reply('😔 عذراً حدث خطأ. تم إعادة محاولاتك تلقائياً ✨');
+  }
+  return;
+}
+
+// Cancel Pro Enhance
+if (data === 'pro_cancel') {
+  await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' });
+  return;
+}
 
 }

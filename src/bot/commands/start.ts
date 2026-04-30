@@ -158,6 +158,9 @@ export async function startCommand(ctx: BotContext): Promise<void> {
 
     const keyboard = new InlineKeyboard();
     if (devLink) keyboard.url('المطور', devLink);
+    
+    keyboard.row().text('🚀 Pro Enhance', 'pro_enhance_start');
+
     keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
     if (chanLink) keyboard.row().url('القناة', chanLink);
 
