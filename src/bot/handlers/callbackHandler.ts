@@ -999,7 +999,7 @@ if (data.startsWith('atoggle_') && isAdminUser) {
   await ctx.api.editMessageReplyMarkup(
     ctx.chat!.id,
     ctx.msgId!,
-    { inline_keyboard: buildAdminKeyboard(newLocks).inline_keyboard }
+    { reply_markup: buildAdminKeyboard(newLocks) }
   );
   return;
 }
