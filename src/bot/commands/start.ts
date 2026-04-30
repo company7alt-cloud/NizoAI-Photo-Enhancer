@@ -44,18 +44,23 @@ export async function startCommand(ctx: BotContext): Promise<void> {
         `📅 <b>وقت الانضمام:</b> ${timeStr}\n\n` +
         `👥 <b>إجمالي المستخدمين الآن: ${totalUsers}</b>`;
 
-      const ALERT_CHANNEL = process.env.ALERT_CHANNEL_ID?.trim();
+      const alertChannelRaw = process.env.ALERT_CHANNEL_ID?.trim();
       const adminIdsRaw = process.env.ADMIN_IDS || '';
       const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
       
-      // Send to channel AND admin DMs
-      const targets: string[] = [];
-      if (ALERT_CHANNEL) targets.push(ALERT_CHANNEL);
-      if (!ALERT_CHANNEL) targets.push(...adminIds);
+      const targets: (string | number)[] = [];
+      
+      if (alertChannelRaw) {
+        // Correctly parse negative channel IDs for Telegram API
+        const channelIdNum = Number(alertChannelRaw);
+        targets.push(!isNaN(channelIdNum) ? channelIdNum : alertChannelRaw);
+      } else {
+        targets.push(...adminIds);
+      }
 
       for (const target of targets) {
         try {
-          await ctx.api.sendMessage(String(target), notifMessage, { parse_mode: 'HTML' });
+          await ctx.api.sendMessage(target, notifMessage, { parse_mode: 'HTML' });
         } catch (e) {
           console.error('[NewUser Notify] failed for target', target, e);
         }
@@ -107,7 +112,10 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     // ── 5. Admin notification for new joins ────────────────────────────────────
     if (isNew) {
       const notifyOnJoin = (await Settings.get('notify_on_join')) as boolean;
-      if (notifyOnJoin === true) {
+      const alertChannelRaw = process.env.ALERT_CHANNEL_ID?.trim();
+      
+      // Only send this legacy admin DM if notifyOnJoin is true AND there is NO alert channel set
+      if (notifyOnJoin === true && !alertChannelRaw) {
         const adminIds = (process.env.ADMIN_IDS ?? '')
           .split(',')
           .map((id) => parseInt(id.trim(), 10))

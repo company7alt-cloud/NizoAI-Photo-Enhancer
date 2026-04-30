@@ -26,8 +26,15 @@ export async function sendAdminAlert(ctx: Context, errorDetails: string): Promis
       `🆔 <b>الـ ID:</b> <code>${userId}</code>\n\n` +
       `⚠️ <b>تفاصيل الخلل:</b>\n<code>${errorDetails.slice(0, 800)}</code>`;
 
-    const ALERT_CHANNEL = process.env.ALERT_CHANNEL_ID || '';
-    const targets = ALERT_CHANNEL ? [ALERT_CHANNEL] : adminIds;
+    const alertChannelRaw = process.env.ALERT_CHANNEL_ID?.trim() || '';
+    const targets: (string | number)[] = [];
+
+    if (alertChannelRaw) {
+      const channelIdNum = Number(alertChannelRaw);
+      targets.push(!isNaN(channelIdNum) ? channelIdNum : alertChannelRaw);
+    } else {
+      targets.push(...adminIds);
+    }
 
     for (const target of targets) {
       await ctx.api.sendMessage(target, message, {
