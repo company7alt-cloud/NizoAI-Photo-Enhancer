@@ -8,7 +8,7 @@ if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is missing');
 
 
 import http from 'http';
-import { Bot, session, NextFunction } from 'grammy';
+import { Bot, session, NextFunction, InlineKeyboard } from 'grammy';
 
 import { BotContext, isAdmin } from './utils/validators';
 import { connectDatabase, closeDatabaseConnection } from './database/connection';
@@ -150,8 +150,11 @@ bot.on('message:text', async (ctx, next) => {
         `⏳ جاري الإذاعة لجميع المستخدمين...`
       );
       const { sent, failed } = await broadcastFundCampaign(ctx.api, campaign);
+      const deleteBroadcastKeyboard = new InlineKeyboard()
+        .text('🗑 حذف الإذاعة من عند الجميع', `delete_broadcast_${campaign._id}`);
       await ctx.reply(
-        `📢 اكتملت إذاعة الحملة!\n✅ نجح: ${sent}\n❌ فشل: ${failed}`
+        `📢 اكتملت إذاعة الحملة!\n✅ نجح: ${sent}\n❌ فشل: ${failed}`,
+        { reply_markup: deleteBroadcastKeyboard }
       );
     } else if (result.status === 'invalid_target') {
       await ctx.reply('❌ عدد غير صحيح. أرسل رقماً صحيحاً أكبر من صفر.');

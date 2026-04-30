@@ -237,11 +237,18 @@ export async function claimChannelReward(
     // After successful claim, check if campaign is now full
     if (updatedCampaign.claimCounter >= updatedCampaign.targetMembers) {
       const remaining = updatedCampaign.broadcastMessages.filter(m => !m.claimed);
+      let autoDeleted = 0;
+      let autoFailed = 0;
       for (const { userId: uid, messageId } of remaining) {
         try {
           await api.deleteMessage(uid, messageId);
+          autoDeleted++;
         } catch (e) {
-          // Ignore: user blocked bot or deleted the chat
+          autoFailed++;
+        }
+        // Rate limit: 100 messages per 10 seconds
+        if ((autoDeleted + autoFailed) % 100 === 0) {
+          await new Promise((r) => setTimeout(r, 10000));
         }
       }
       await FundCampaign.findByIdAndUpdate(campaignId, { isActive: false });

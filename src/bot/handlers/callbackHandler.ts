@@ -11,6 +11,7 @@ import {
   clearFundCampaignState,
   claimChannelReward,
 } from '../../services/channelFundService';
+import { FundCampaign } from '../../database/models/FundCampaign';
 import { getSettings, toggleLock } from '../../services/settingsService';
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
@@ -664,42 +665,62 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // 🎁 claim_reward_{channelId}
   // ══════════════════════════════════════
   if (data.startsWith('claim_reward_')) {
-    await ctx.answerCallbackQuery().catch(() => {});
     const channelId = data.replace('claim_reward_', '');
     const userId = ctx.from!.id;
 
     const result = await claimChannelReward(userId, channelId, ctx.api);
 
     if (result === 'REWARDED') {
-      await ctx.reply(
-        '✅ تم التحقق! تم إضافة 5 محاولات لرصيدك 🎉\nاستمتع بتحسين صورك بجودة احترافية 🌟'
-      );
+      await ctx.answerCallbackQuery().catch(() => {});
+      await ctx.reply('✅ تم التحقق! تم إضافة 5 محاولات لرصيدك 🎉\nاستمتع بتحسين صورك بجودة احترافية 🌟');
     } else if (result === 'ALREADY_CLAIMED') {
-      await ctx.answerCallbackQuery({
-        text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅',
-        show_alert: true,
-      }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅', show_alert: true }).catch(() => {});
     } else if (result === 'PROCESSING') {
-      await ctx.answerCallbackQuery({
-        text: 'جاري المعالجة، انتظر لحظة... ⏳',
-        show_alert: false,
-      }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: 'جاري المعالجة، انتظر لحظة... ⏳', show_alert: false }).catch(() => {});
     } else if (result === 'NOT_MEMBER') {
       await ctx.answerCallbackQuery({
-        text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط أدناه، ثم اضغط على زر التحقق للحصول على مكافأتك 🎁',
-        show_alert: true,
+        text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط، ثم اضغط على الزر للحصول على مكافأتك 🎁',
+        show_alert: true
       }).catch(() => {});
     } else if (result === 'ADMIN_BLOCKED') {
-      await ctx.answerCallbackQuery({
-        text: '🚫 المشرف لا يمكنه المطالبة بمكافأة حملته.',
-        show_alert: true,
-      }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: '🚫 المشرف لا يمكنه المطالبة بمكافأة حملته.', show_alert: true }).catch(() => {});
     } else {
-      await ctx.answerCallbackQuery({
-        text: '❌ الحملة غير موجودة أو انتهت.',
-        show_alert: true,
-      }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: '❌ الحملة غير موجودة أو انتهت.', show_alert: true }).catch(() => {});
     }
+    return;
+  }
+
+  // ══════════════════════════════════════
+  // 🗑 delete_broadcast_{campaignId}
+  // ══════════════════════════════════════
+  if (data.startsWith('delete_broadcast_') && isAdminUser) {
+    await ctx.answerCallbackQuery({ text: 'جاري حذف الإذاعة... 🗑' }).catch(() => {});
+
+    const campaignId = data.replace('delete_broadcast_', '');
+    const campaign = await FundCampaign.findById(campaignId);
+
+    if (!campaign) {
+      await ctx.reply('❌ لم يتم العثور على الحملة.');
+      return;
+    }
+
+    let deleted = 0;
+    let deleteFailed = 0;
+
+    for (const { userId: uid, messageId } of campaign.broadcastMessages) {
+      try {
+        await ctx.api.deleteMessage(uid, messageId);
+        deleted++;
+      } catch (e) {
+        deleteFailed++;
+      }
+    }
+
+    await FundCampaign.findByIdAndUpdate(campaignId, { isActive: false });
+
+    await ctx.reply(`🗑 تم حذف الإذاعة:\n✅ حُذف: ${deleted}\n❌ فشل: ${deleteFailed}`);
+
+    try { await ctx.deleteMessage(); } catch (e) {}
     return;
   }
 
