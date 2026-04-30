@@ -37,30 +37,13 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     const ALERT_CHANNEL = process.env.ALERT_CHANNEL_ID || '';
     const targets = ALERT_CHANNEL ? [ALERT_CHANNEL] : adminIds;
 
-    // Only send notification if this is the FIRST visit today
-    const lastSeen = existingUser?.lastSeenAt ? new Date(existingUser.lastSeenAt) : null;
-    const isFirstVisitToday = !lastSeen || lastSeen.toDateString() !== now.toDateString();
-
-    if (isFirstVisitToday) {
-      let notifMessage = '';
-
-      if (!existingUser) {
-        // 🆕 Brand new user
-        notifMessage =
-          `🆕 <b>مستخدم جديد انضم!</b>\n\n` +
-          `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
-          `🔗 <b>المعرف:</b> ${displayUsername}\n` +
-          `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
-          `📅 <b>وقت الانضمام:</b> ${timeStr}`;
-      } else {
-        // Returning user — first visit today
-        notifMessage =
-          `👁 <b>مستخدم فتح البوت</b>\n\n` +
-          `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
-          `🔗 <b>المعرف:</b> ${displayUsername}\n` +
-          `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
-          `📅 <b>الوقت:</b> ${timeStr}`;
-      }
+    if (!existingUser) {
+      const notifMessage =
+        `🆕 <b>مستخدم جديد انضم!</b>\n\n` +
+        `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
+        `🔗 <b>المعرف:</b> ${displayUsername}\n` +
+        `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
+        `📅 <b>وقت الانضمام:</b> ${timeStr}`;
 
       for (const target of targets) {
         if (!target) continue;
