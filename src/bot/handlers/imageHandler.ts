@@ -38,16 +38,119 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  // PRO ENHANCE INTERCEPTOR — must run before normal processing
   const userId = ctx.from?.id;
   if (!userId) return;
 
-  try {
-    // 1. Fetch fresh user from DB
-    const user = await User.findOne({ telegramId: userId });
-    if (!user) {
-      await ctx.reply('⚠️ يرجى إرسال /start أولاً لتسجيل حسابك.');
+  let user = await User.findOne({ telegramId: userId.toString() });
+  if (!user) {
+    await ctx.reply('⚠️ يرجى إرسال /start أولاً لتسجيل حسابك.');
+    return;
+  }
+
+  if (user.proEnhanceSettings?.isAwaitingImage) {
+    let fileId: string | undefined;
+    if (ctx.message?.photo && ctx.message.photo.length > 0) {
+      fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+    } else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
+      fileId = ctx.message.document.file_id;
+    }
+
+    if (!fileId) {
+      await ctx.reply('⚠️ يرجى إرسال صورة صالحة (صورة أو ملف صورة) للمتابعة في Pro Enhance.');
       return;
     }
+
+    // ATOMIC UPDATE: Instantly reset flag to prevent double processing AND deduct quota
+    const settings = user.proEnhanceSettings;
+    const enhanceCost = settings.quality === 'max' ? 3 : 2;
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isAdmin = adminIds.includes(userId.toString());
+
+    if (!isAdmin && user.dailyQuota < enhanceCost) {
+      await User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { 'proEnhanceSettings.isAwaitingImage': false } });
+      await ctx.reply('⚠️ رصيدك غير كافٍ. تم إلغاء طلب Pro Enhance.');
+      return;
+    }
+
+    await User.findOneAndUpdate(
+      { telegramId: userId.toString() },
+      { 
+        $set: { 'proEnhanceSettings.isAwaitingImage': false },
+        $inc: { dailyQuota: isAdmin ? 0 : -enhanceCost }
+      }
+    );
+
+    const processingMsg = await ctx.reply(
+      `⏳ جاري استلام صورتك...\n` +
+      `🚀 بدأ التحسين بتقنية Pro Enhance\n` +
+      `💎 الجودة: ${settings.quality} | التكبير: ${settings.scale}x | النوع: ${settings.imageType}\n` +
+      `🌟 الرجاء الانتظار...`
+    );
+
+    try {
+      const file = await ctx.api.getFile(fileId);
+      const telegramFileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+
+      // CRITICAL FIX: Use processProEnhance, NOT enhance!
+      const { processProEnhance } = await import('../../services/imageService');
+      const resultBuffer = await processProEnhance(
+        telegramFileUrl,
+        settings.quality!,
+        parseInt(settings.scale!),
+        settings.imageType!
+      );
+
+      await User.findOneAndUpdate({ telegramId: userId.toString() }, { $inc: { totalEnhancements: 1 } });
+
+      const { v4: uuidv4 } = await import('uuid');
+      const jobId = uuidv4().substring(0, 8).toUpperCase();
+
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+
+      // Refresh user to get updated quota
+      const freshUser = await User.findOne({ telegramId: userId.toString() });
+
+      const { InputFile } = await import('grammy');
+      await ctx.replyWithDocument(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
+        caption: `💎 صورتك جاهزة بتقنية Pro Enhance! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${freshUser?.dailyQuota}`
+      });
+      await ctx.replyWithPhoto(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
+        caption: '🖼 معاينة سريعة'
+      });
+
+      const archiveId = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+      if (archiveId) {
+        await ctx.api.sendDocument(archiveId, new InputFile(resultBuffer, `archive_pro_${jobId}.jpg`), {
+          caption: `📦 نسخة Pro أرشيفية\n━━━━━━━━━━━━━━\n🆔 User ID: ${userId}\n👤 Username: @${ctx.from!.username || 'N/A'}\n🏷 Job ID: ${jobId}\n💎 الجودة: ${settings.quality} | التكبير: ${settings.scale}x | النوع: ${settings.imageType}\n📅 Time: ${new Date().toLocaleString('ar-SA')}\n━━━━━━━━━━━━━━`
+        }).catch(e => console.error('[Archive Pro] Failed:', e));
+      }
+
+    } catch (error: any) {
+      console.error('[Pro Enhance] Error:', error?.message || error);
+
+      // Refund quota on failure
+      if (!isAdmin) {
+        await User.findOneAndUpdate({ telegramId: userId.toString() }, { $inc: { dailyQuota: enhanceCost } });
+      }
+
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      
+      const { sendAdminAlert } = await import('../../utils/adminAlert');
+      await sendAdminAlert(ctx as any, `Pro Enhance Error: ${(error as Error).message}`);
+
+      await ctx.reply(
+        `😔 عذراً، فشلت عملية Pro Enhance 🌸\n\n` +
+        `✅ تم إعادة ${enhanceCost} محاولات إلى رصيدك تلقائياً\n\n` +
+        `🔄 يمكنك إعادة المحاولة بصورة أخرى\n` +
+        `❓ إذا استمرت المشكلة، تواصل مع فريق الدعم عبر الزر الموجود في رسالة الترحيب 🛠️`
+      );
+    }
+
+    return; // CRITICAL: Stop here — do not continue to normal 2K/4K processing
+  }
+
+  try {
 
     const admin = isAdmin(userId);
 

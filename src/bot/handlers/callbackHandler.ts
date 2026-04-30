@@ -852,98 +852,46 @@ if (['pro_t_photo', 'pro_t_face', 'pro_t_art'].includes(data)) {
 if (data === 'pro_confirm_yes') {
   await ctx.answerCallbackQuery();
 
-  const telegramId = ctx.from!.id.toString();
-  const freshUser = await User.findOne({ telegramId });
-  const settings = freshUser?.proEnhanceSettings;
+  const userId = ctx.from!.id;
+  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+  const isAdmin = adminIds.includes(userId.toString());
 
+  const user = await User.findOne({ telegramId: userId.toString() });
+  if (!user) return;
+
+  const settings = user.proEnhanceSettings;
   if (!settings?.quality || !settings?.scale || !settings?.imageType) {
-    await ctx.reply('❌ حدث خطأ في الإعدادات. ابدأ من جديد.');
+    await ctx.reply('❌ حدث خطأ في الإعدادات. يرجى البدء من جديد بالضغط على زر Pro Enhance.');
     return;
   }
 
-  // Smart cost calculation
+  // Calculate cost
   const enhanceCost = settings.quality === 'max' ? 3 : 2;
 
-  if (!admin && user.dailyQuota < enhanceCost) {
-    await ctx.reply(`💫 تحتاج ${enhanceCost} محاولات لهذا الخيار 🚀\nرصيدك غير كافٍ.`);
-    return;
-  }
-
-  // Assuming getTelegramFileUrl is defined above in your file
-  const telegramFileUrl = await getTelegramFileUrl(); 
-  if (!telegramFileUrl) {
-    await ctx.reply('❌ انتهت الجلسة. أرسل الصورة مجدداً.');
-    return;
-  }
-
-  if (!admin) {
-    user.dailyQuota -= enhanceCost;
-    await user.save();
-  }
-
-  const jobId = uuidv4().substring(0, 8).toUpperCase();
-  const processingMsg = await ctx.reply(
-    `⏳ جاري التحسين بتقنية Pro Enhance...\n` +
-    `🎚 الجودة: ${settings.quality} | 🔍 التكبير: ${settings.scale}x | 🖼 النوع: ${settings.imageType}\n` +
-    `الرجاء الانتظار 🌟`
-  );
-  ctx.session.pendingFile = undefined;
-
-  try {
-    const resultBuffer = await processProEnhance(
-      telegramFileUrl,
-      settings.quality,
-      parseInt(settings.scale),
-      settings.imageType
+  // Check quota (BUT DO NOT DEDUCT YET - wait for image)
+  if (!isAdmin && user.dailyQuota < enhanceCost) {
+    await ctx.reply(
+      `⚠️ رصيدك غير كافٍ لهذا الخيار 🥺\n` +
+      `تحتاج ${enhanceCost} محاولات، رصيدك الحالي: ${user.dailyQuota}\n\n` +
+      `💎 لشراء محاولات إضافية تواصل مع الإدارة.`
     );
-
-    user.totalEnhancements += 1;
-    await user.save();
-
-    const outputFileName = `NizoAI_Pro_${jobId}.jpg`;
-
-    try {
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id);
-    } catch {}
-
-    await ctx.replyWithDocument(new InputFile(resultBuffer, outputFileName), {
-      caption:
-        `🚀 <b>Pro Enhance مكتمل!</b>\n` +
-        `🏷 Job ID: ${jobId}\n` +
-        `⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
-      parse_mode: 'HTML',
-    });
-
-    await ctx.replyWithPhoto(new InputFile(resultBuffer, outputFileName), {
-      caption: '🖼 معاينة سريعة',
-    });
-
-    if (ARCHIVE_GROUP_ID) { // Assuming ARCHIVE_GROUP_ID is defined above
-      ctx.api.sendDocument(
-        ARCHIVE_GROUP_ID,
-        new InputFile(resultBuffer, `archive_pro_${jobId}.jpg`),
-        {
-          caption:
-            `📦 نسخة أرشيفية\n━━━━━━━━━━━━━━\n` +
-            `🆔 User ID: ${ctx.from!.id}\n` +
-            `👤 Username: @${ctx.from!.username ?? 'N/A'}\n` +
-            `🏷 Job ID: ${jobId}\n` +
-            `💎 Resolution: Pro Enhance (${settings.scale}x)\n` +
-            `📅 Time: ${new Date().toLocaleString('ar-SA')}\n` +
-            `━━━━━━━━━━━━━━`,
-        }
-      ).catch((e: unknown) => console.error('[Archive] Pro failed:', e));
-    }
-
-  } catch (error) {
-    if (!admin) {
-      user.dailyQuota += enhanceCost;
-      await user.save();
-    }
-    try { await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id); } catch {}
-    await sendAdminAlert(ctx as any, `Pro Enhance Error: ${(error as Error).message}`);
-    await ctx.reply('😔 عذراً حدث خطأ. تم إعادة محاولاتك تلقائياً ✨');
+    return;
   }
+
+  // Set awaiting image flag
+  await User.findOneAndUpdate(
+    { telegramId: userId.toString() },
+    { $set: { 'proEnhanceSettings.isAwaitingImage': true } }
+  );
+
+  // Ask user to send image NOW
+  await ctx.reply(
+    `✅ تم حفظ إعداداتك بنجاح!\n\n` +
+    `📸 أرسل <b>الصورة</b> الآن وسيبدأ التحسين فوراً 🚀\n` +
+    `(يمكنك إرسالها كصورة عادية أو كملف للحفاظ على الجودة)\n\n` +
+    `<i>ملاحظة: سيتم خصم ${isAdmin ? '0 (أدمن)' : enhanceCost} محاولات عند استلام الصورة.</i>`,
+    { parse_mode: 'HTML' }
+  );
   return;
 }
 

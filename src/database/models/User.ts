@@ -35,6 +35,7 @@ export interface IUser extends Document {
     quality: string | null;
     scale: string | null;
     imageType: string | null;
+    isAwaitingImage?: boolean;
   };
 }
 
@@ -148,8 +149,9 @@ const UserSchema = new Schema<IUser>(
         quality: { type: String, default: null },
         scale: { type: String, default: null },
         imageType: { type: String, default: null },
+        isAwaitingImage: { type: Boolean, default: false },
       },
-      default: () => ({ quality: null, scale: null, imageType: null }),
+      default: () => ({ quality: null, scale: null, imageType: null, isAwaitingImage: false }),
     },
   },
   {
