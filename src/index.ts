@@ -152,6 +152,17 @@ bot.on('message:text', async (ctx, next) => {
       return;
     }
 
+    if (inputType === 'convert_button_message') {
+      const { BotSettings } = await import('./database/models/BotSettings');
+      await BotSettings.findOneAndUpdate(
+        { key: 'convert_button_message' },
+        { value: inputText },
+        { upsert: true }
+      );
+      await ctx.reply('✅ تم تحديث رسالة زر تحويل الصيغة!');
+      return;
+    }
+
     if (inputType === 'daily_reward_amount') {
       const { BotSettings } = await import('./database/models/BotSettings');
       const num = parseInt(inputText);

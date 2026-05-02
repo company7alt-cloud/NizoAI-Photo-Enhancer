@@ -1,5 +1,7 @@
 // src/bot/handlers/imageHandler.ts
-import { InlineKeyboard } from 'grammy';
+import { InlineKeyboard, InputFile } from 'grammy';
+import sharp from 'sharp';
+import { sendAdminAlert } from '../../utils/adminAlert';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
 import { getSettings } from '../../services/settingsService';
@@ -7,6 +9,76 @@ import { getSettings } from '../../services/settingsService';
 export async function imageHandler(ctx: BotContext): Promise<void> {
   const telegramId = ctx.from?.id.toString();
   const reportUser = await User.findOne({ telegramId });
+
+  // ── Format Conversion Interceptor ──
+  const userRecord = reportUser;
+
+  if (userRecord?.awaitingFormatConversion) {
+    // Must be sent as document (file), not as photo
+    const doc = ctx.message?.document;
+
+    if (!doc) {
+      await ctx.reply(
+        '⚠️ يرجى إرسال الصورة كـ <b>مستند (ملف)</b> وليس كصورة عادية.\n' +
+        'اضغط على المرفقات ← اختر "ملف" ← اختر صورتك 📎',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    // Verify it's an image
+    if (!doc.mime_type?.startsWith('image/')) {
+      await ctx.reply('❌ الملف المرسل ليس صورة. أرسل ملف صورة صحيح.');
+      return;
+    }
+
+    // Detect original format from mime_type
+    const mimeToFormat: Record<string, string> = {
+      'image/jpeg': 'JPG',
+      'image/jpg': 'JPG',
+      'image/png': 'PNG',
+      'image/webp': 'WEBP',
+      'image/avif': 'AVIF',
+      'image/tiff': 'TIFF',
+      'image/gif': 'GIF',
+      'image/bmp': 'BMP',
+    };
+    const detectedFormat = mimeToFormat[doc.mime_type] || doc.mime_type.split('/')[1].toUpperCase();
+
+    // Reset state — user sent the document
+    await User.findOneAndUpdate(
+      { telegramId },
+      { $set: { awaitingFormatConversion: false } }
+    );
+
+    // Store document file_id in session for conversion
+    ctx.session.pendingConversionFileId = doc.file_id;
+
+    // Show format selection buttons
+    await ctx.reply(
+      `✅ تم استلام الصورة!\n` +
+      `📋 <b>الصيغة الحالية:</b> ${detectedFormat}\n\n` +
+      `🔄 اختر الصيغة التي تريد التحويل إليها:`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: `🖼 PNG${detectedFormat === 'PNG' ? ' ✓' : ''}`, callback_data: 'fconv_png' },
+              { text: `🖼 JPG${detectedFormat === 'JPG' ? ' ✓' : ''}`, callback_data: 'fconv_jpg' },
+              { text: `🖼 WEBP${detectedFormat === 'WEBP' ? ' ✓' : ''}`, callback_data: 'fconv_webp' },
+            ],
+            [
+              { text: `🖼 AVIF${detectedFormat === 'AVIF' ? ' ✓' : ''}`, callback_data: 'fconv_avif' },
+              { text: `🖼 TIFF${detectedFormat === 'TIFF' ? ' ✓' : ''}`, callback_data: 'fconv_tiff' },
+            ],
+            [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+          ],
+        },
+      }
+    );
+    return; // STOP — do not process as enhancement
+  }
 
   if (reportUser?.awaitingReport) {
     await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });

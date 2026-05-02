@@ -32,6 +32,7 @@ export interface IUser extends Document {
   isBlocked: boolean;
   lastSeenAt: Date | null;
   awaitingNanoBananaImage: boolean;
+  awaitingFormatConversion?: boolean;
   proEnhanceSettings?: {
     quality: string | null;
     scale: string | null;
@@ -146,6 +147,7 @@ const UserSchema = new Schema<IUser>(
     isBlocked: { type: Boolean, default: false },
     lastSeenAt: { type: Date, default: null },
     awaitingNanoBananaImage: { type: Boolean, default: false },
+    awaitingFormatConversion: { type: Boolean, default: false },
     proEnhanceSettings: {
       type: {
         quality: { type: String, default: null },

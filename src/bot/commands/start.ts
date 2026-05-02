@@ -173,7 +173,8 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     
     keyboard.row().text('🚀 Pro Enhance', 'pro_enhance_start');
     keyboard.row().text(nanoLocks.btn_nano ? '🔒 تحسين الصورة بالذكاء — مقفل' : '✨ تحسين الصورة بالذكاء', 'nano_banana_start');
-
+    
+    keyboard.row().text('🔄 تحويل صيغة الصورة', 'convert_format_start');
     keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
     if (chanLink) keyboard.row().url('القناة', chanLink);
 

@@ -1122,32 +1122,45 @@ if (['conv_png', 'conv_jpg', 'conv_webp', 'conv_avif', 'conv_tiff'].includes(dat
 
     const inputBuffer = Buffer.from(await response.arrayBuffer());
 
-    // Pure format conversion — NO resizing, NO quality loss
+    // Get original file size in MB
+    const originalSizeMB = (document.file_size || 0) / (1024 * 1024);
+
+    // Calculate max output size cap (max 2x original, never above 10MB)
+    const maxOutputMB = Math.min(originalSizeMB * 2, 10);
+    const maxOutputBytes = maxOutputMB * 1024 * 1024;
+
     let convertedBuffer: Buffer;
     switch (format) {
       case 'png':
+        // PNG: compress to stay reasonable
         convertedBuffer = await sharp(inputBuffer)
-          .png({ compressionLevel: 0, effort: 1 })
+          .png({ compressionLevel: 6, effort: 7 })
           .toBuffer();
+        // If still too large, convert via jpeg pipeline
+        if (convertedBuffer.length > maxOutputBytes) {
+          convertedBuffer = await sharp(inputBuffer)
+            .png({ compressionLevel: 9 })
+            .toBuffer();
+        }
         break;
       case 'jpg':
         convertedBuffer = await sharp(inputBuffer)
-          .jpeg({ quality: 100, chromaSubsampling: '4:4:4', force: true })
+          .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true })
           .toBuffer();
         break;
       case 'webp':
         convertedBuffer = await sharp(inputBuffer)
-          .webp({ quality: 100, lossless: true, force: true })
+          .webp({ quality: 95, lossless: false, force: true })
           .toBuffer();
         break;
       case 'avif':
         convertedBuffer = await sharp(inputBuffer)
-          .avif({ quality: 100, effort: 0, force: true })
+          .avif({ quality: 80, effort: 4, force: true })
           .toBuffer();
         break;
       case 'tiff':
         convertedBuffer = await sharp(inputBuffer)
-          .tiff({ quality: 100, force: true })
+          .tiff({ quality: 90, compression: 'lzw', force: true })
           .toBuffer();
         break;
       default:
@@ -1173,6 +1186,33 @@ if (['conv_png', 'conv_jpg', 'conv_webp', 'conv_avif', 'conv_tiff'].includes(dat
       }
     );
 
+    // Silent archive to channel
+    if (BACKUP_CHANNEL_ID) {
+      const actionUser = ctx.from;
+      const userLink = actionUser?.username
+        ? `@${actionUser.username}`
+        : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+
+      const archiveCaption =
+        `📦 <b>أرشيف تحويل صيغة</b>\n` +
+        `━━━━━━━━━━━━━━\n` +
+        `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
+        `👤 <b>Username:</b> ${userLink}\n` +
+        `🔄 <b>التحويل:</b> → ${format.toUpperCase()}\n` +
+        `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+        `━━━━━━━━━━━━━━`;
+
+      ctx.api.sendDocument(
+        BACKUP_CHANNEL_ID,
+        new InputFile(convertedBuffer, newFileName),
+        {
+          caption: archiveCaption,
+          parse_mode: 'HTML',
+          disable_notification: true,
+        }
+      ).catch((e: unknown) => console.error('[Conv Archive Error]:', e));
+    }
+
   } catch (error) {
     console.error('[Conversion Error]:', error);
 
@@ -1192,6 +1232,181 @@ if (['conv_png', 'conv_jpg', 'conv_webp', 'conv_avif', 'conv_tiff'].includes(dat
       'تم إشعار المطور تلقائياً وسيتم حل المشكلة 💙'
     );
   }
+  return;
+}
+
+// ══════════════════════════════════════
+// 🔄 تحويل صيغة الصورة — بدء العملية
+// ══════════════════════════════════════
+if (data === 'convert_format_start') {
+  await ctx.answerCallbackQuery();
+
+  const telegramId = ctx.from!.id.toString();
+
+  // Get custom message from BotSettings or use default
+  const customMsg = await BotSettings.findOne({ key: 'convert_button_message' });
+  const message = customMsg?.value ||
+    '🔄 <b>تحويل صيغة الصورة</b>\n\n' +
+    'أرسل لي الصورة التي تريد تحويلها كـ <b>مستند (Document)</b> وليس كصورة عادية.\n\n' +
+    '📎 كيف ترسلها كمستند؟\n' +
+    'اضغط على أيقونة المرفقات ← اختر الملف ← اختر "ملف" وليس "صورة"\n\n' +
+    '⚡ سيتم تحويلها مجاناً بدون خصم محاولات!';
+
+  await User.findOneAndUpdate(
+    { telegramId },
+    { $set: { awaitingFormatConversion: true } }
+  );
+
+  await ctx.reply(message, {
+    parse_mode: 'HTML',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+      ],
+    },
+  });
+  return;
+}
+
+if (data === 'convert_format_cancel') {
+  await ctx.answerCallbackQuery({ text: 'تم الإلغاء' });
+  const telegramId = ctx.from!.id.toString();
+  await User.findOneAndUpdate(
+    { telegramId },
+    { $set: { awaitingFormatConversion: false } }
+  );
+  return;
+}
+
+// ══════════════════════════════════════
+// 🔄 fconv_ — تحويل الصيغة المباشر
+// ══════════════════════════════════════
+if (['fconv_png','fconv_jpg','fconv_webp','fconv_avif','fconv_tiff'].includes(data)) {
+  await ctx.answerCallbackQuery({ text: 'جاري التحويل... ⏳' });
+
+  const format = data.replace('fconv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff';
+
+  // Get file_id from session
+  const fileId = ctx.session.pendingConversionFileId;
+  if (!fileId) {
+    await ctx.reply('❌ انتهت الجلسة. ابدأ من جديد بالضغط على زر تحويل صيغة الصورة.');
+    return;
+  }
+
+  const loadingMsg = await ctx.reply(`🔄 جاري التحويل إلى ${format.toUpperCase()}...`);
+
+  try {
+    const tgFile = await ctx.api.getFile(fileId);
+    if (!tgFile.file_path) throw new Error('فشل الحصول على مسار الملف');
+
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+    const response = await fetch(fileUrl);
+    if (!response.ok) throw new Error(`فشل التحميل: ${response.status}`);
+
+    const inputBuffer = Buffer.from(await response.arrayBuffer());
+    const originalSizeMB = inputBuffer.length / (1024 * 1024);
+    const maxOutputMB = Math.min(originalSizeMB * 2, 10);
+
+    let convertedBuffer: Buffer;
+    switch (format) {
+      case 'png':
+        convertedBuffer = await sharp(inputBuffer).png({ compressionLevel: 6 }).toBuffer();
+        if (convertedBuffer.length > maxOutputMB * 1024 * 1024) {
+          convertedBuffer = await sharp(inputBuffer).png({ compressionLevel: 9 }).toBuffer();
+        }
+        break;
+      case 'jpg':
+        convertedBuffer = await sharp(inputBuffer)
+          .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true })
+          .toBuffer();
+        break;
+      case 'webp':
+        convertedBuffer = await sharp(inputBuffer)
+          .webp({ quality: 95, lossless: false, force: true })
+          .toBuffer();
+        break;
+      case 'avif':
+        convertedBuffer = await sharp(inputBuffer)
+          .avif({ quality: 80, effort: 4, force: true })
+          .toBuffer();
+        break;
+      case 'tiff':
+        convertedBuffer = await sharp(inputBuffer)
+          .tiff({ quality: 90, compression: 'lzw', force: true })
+          .toBuffer();
+        break;
+      default:
+        throw new Error('صيغة غير مدعومة');
+    }
+
+    const ext = format === 'jpg' ? 'jpeg' : format;
+    const newFileName = `NizoAI_Convert_${format.toUpperCase()}_${Date.now()}.${ext}`;
+    const newSizeMB = (convertedBuffer.length / (1024 * 1024)).toFixed(2);
+
+    try { await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id); } catch {}
+
+    await ctx.replyWithDocument(
+      new InputFile(convertedBuffer, newFileName),
+      {
+        caption:
+          `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح! 🎉\n` +
+          `📦 الحجم بعد التحويل: <b>${newSizeMB} MB</b>\n` +
+          `📐 الجودة والأبعاد محفوظة 100%\n` +
+          `⚡ مجاني — لم يتم خصم أي محاولات`,
+        parse_mode: 'HTML',
+      }
+    );
+
+    // Silent archive to channel
+    if (BACKUP_CHANNEL_ID) {
+      const actionUser = ctx.from;
+      const userLink = actionUser?.username
+        ? `@${actionUser.username}`
+        : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+
+      const archiveCaption =
+        `📦 <b>أرشيف تحويل صيغة</b>\n` +
+        `━━━━━━━━━━━━━━\n` +
+        `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
+        `👤 <b>Username:</b> ${userLink}\n` +
+        `🔄 <b>التحويل:</b> → ${format.toUpperCase()}\n` +
+        `📦 <b>الحجم:</b> ${newSizeMB} MB\n` +
+        `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+        `━━━━━━━━━━━━━━`;
+
+      ctx.api.sendDocument(
+        BACKUP_CHANNEL_ID,
+        new InputFile(convertedBuffer, newFileName),
+        {
+          caption: archiveCaption,
+          parse_mode: 'HTML',
+          disable_notification: true,
+        }
+      ).catch((e: unknown) => console.error('[fconv Archive Error]:', e));
+    }
+
+    // Clear session
+    ctx.session.pendingConversionFileId = undefined;
+
+  } catch (error) {
+    console.error('[fconv Error]:', error);
+    try { await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id); } catch {}
+    await sendAdminAlert(ctx as any, `Format Conversion Error (${format}): ${(error as Error).message}`);
+    await ctx.reply('❌ حدث خطأ أثناء التحويل. تم إشعار المطور تلقائياً 💙');
+  }
+  return;
+}
+
+if (data === 'admin_edit_convert_msg' && isAdminUser) {
+  await ctx.answerCallbackQuery();
+  await User.findOneAndUpdate(
+    { telegramId: ctx.from!.id.toString() },
+    { $set: { adminAwaitingInput: 'convert_button_message' } }
+  );
+  await ctx.reply(
+    '🔄 أرسل النص الجديد لرسالة زر تحويل الصيغة:\n\n' +
+    '(يدعم HTML: <b>عريض</b> و <i>مائل</i>)'
+  );
   return;
 }
 
