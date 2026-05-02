@@ -347,11 +347,7 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
             { text: STRICT_PROMPT },
             { inline_data: { mime_type: mimeType, data: base64Image } }
           ]
-        }],
-        generationConfig: {
-          responseModalities: ['image', 'text'],
-          responseMimeType: 'image/jpeg'
-        }
+        }]
       })
     }
   );
