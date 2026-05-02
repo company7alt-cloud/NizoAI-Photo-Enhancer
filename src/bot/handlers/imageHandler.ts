@@ -1,7 +1,5 @@
 // src/bot/handlers/imageHandler.ts
-import { InlineKeyboard, InputFile } from 'grammy';
-import sharp from 'sharp';
-import { sendAdminAlert } from '../../utils/adminAlert';
+import { InlineKeyboard } from 'grammy';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
 import { getSettings } from '../../services/settingsService';
