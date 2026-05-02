@@ -8,13 +8,13 @@ if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is missing');
 
 
 import http from 'http';
-import { Bot, session, NextFunction, InlineKeyboard } from 'grammy';
+import { Bot, session, NextFunction } from 'grammy';
 
 import { BotContext, isAdmin } from './utils/validators';
 import { connectDatabase, closeDatabaseConnection } from './database/connection';
 import { Settings } from './database/models/Settings';
 import { User } from './database/models/User';
-import { BotSettings } from './database/models/BotSettings';
+
 
 import { startCommand, inviteCommand } from './bot/commands/start';
 import { registerAdminCommands } from './bot/commands/admin';
