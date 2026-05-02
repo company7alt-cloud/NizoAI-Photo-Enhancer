@@ -369,6 +369,12 @@ server.listen(PORT, () => {
 const shutdown = async () => {
   console.log('[System] Shutting down...');
   server.close();
+  try {
+    await bot.stop();
+    console.log('[Bot] Polling stopped gracefully.');
+  } catch (err) {
+    console.error('[Bot] Error stopping bot:', err);
+  }
   await closeDatabaseConnection();
   process.exit(0);
 };
