@@ -1285,7 +1285,6 @@ if (['fconv_png','fconv_jpg','fconv_webp','fconv_avif','fconv_tiff'].includes(da
   await ctx.answerCallbackQuery();
 
   const format = data.replace('fconv_', '');
-  const telegramId = ctx.from!.id.toString();
 
   // Save chosen format to session
   ctx.session.pendingConversionFormat = format;
