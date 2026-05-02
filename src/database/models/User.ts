@@ -33,6 +33,7 @@ export interface IUser extends Document {
   lastSeenAt: Date | null;
   awaitingNanoBananaImage: boolean;
   awaitingFormatConversion?: boolean;
+  pendingConversionFiles?: string[];
   batchConversionFiles?: string[];
   batchConversionFormat?: string | null;
   awaitingBatchConversion?: boolean;
@@ -151,6 +152,7 @@ const UserSchema = new Schema<IUser>(
     lastSeenAt: { type: Date, default: null },
     awaitingNanoBananaImage: { type: Boolean, default: false },
     awaitingFormatConversion: { type: Boolean, default: false },
+    pendingConversionFiles: { type: [String], default: [] },
     batchConversionFiles: { type: [String], default: [] },
     batchConversionFormat: { type: String, default: null },
     awaitingBatchConversion: { type: Boolean, default: false },
