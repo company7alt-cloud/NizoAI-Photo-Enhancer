@@ -33,6 +33,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     'locked_8k': locks.btn_8k,
     'process_4k_ai': locks.btn_4kai,
     'locked_8k_ai': locks.btn_8kai,
+    'nano_banana_start': locks.btn_nano,
   };
 
   if (!isAdminUser && lockMap[data] === true) {
@@ -914,6 +915,7 @@ if (data === 'admin_panel') {
       [{ text: `${l.btn_8k   ? '🔴 مقفل' : '🟢 مفتوح'} — 8K`,     callback_data: 'atoggle_btn_8k'   }],
       [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`,  callback_data: 'atoggle_btn_4kai' }],
       [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`,  callback_data: 'atoggle_btn_8kai' }],
+      [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
       [{ text: '❌ إغلاق',                                           callback_data: 'admin_close'      }],
     ]
   });
@@ -938,6 +940,7 @@ if (data.startsWith('atoggle_') && isAdminUser) {
       [{ text: `${l.btn_8k   ? '🔴 مقفل' : '🟢 مفتوح'} — 8K`,     callback_data: 'atoggle_btn_8k'   }],
       [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`,  callback_data: 'atoggle_btn_4kai' }],
       [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`,  callback_data: 'atoggle_btn_8kai' }],
+      [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
       [{ text: '❌ إغلاق',                                           callback_data: 'admin_close'      }],
     ]
   });
@@ -991,5 +994,54 @@ if (data === 'admin_close' && isAdminUser) {
   await ctx.deleteMessage();
   return;
 }
+
+  if (data === 'nano_banana_start') {
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    // Fetch fresh user and check admin
+    const nanoUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (!nanoUser) return;
+    const nanoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isNanoAdmin = nanoAdminIds.includes(ctx.from!.id.toString());
+
+    if (!isNanoAdmin && nanoUser.dailyQuota < 5) {
+      await ctx.reply(
+        `⚠️ رصيدك غير كافٍ!\n` +
+        `تحتاج <b>5 محاولات</b> لاستخدام هذه الميزة ✨\n` +
+        `رصيدك الحالي: <b>${nanoUser.dailyQuota}</b> محاولة`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingNanoBananaImage: true } }
+    );
+
+    await ctx.reply(
+      '✨ <b>تحسين الصورة بالذكاء الاصطناعي</b>\n\n' +
+      '📸 أرسل لي الصورة الآن وسأقوم بتحسينها احترافياً مع الحفاظ على هويتها الأصلية 100% 🚀\n\n' +
+      '💎 <b>السعر: 5 محاولات</b>\n' +
+      '<i>يمكنك إرسالها كصورة عادية أو كملف للحفاظ على الجودة</i>',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_nano_banana' }]]
+        }
+      }
+    );
+    return;
+  }
+
+  if (data === 'cancel_nano_banana') {
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingNanoBananaImage: false } }
+    );
+    await ctx.deleteMessage().catch(() => {});
+    return;
+  }
 
 }

@@ -48,6 +48,140 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  if (user?.awaitingNanoBananaImage) {
+
+    // SECURITY LAYER 1: Check if feature locked after user started
+    const { getSettings: getNanoSettings } = await import('../../services/settingsService');
+    const nanoGlobalSettings = await getNanoSettings();
+    const nanoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isNanoAdminUser = nanoAdminIds.includes(userId.toString());
+
+    if (nanoGlobalSettings.locks.btn_nano && !isNanoAdminUser) {
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { awaitingNanoBananaImage: false } }
+      );
+      await ctx.reply('⚠️ عذراً، تم إقفال الميزة للصيانة. يرجى المحاولة لاحقاً 🔒');
+      return;
+    }
+
+    // Get fileId BEFORE resetting state
+    // If no image found, keep state so user can try again
+    let fileId: string | undefined;
+    if (ctx.message?.photo && ctx.message.photo.length > 0) {
+      fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+    } else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
+      fileId = ctx.message.document.file_id;
+    }
+
+    if (!fileId) {
+      // Do NOT reset state — let user try again with a valid image
+      await ctx.reply('⚠️ يرجى إرسال صورة صالحة للمتابعة.');
+      return;
+    }
+
+    // SECURITY LAYER 2: Atomic deduction + state reset in ONE MongoDB operation
+    // This prevents Race Condition from album sends (multiple images at once)
+    if (!isNanoAdminUser) {
+      const updatedUser = await User.findOneAndUpdate(
+        {
+          telegramId: userId.toString(),
+          dailyQuota: { $gte: 5 },           // Only proceeds if balance >= 5
+          awaitingNanoBananaImage: true        // Only proceeds if still in waiting state
+        },
+        {
+          $inc: { dailyQuota: -5 },
+          $set: { awaitingNanoBananaImage: false }
+        },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        // Failed: either insufficient balance or concurrent request already consumed it
+        await User.findOneAndUpdate(
+          { telegramId: userId.toString() },
+          { $set: { awaitingNanoBananaImage: false } }
+        );
+        await ctx.reply(
+          '⚠️ رصيدك غير كافٍ أو تم معالجة طلب آخر في نفس الوقت.\n' +
+          'تحتاج <b>5 محاولات</b> لاستخدام هذه الميزة.',
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+    } else {
+      // Admin: reset state only, no deduction
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { awaitingNanoBananaImage: false } }
+      );
+    }
+
+    const processingMsg = await ctx.reply(
+      '⏳ جاري تحسين صورتك بالذكاء الاصطناعي... ✨\nالرجاء الانتظار 🌟'
+    );
+
+    try {
+      const tgFile = await ctx.api.getFile(fileId);
+      const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+
+      const { processNanoBanana } = await import('../../services/imageService');
+      const resultBuffer = await processNanoBanana(imageUrl);
+      const fileName = `NanoAI_${Date.now()}.jpg`;
+
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+
+      const { InputFile } = await import('grammy');
+
+      await ctx.replyWithDocument(
+        new InputFile(resultBuffer, fileName),
+        { caption: '✨ تم تحسين صورتك بنجاح! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة' }
+      );
+
+      await ctx.replyWithPhoto(
+        new InputFile(resultBuffer, fileName),
+        { caption: '🖼 معاينة سريعة' }
+      );
+
+      const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+      if (ARCHIVE_CHANNEL) {
+        const userLink = ctx.from?.username
+          ? `@${ctx.from.username}`
+          : `<a href="tg://user?id=${ctx.from?.id}">${ctx.from?.first_name || 'مجهول'}</a>`;
+
+        await ctx.api.sendDocument(
+          ARCHIVE_CHANNEL,
+          new InputFile(resultBuffer, fileName),
+          {
+            caption:
+              `📦 <b>نسخة أرشيفية (Nano AI)</b>\n` +
+              `━━━━━━━━━━━━━\n` +
+              `🆔 User ID: <code>${ctx.from?.id}</code>\n` +
+              `👤 Username: ${userLink}\n` +
+              `💎 Resolution: Nano AI\n` +
+              `🕐 Time: ${new Date().toLocaleString('ar-SA')}\n` +
+              `━━━━━━━━━━━━━`,
+            parse_mode: 'HTML',
+            disable_notification: true
+          }
+        ).catch(() => {});
+      }
+
+    } catch (error: any) {
+      // Refund on failure
+      if (!isNanoAdminUser) {
+        await User.findOneAndUpdate(
+          { telegramId: userId.toString() },
+          { $inc: { dailyQuota: 5 } }
+        );
+      }
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      console.error('[NanoAI] Error:', error?.message);
+      await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 5 محاولاتك تلقائياً ✨');
+    }
+    return;
+  }
+
   if (user.proEnhanceSettings?.isAwaitingImage) {
     let fileId: string | undefined;
     if (ctx.message?.photo && ctx.message.photo.length > 0) {

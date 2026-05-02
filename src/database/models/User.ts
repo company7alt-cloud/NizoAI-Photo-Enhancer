@@ -31,6 +31,7 @@ export interface IUser extends Document {
   adminAwaitingInput: string | null;
   isBlocked: boolean;
   lastSeenAt: Date | null;
+  awaitingNanoBananaImage: boolean;
   proEnhanceSettings?: {
     quality: string | null;
     scale: string | null;
@@ -144,6 +145,7 @@ const UserSchema = new Schema<IUser>(
     adminAwaitingInput: { type: String, default: null },
     isBlocked: { type: Boolean, default: false },
     lastSeenAt: { type: Date, default: null },
+    awaitingNanoBananaImage: { type: Boolean, default: false },
     proEnhanceSettings: {
       type: {
         quality: { type: String, default: null },

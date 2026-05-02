@@ -3,6 +3,7 @@ import { InlineKeyboard } from 'grammy';
 import { User } from '../../database/models/User';
 import { Settings } from '../../database/models/Settings';
 import { BotContext } from '../../utils/validators';
+import { getSettings } from '../../services/settingsService';
 
 
 // ─── /start ───────────────────────────────────────────────────────────────────
@@ -164,10 +165,14 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     const devLink = (await Settings.get('developerLink')) as string | null;
     const chanLink = (await Settings.get('channelLink')) as string | null;
 
+    const nanoSettings = await getSettings();
+    const nanoLocks = nanoSettings.locks;
+
     const keyboard = new InlineKeyboard();
     if (devLink) keyboard.url('المطور', devLink);
     
     keyboard.row().text('🚀 Pro Enhance', 'pro_enhance_start');
+    keyboard.row().text(nanoLocks.btn_nano ? '🔒 تحسين الصورة بالذكاء — مقفل' : '✨ تحسين الصورة بالذكاء', 'nano_banana_start');
 
     keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
     if (chanLink) keyboard.row().url('القناة', chanLink);

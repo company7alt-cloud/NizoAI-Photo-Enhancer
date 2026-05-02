@@ -323,3 +323,48 @@ export async function processProEnhance(
     .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true, mozjpeg: true })
     .toBuffer();
 }
+
+export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
+  const STRICT_PROMPT = `Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.`;
+
+  const imageResponse = await fetch(imageUrl);
+  const imageArrayBuffer = await imageResponse.arrayBuffer();
+  const base64Image = Buffer.from(new Uint8Array(imageArrayBuffer)).toString('base64');
+  const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+  const mimeType = contentType.split(';')[0].trim();
+
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: STRICT_PROMPT },
+            { inline_data: { mime_type: mimeType, data: base64Image } }
+          ]
+        }],
+        generationConfig: {
+          responseModalities: ['image', 'text'],
+          responseMimeType: 'image/jpeg'
+        }
+      })
+    }
+  );
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini API error ${response.status}: ${errText.slice(0, 300)}`);
+  }
+
+  const result = await response.json();
+  const parts = (result as any)?.candidates?.[0]?.content?.parts || [];
+  const imagePart = parts.find((p: any) => p.inline_data?.data);
+  if (!imagePart) throw new Error('Gemini did not return an image.');
+
+  return Buffer.from(imagePart.inline_data.data, 'base64') as Buffer;
+}
