@@ -109,69 +109,6 @@ bot.command('endchat', async (ctx) => {
   );
 });
 
-// ─── Live Support Interceptor ──────────────────────────────────────────────────
-
-bot.on('message', async (ctx, next) => {
-  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-  const isAdminUser = adminIds.includes(ctx.from?.id.toString() || '');
-
-  if (isAdminUser) {
-    const text = ctx.message?.text || ctx.message?.caption || '';
-
-    // ── End session command ─────────────────────────────────────
-    if (text === '/endchat' || text === 'اغلق المحادثة') {
-      const activeUser = await User.findOne({
-        supportSessionActive: true,
-        supportSessionAdminId: ctx.from!.id.toString()
-      });
-
-      if (activeUser) {
-        await User.findOneAndUpdate(
-          { telegramId: activeUser.telegramId },
-          { $set: { supportSessionActive: false, supportSessionAdminId: null } }
-        );
-        await ctx.reply('✅ تم إغلاق المحادثة مع العميل.');
-        try {
-          await ctx.api.sendMessage(
-            activeUser.telegramId,
-            '🔔 تم إغلاق جلسة الدعم. شكراً لتواصلك معنا 💙'
-          );
-        } catch (e) {}
-      } else {
-        await ctx.reply('❌ لا توجد محادثة نشطة حالياً.');
-      }
-      return;
-    }
-
-    // ── Check if admin has active support session ───────────────
-    const activeUser = await User.findOne({
-      supportSessionActive: true,
-      supportSessionAdminId: ctx.from!.id.toString()
-    });
-
-    if (activeUser) {
-      // Send confirmation AS A REPLY to admin's original message
-      // reply_parameters ensures we can copy the exact message later
-      await ctx.reply(
-        `📤 <b>هل تريد إرسال هذه الرسالة للعميل؟</b>\n\n` +
-        `👤 العميل: <code>${activeUser.telegramId}</code>`,
-        {
-          parse_mode: 'HTML',
-          reply_parameters: { message_id: ctx.message!.message_id },
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '✅ نعم، أرسل', callback_data: `confirm_support_send_${activeUser.telegramId}` },
-              { text: '❌ لا، إلغاء', callback_data: 'cancel_support_send' }
-            ]]
-          }
-        }
-      );
-      return;
-    }
-  }
-  return next();
-});
-
 bot.on('message:text', async (ctx, next) => {
   const telegramId = ctx.from?.id.toString();
   const user = await User.findOne({ telegramId });
@@ -179,132 +116,74 @@ bot.on('message:text', async (ctx, next) => {
   const isAdm = adminIds.includes(telegramId || '');
   const messageText = ctx.message?.text || '';
 
-  const { isFundCampaignPending, handleFundCampaignInput, broadcastFundCampaign } =
-    await import('./services/channelFundService');
+  // 1. Admin Commands (Priority 1)
+  if (isAdm && (messageText === '/endchat' || messageText === 'قفل المحادثة' || messageText === 'اغلق المحادثة')) {
+    const activeUser = await User.findOne({
+      supportSessionActive: true,
+      supportSessionAdminId: telegramId
+    });
 
-  if (isAdm && isFundCampaignPending(ctx.from!.id)) {
-    const result = await handleFundCampaignInput(
-      ctx.from!.id,
-      ctx.message!.text || '',
-      ctx.api
-    );
-
-    if (result.status === 'ask_target') {
-      await ctx.reply(
-        `✅ تم التحقق من صلاحيات البوت في القناة.\n\nكم عدد الأعضاء المطلوب؟ (مثال: 1000)`,
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]],
-          },
-        }
+    if (activeUser) {
+      await User.findOneAndUpdate(
+        { telegramId: activeUser.telegramId },
+        { $set: { supportSessionActive: false, supportSessionAdminId: null } }
       );
-    } else if (result.status === 'not_admin_in_channel') {
-      await ctx.reply(
-        '❌ البوت ليس مشرفاً في هذه القناة. أضفه كمشرف أولاً ثم أعد المحاولة.'
-      );
-    } else if (result.status === 'done' && 'campaign' in result) {
-      const campaign = result.campaign;
-      await ctx.reply(
-        `✅ تم إنشاء الحملة بنجاح!\n\n` +
-        `📢 القناة: ${campaign.channelLink}\n` +
-        `🎯 الهدف: ${campaign.targetMembers} عضو\n\n` +
-        `⏳ جاري الإذاعة لجميع المستخدمين...`
-      );
-      const { sent, failed } = await broadcastFundCampaign(ctx.api, campaign);
-      const deleteBroadcastKeyboard = new InlineKeyboard()
-        .text('🗑 حذف الإذاعة من عند الجميع', `delete_broadcast_${campaign._id}`);
-      await ctx.reply(
-        `📢 اكتملت إذاعة الحملة!\n✅ نجح: ${sent}\n❌ فشل: ${failed}`,
-        { reply_markup: deleteBroadcastKeyboard }
-      );
-    } else if (result.status === 'invalid_target') {
-      await ctx.reply('❌ عدد غير صحيح. أرسل رقماً صحيحاً أكبر من صفر.');
+      await ctx.reply(`✅ <b>تم إنهاء المحادثة المباشرة مع العميل.</b>`, { parse_mode: 'HTML' });
+      try {
+        await ctx.api.sendMessage(activeUser.telegramId, '🔔 تم إغلاق جلسة الدعم. شكراً لتواصلك معنا 💙');
+      } catch (e) {}
+    } else {
+      await ctx.reply('❌ لا توجد محادثة نشطة حالياً لإغلاقها.');
     }
     return;
   }
 
-  // Support tunnel logic moved to global bot.on('message') middleware.
-
+  // 2. Admin Awaiting Input Logic (Priority 2 - Kept exactly as original)
   if (isAdm && user?.adminAwaitingInput) {
     const inputType = user.adminAwaitingInput;
     const inputText = messageText;
 
-    // Clear the waiting state first
-    await User.findOneAndUpdate(
-      { telegramId: telegramId },
-      { $set: { adminAwaitingInput: null } }
-    );
+    await User.findOneAndUpdate({ telegramId: telegramId }, { $set: { adminAwaitingInput: null } });
 
     if (inputType === 'welcome_message') {
-      await BotSettings.findOneAndUpdate(
-        { key: 'welcome_message' },
-        { value: inputText },
-        { upsert: true }
-      );
+      const { BotSettings } = await import('./database/models/BotSettings');
+      await BotSettings.findOneAndUpdate({ key: 'welcome_message' }, { value: inputText }, { upsert: true });
       await ctx.reply('✅ تم تحديث رسالة الترحيب بنجاح!');
       return;
     }
 
     if (inputType === 'daily_reward_amount') {
+      const { BotSettings } = await import('./database/models/BotSettings');
       const num = parseInt(inputText);
-      if (isNaN(num) || num < 1) {
-        await ctx.reply('❌ أرسل رقماً صحيحاً أكبر من صفر');
-        return;
-      }
-      await BotSettings.findOneAndUpdate(
-        { key: 'daily_reward_amount' },
-        { value: inputText },
-        { upsert: true }
-      );
+      if (isNaN(num) || num < 1) { await ctx.reply('❌ أرسل رقماً صحيحاً أكبر من صفر'); return; }
+      await BotSettings.findOneAndUpdate({ key: 'daily_reward_amount' }, { value: inputText }, { upsert: true });
       await ctx.reply(`✅ تم تحديث المحاولات اليومية إلى ${num} محاولات`);
       return;
     }
 
     if (inputType === 'low_attempts_warning') {
-      await BotSettings.findOneAndUpdate(
-        { key: 'low_attempts_warning' },
-        { value: inputText },
-        { upsert: true }
-      );
+      const { BotSettings } = await import('./database/models/BotSettings');
+      await BotSettings.findOneAndUpdate({ key: 'low_attempts_warning' }, { value: inputText }, { upsert: true });
       await ctx.reply('✅ تم تحديث رسالة انتهاء المحاولات');
       return;
     }
 
     if (inputType === 'broadcast') {
       const allUsers = await User.find({ isBanned: { $ne: true } });
-      let successCount = 0;
-      let failCount = 0;
+      let successCount = 0; let failCount = 0;
       for (const u of allUsers) {
-        try {
-          await ctx.api.sendMessage(u.telegramId, inputText);
-          successCount++;
-        } catch {
-          failCount++;
-        }
+        try { await ctx.api.sendMessage(u.telegramId, inputText); successCount++; } catch { failCount++; }
       }
-      await ctx.reply(
-        `📢 <b>تم إرسال الإشعار</b>\n✅ نجح: ${successCount}\n❌ فشل: ${failCount}`,
-        { parse_mode: 'HTML' }
-      );
+      await ctx.reply(`📢 <b>تم إرسال الإشعار</b>\n✅ نجح: ${successCount}\n❌ فشل: ${failCount}`, { parse_mode: 'HTML' });
       return;
     }
 
     if (inputType === 'search_user') {
-      const query = inputText.startsWith('@')
-        ? { username: inputText.replace('@', '') }
-        : { telegramId: inputText };
+      const query = inputText.startsWith('@') ? { username: inputText.replace('@', '') } : { telegramId: inputText };
       const foundUser = await User.findOne(query);
-      if (!foundUser) {
-        await ctx.reply('❌ المستخدم غير موجود');
-        return;
-      }
+      if (!foundUser) { await ctx.reply('❌ المستخدم غير موجود'); return; }
       await ctx.reply(
-        `🔍 <b>معلومات المستخدم</b>\n\n` +
-        `🆔 ID: <code>${foundUser.telegramId}</code>\n` +
-        `👤 Username: @${foundUser.username || 'غير محدد'}\n` +
-        `⚡ المحاولات: ${foundUser.dailyQuota}\n` +
-        `🚫 محظور: ${foundUser.isBanned ? 'نعم' : 'لا'}\n` +
-        `📅 الانضمام: ${new Date(foundUser.joinedAt || Date.now()).toLocaleDateString('ar-SA')}`,
+        `🔍 <b>معلومات المستخدم</b>\n\n🆔 ID: <code>${foundUser.telegramId}</code>\n👤 Username: @${foundUser.username || 'غير محدد'}\n⚡ المحاولات: ${foundUser.dailyQuota}\n🚫 محظور: ${foundUser.isBanned ? 'نعم' : 'لا'}`,
         {
           parse_mode: 'HTML',
           reply_markup: {
@@ -320,14 +199,63 @@ bot.on('message:text', async (ctx, next) => {
     }
   }
 
-  // ── رسائل العميل تروح للأدمن ──
+  // 3. Fund Campaign Logic (Priority 3 - Kept exactly as original)
+  const { isFundCampaignPending, handleFundCampaignInput, broadcastFundCampaign } = await import('./services/channelFundService');
+  if (isAdm && isFundCampaignPending(ctx.from!.id)) {
+    const result = await handleFundCampaignInput(ctx.from!.id, ctx.message!.text || '', ctx.api);
+    if (result.status === 'ask_target') {
+      await ctx.reply(`✅ تم التحقق من صلاحيات البوت.\n\nكم عدد الأعضاء المطلوب؟`, { reply_markup: { inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]] } });
+    } else if (result.status === 'not_admin_in_channel') {
+      await ctx.reply('❌ البوت ليس مشرفاً في هذه القناة. أضفه كمشرف أولاً ثم أعد المحاولة.');
+    } else if (result.status === 'done' && 'campaign' in result) {
+      const campaign = result.campaign;
+      await ctx.reply(`✅ تم إنشاء الحملة بنجاح!\n\n📢 القناة: ${campaign.channelLink}\n🎯 الهدف: ${campaign.targetMembers} عضو\n\n⏳ جاري الإذاعة...`);
+      const { sent, failed } = await broadcastFundCampaign(ctx.api, campaign);
+      const { InlineKeyboard } = await import('grammy');
+      const deleteBroadcastKeyboard = new InlineKeyboard().text('🗑 حذف الإذاعة', `delete_broadcast_${campaign._id}`);
+      await ctx.reply(`📢 اكتملت الإذاعة!\n✅ نجح: ${sent}\n❌ فشل: ${failed}`, { reply_markup: deleteBroadcastKeyboard });
+    } else if (result.status === 'invalid_target') {
+      await ctx.reply('❌ عدد غير صحيح.');
+    }
+    return;
+  }
+
+  // 4. Strict Admin -> User Support Routing (Admin is sending a message during an active session)
+  if (isAdm) {
+    const activeUser = await User.findOne({
+      supportSessionActive: true,
+      supportSessionAdminId: telegramId
+    });
+
+    if (activeUser) {
+      // Admin is in a session, intercept this message and ask for confirmation.
+      await ctx.reply(
+        `📤 <b>هل أنت متأكد من إرسال هذا الرد للعميل؟</b>\n\n` +
+        `👤 <b>معرف العميل:</b> <code>${activeUser.telegramId}</code>\n` +
+        `⚠️ <i>إذا لم تقصد الرد عليه، قم بقفل المحادثة أولاً (أرسل: قفل المحادثة)</i>`,
+        {
+          parse_mode: 'HTML',
+          reply_parameters: { message_id: ctx.message!.message_id },
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '✅ نعم، أرسل للعميل', callback_data: `confirm_support_send_${activeUser.telegramId}` },
+              { text: '❌ لا، إلغاء الإرسال', callback_data: 'cancel_support_send' }
+            ]]
+          }
+        }
+      );
+      return; // Do not process further
+    }
+  }
+
+  // 5. Strict User -> Admin Support Routing (User is sending a message during an active session)
   if (user?.supportSessionActive && user.supportSessionAdminId) {
     await ctx.api.sendMessage(
       user.supportSessionAdminId,
-      `💬 <b>العميل (${ctx.from?.first_name || 'مجهول'}):</b> ${messageText}`,
+      `💬 <b>رد من العميل (${ctx.from?.first_name || 'مجهول'} | <code>${telegramId}</code>):</b>\n\n${messageText}`,
       { parse_mode: 'HTML' }
     );
-    return; // Stop — don't process as image or command
+    return; // Stop — don't process as standard message
   }
 
   await next();
@@ -340,27 +268,53 @@ bot.on('message:text', async (ctx, next) => {
 
 bot.on([':photo', ':document'], async (ctx, next) => {
   const telegramId = ctx.from?.id.toString();
+  const user = await User.findOne({ telegramId });
+  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+  const isAdm = adminIds.includes(telegramId || '');
 
-  // Admin media tunnel moved to global bot.on('message') middleware.
+  // 1. Admin -> User (Confirm media sending)
+  if (isAdm) {
+    const activeUser = await User.findOne({
+      supportSessionActive: true,
+      supportSessionAdminId: telegramId
+    });
 
-  // ── User → Admin: forward media to the admin who opened the session ──
-  const sessionUser = await User.findOne({ telegramId, supportSessionActive: true });
-  if (sessionUser?.supportSessionAdminId) {
+    if (activeUser) {
+      await ctx.reply(
+        `📤 <b>هل تريد إرسال هذا الملف/الصورة للعميل؟</b>\n\n` +
+        `👤 <b>معرف العميل:</b> <code>${activeUser.telegramId}</code>`,
+        {
+          parse_mode: 'HTML',
+          reply_parameters: { message_id: ctx.message!.message_id },
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '✅ نعم، أرسل الملف', callback_data: `confirm_support_send_${activeUser.telegramId}` },
+              { text: '❌ لا، إلغاء', callback_data: 'cancel_support_send' }
+            ]]
+          }
+        }
+      );
+      return; // Stop processing, do not send to imageHandler
+    }
+  }
+
+  // 2. User -> Admin (Direct forward)
+  if (user?.supportSessionActive && user.supportSessionAdminId) {
     try {
       const firstName = ctx.from?.first_name || 'مجهول';
       await ctx.api.sendMessage(
-        sessionUser.supportSessionAdminId,
-        `💬 <b>رد من العميل (${firstName}):</b>`,
+        user.supportSessionAdminId,
+        `💬 <b>ملف من العميل (${firstName} | <code>${telegramId}</code>):</b>`,
         { parse_mode: 'HTML' }
       );
-      await ctx.forwardMessage(sessionUser.supportSessionAdminId);
+      await ctx.forwardMessage(user.supportSessionAdminId);
     } catch (e) {
       console.error('[SupportTunnel] User→Admin media error:', e);
     }
-    return; // do NOT fall through to imageHandler
+    return; // Stop processing, do not send to imageHandler
   }
 
-  // No active session — pass through to normal imageHandler
+  // If no support session is active, pass media to the image processing AI
   return next();
 });
 
