@@ -134,6 +134,26 @@ export async function broadcastFundCampaign(
   const broadcastMessages: { userId: number; messageId: number; claimed: boolean }[] = [];
 
   for (const u of users) {
+    // Check if this user already claimed this channel before
+    const existingClaim = await User.findOne({
+      telegramId: u.telegramId,
+      fundedChannels: campaign.channelId
+    });
+
+    if (existingClaim) {
+      try {
+        await api.sendMessage(
+          u.telegramId,
+          `🌹 <b>عزيزي المستخدم</b>\n\n` +
+          `في المرة السابقة استلمت نقاطاً مقابل انضمامك لهذه القناة.\n` +
+          `نعتذر منك، لا يمكن الحصول على المكافأة مرة أخرى 💙`,
+          { parse_mode: 'HTML' }
+        );
+      } catch {}
+      failed++;
+      continue;
+    }
+
     try {
       const msg = await api.sendMessage(u.telegramId, message, {
         parse_mode: 'Markdown',
@@ -194,7 +214,22 @@ export async function claimChannelReward(
     if (!user) return 'NOT_MEMBER';
 
     // Duplicate-claim guard for legacy records
-    if (user.fundedChannels.includes(channelId)) return 'ALREADY_CLAIMED';
+    if (user.fundedChannels.includes(channelId)) {
+      try {
+        const { InlineKeyboard } = await import('grammy');
+        const campaignDoc = await FundCampaign.findOne({ channelId, isActive: true });
+        const channelLink = campaignDoc?.channelLink || '#';
+        const keyboard = new InlineKeyboard().url('📢 القناة', channelLink);
+        await (api as any).sendMessage(
+          userId,
+          `🌹 <b>عزيزي المستخدم</b>\n\n` +
+          `لقد استلمت مكافأتك مسبقاً عند انضمامك لهذه القناة.\n` +
+          `نعتذر منك، لا يمكن استلام المكافأة مرة أخرى 💙`,
+          { parse_mode: 'HTML', reply_markup: keyboard }
+        );
+      } catch {}
+      return 'ALREADY_CLAIMED';
+    }
 
     // ATOMIC CAMPAIGN UPDATE (Scarcity + Anti-Spam)
     const campaignId = campaign._id;
@@ -236,22 +271,22 @@ export async function claimChannelReward(
 
     // After successful claim, check if campaign is now full
     if (updatedCampaign.claimCounter >= updatedCampaign.targetMembers) {
+      // First: disable campaign link immediately
+      await FundCampaign.findByIdAndUpdate(campaignId, { isActive: false });
+
+      // Then: delete messages gradually 3 per second
       const remaining = updatedCampaign.broadcastMessages.filter(m => !m.claimed);
-      let autoDeleted = 0;
-      let autoFailed = 0;
+      let deleteCount = 0;
       for (const { userId: uid, messageId } of remaining) {
         try {
           await api.deleteMessage(uid, messageId);
-          autoDeleted++;
-        } catch (e) {
-          autoFailed++;
-        }
-        // Rate limit: 100 messages per 10 seconds
-        if ((autoDeleted + autoFailed) % 100 === 0) {
-          await new Promise((r) => setTimeout(r, 10000));
+          deleteCount++;
+        } catch (e) {}
+        // Rate limit: 3 deletions per second
+        if (deleteCount % 3 === 0) {
+          await new Promise((r) => setTimeout(r, 1000));
         }
       }
-      await FundCampaign.findByIdAndUpdate(campaignId, { isActive: false });
     }
 
     return 'REWARDED';
@@ -278,10 +313,10 @@ export async function handleMemberLeft(
   // Only penalise if they had claimed this channel's reward
   if (!user.fundedChannels.includes(channelId)) return;
 
-  // Deduct 5 atomically, allowing negative balances. Also reset claim tracking.
+  // Atomic deduction — allows negative balance
   const updatedUser = await User.findOneAndUpdate(
     { telegramId: userId },
-    { 
+    {
       $inc: { dailyQuota: -5 },
       $pull: { fundedChannels: channelId },
       $set: { channelRewardClaimed: false }
@@ -291,6 +326,7 @@ export async function handleMemberLeft(
 
   if (!updatedUser) return;
 
+  // Update campaign record
   const campaign = await FundCampaign.findOne({ channelId });
   if (campaign) {
     await FundCampaign.findOneAndUpdate(
@@ -298,6 +334,7 @@ export async function handleMemberLeft(
       { $pull: { claimedUsers: userId } }
     );
   }
+
   const channelLink = campaign?.channelLink || '#';
 
   const { InlineKeyboard } = await import('grammy');
@@ -309,12 +346,14 @@ export async function handleMemberLeft(
   try {
     await api.sendMessage(
       userId,
-      "⚠️ تم خصم 5 محاولات بسبب مغادرتك القناة. رصيدك الحالي انخفض.\n\nللتعويض واسترجاع محاولاتك، انضم للقناة مجدداً من الزر أدناه ثم اضغط على زر التحقق 👇",
-      { reply_markup: keyboard }
+      `⚠️ <b>تنبيه هام</b>\n\n` +
+      `لاحظنا أنك غادرت القناة التي حصلت من خلالها على مكافأة 🎁\n\n` +
+      `تم خصم <b>5 محاولات</b> من رصيدك تلقائياً.\n` +
+      `رصيدك الحالي: <b>${updatedUser.dailyQuota}</b>\n\n` +
+      `للاسترداد: انضم للقناة مجدداً واضغط زر التحقق 👇`,
+      { parse_mode: 'HTML', reply_markup: keyboard }
     );
-  } catch {
-    // Silent — never disrupt the user's pending interactions
-  }
+  } catch {}
 }
 
 // ─── Internal Helpers ─────────────────────────────────────────────────────────

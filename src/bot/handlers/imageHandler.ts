@@ -390,16 +390,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     const admin = isAdmin(userId);
 
     // 2. Additive reset to preserve debt
-    if (
-      !admin &&
-      (!user.lastQuotaReset ||
-        Date.now() - new Date(user.lastQuotaReset).getTime() > 24 * 60 * 60 * 1000)
-    ) {
-      user.dailyQuota += 5;
-      if (user.dailyQuota > 5) user.dailyQuota = 5;
-      user.lastQuotaReset = new Date();
-      await user.save();
-    }
+
 
     // 3. Check quota BEFORE accepting image
     if (!admin && user.dailyQuota <= 0) {

@@ -3,6 +3,7 @@ import { InputFile } from 'grammy';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import AdmZip from 'adm-zip';
+import PDFDocument from 'pdfkit';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin } from '../../utils/validators';
 import * as imageService from '../../services/imageService';
@@ -19,6 +20,40 @@ import { getSettings, toggleLock } from '../../services/settingsService';
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
 const BACKUP_CHANNEL_ID = ARCHIVE_GROUP_ID || CHANNEL_ID;
+
+async function showFormatSelection(ctx: any, count: number, _upscale: boolean): Promise<void> {
+  const isSingle = count === 1;
+  const keyboard: any[] = [
+    [
+      { text: '🖼 PNG', callback_data: 'fconv_png' },
+      { text: '🖼 JPG', callback_data: 'fconv_jpg' },
+      { text: '🖼 WEBP', callback_data: 'fconv_webp' },
+    ],
+    [
+      { text: '🖼 AVIF', callback_data: 'fconv_avif' },
+      { text: '🖼 TIFF', callback_data: 'fconv_tiff' },
+    ],
+  ];
+
+  // Add PDF and SVG only for single image
+  if (isSingle) {
+    keyboard.push([
+      { text: '📄 PDF', callback_data: 'fconv_pdf' },
+      { text: '🎨 SVG', callback_data: 'fconv_svg' },
+    ]);
+  }
+
+  keyboard.push([{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }]);
+
+  await ctx.reply(
+    `🔄 <b>اختر الصيغة التي تريد التحويل إليها:</b>\n` +
+    (isSingle ? '📄 PDF و SVG متاحان للصورة الواحدة فقط' : ''),
+    {
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: keyboard },
+    }
+  );
+}
 
 export async function callbackHandler(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
@@ -1090,10 +1125,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ══════════════════════════════════════
   // 🖼 تحويل صيغة الملف
   // ══════════════════════════════════════
-  if (['conv_png', 'conv_jpg', 'conv_webp', 'conv_avif', 'conv_tiff'].includes(data)) {
+  if (['conv_png','conv_jpg','conv_webp','conv_avif','conv_tiff','conv_pdf','conv_svg'].includes(data)) {
     await ctx.answerCallbackQuery({ text: 'جاري تحويل الصيغة... ⏳' });
 
-    const format = data.replace('conv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff';
+    const format = data.replace('conv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'svg';
     const document = (ctx.callbackQuery as any)?.message?.document;
 
     if (!document) {
@@ -1319,20 +1354,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
 
     await ctx.reply(
-      `✅ تم استلام <b>${count}</b> صورة\n\n🔄 اختر الصيغة التي تريد التحويل إليها:`,
+      `✅ تم استلام <b>${count}</b> صورة\n\n` +
+      `📐 <b>هل تريد رفع دقة الصور أم تحويل الصيغة فقط؟</b>`,
       {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [
-              { text: '🖼 PNG', callback_data: 'fconv_png' },
-              { text: '🖼 JPG', callback_data: 'fconv_jpg' },
-              { text: '🖼 WEBP', callback_data: 'fconv_webp' },
-            ],
-            [
-              { text: '🖼 AVIF', callback_data: 'fconv_avif' },
-              { text: '🖼 TIFF', callback_data: 'fconv_tiff' },
-            ],
+            [{ text: '✨ نعم، ارفع الدقة أيضاً', callback_data: 'conv_quality_upscale' }],
+            [{ text: '🔄 لا، تحويل الصيغة فقط (كما هي)', callback_data: 'conv_quality_original' }],
             [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
           ],
         },
@@ -1341,10 +1370,37 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  if (['fconv_png','fconv_jpg','fconv_webp','fconv_avif','fconv_tiff'].includes(data)) {
+  if (data === 'conv_quality_upscale') {
+    await ctx.answerCallbackQuery();
+    const telegramId = ctx.from!.id.toString();
+    await User.findOneAndUpdate(
+      { telegramId },
+      { $set: { conversionUpscale: true } }
+    );
+    // Show format selection
+    const currentUser = await User.findOne({ telegramId });
+    const count = currentUser?.pendingConversionFiles?.length || 0;
+    await showFormatSelection(ctx, count, true);
+    return;
+  }
+
+  if (data === 'conv_quality_original') {
+    await ctx.answerCallbackQuery();
+    const telegramId = ctx.from!.id.toString();
+    await User.findOneAndUpdate(
+      { telegramId },
+      { $set: { conversionUpscale: false } }
+    );
+    const currentUser = await User.findOne({ telegramId });
+    const count = currentUser?.pendingConversionFiles?.length || 0;
+    await showFormatSelection(ctx, count, false);
+    return;
+  }
+
+  if (['fconv_png','fconv_jpg','fconv_webp','fconv_avif','fconv_tiff','fconv_pdf','fconv_svg'].includes(data)) {
     await ctx.answerCallbackQuery({ text: 'جاري المعالجة... ⏳' });
 
-    const format = data.replace('fconv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff';
+    const format = data.replace('fconv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'svg';
     const telegramId = ctx.from!.id.toString();
     const currentUser = await User.findOne({ telegramId });
     const fileIds = currentUser?.pendingConversionFiles || [];
@@ -1378,6 +1434,53 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           case 'tiff':
             return sharp(inputBuffer)
               .tiff({ quality: 90, compression: 'lzw', force: true }).toBuffer();
+          case 'pdf': {
+            // Convert image to PDF using pdfkit
+            const metadata = await sharp(inputBuffer).metadata();
+            const imgWidth = metadata.width || 800;
+            const imgHeight = metadata.height || 600;
+
+            const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
+              const doc = new PDFDocument({
+                size: [imgWidth, imgHeight],
+                margin: 0,
+                autoFirstPage: true,
+              });
+              const chunks: Buffer[] = [];
+              doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+              doc.on('end', () => resolve(Buffer.concat(chunks)));
+              doc.on('error', reject);
+
+              // Convert image to PNG first for PDF embedding
+              sharp(inputBuffer).png().toBuffer().then((pngBuffer) => {
+                doc.image(pngBuffer, 0, 0, { width: imgWidth, height: imgHeight });
+                doc.end();
+              }).catch(reject);
+            });
+            return pdfBuffer;
+          }
+          case 'svg': {
+            // Wrap image in SVG (embed as base64)
+            const metadata = await sharp(inputBuffer).metadata();
+            const imgWidth = metadata.width || 800;
+            const imgHeight = metadata.height || 600;
+
+            // Convert to PNG first for embedding
+            const pngBuffer = await sharp(inputBuffer).png().toBuffer();
+            const base64 = pngBuffer.toString('base64');
+
+            const svgContent =
+              `<?xml version="1.0" encoding="UTF-8"?>\n` +
+              `<svg xmlns="http://www.w3.org/2000/svg" ` +
+              `xmlns:xlink="http://www.w3.org/1999/xlink" ` +
+              `width="${imgWidth}" height="${imgHeight}" ` +
+              `viewBox="0 0 ${imgWidth} ${imgHeight}">\n` +
+              `  <image xlink:href="data:image/png;base64,${base64}" ` +
+              `x="0" y="0" width="${imgWidth}" height="${imgHeight}"/>\n` +
+              `</svg>`;
+
+            return Buffer.from(svgContent, 'utf-8');
+          }
           default:
             throw new Error('صيغة غير مدعومة');
         }
@@ -1393,8 +1496,27 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           const response = await fetch(fileUrl);
           if (!response.ok) continue;
           const inputBuffer = Buffer.from(await response.arrayBuffer());
-          const converted = await convertBuffer(inputBuffer);
-          convertedFiles.push({ buffer: converted, name: `image_${i + 1}.${ext}` });
+          
+          const shouldUpscale = currentUser?.conversionUpscale === true;
+          let processBuffer: any = inputBuffer;
+
+          if (shouldUpscale && !['pdf', 'svg'].includes(format)) {
+            const meta = await sharp(inputBuffer).metadata();
+            const w = meta.width || 800;
+            const h = meta.height || 600;
+            processBuffer = await sharp(inputBuffer)
+              .resize({
+                width: Math.round(w * 2),
+                height: Math.round(h * 2),
+                fit: 'fill',
+                kernel: sharp.kernel.lanczos3,
+              })
+              .toBuffer();
+          }
+
+          const converted = await convertBuffer(processBuffer) as any;
+          // const _mimeOk = !['pdf', 'svg'].includes(format);
+          convertedFiles.push({ buffer: converted as any, name: `image_${i + 1}.${ext}` });
         } catch (e) {
           console.error(`[fconv] Error file ${i + 1}:`, e);
         }
@@ -1493,7 +1615,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       // Reset state
       await User.findOneAndUpdate(
         { telegramId },
-        { $set: { awaitingFormatConversion: false, pendingConversionFiles: [] } }
+        { $set: {
+          awaitingFormatConversion: false,
+          pendingConversionFiles: [],
+          conversionUpscale: false,
+        }}
       );
 
     } catch (error) {
@@ -1503,7 +1629,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.reply('❌ حدث خطأ أثناء التحويل. تم إشعار المطور 💙');
       await User.findOneAndUpdate(
         { telegramId },
-        { $set: { awaitingFormatConversion: false, pendingConversionFiles: [] } }
+        { $set: {
+          awaitingFormatConversion: false,
+          pendingConversionFiles: [],
+          conversionUpscale: false,
+        }}
       );
     }
     return;

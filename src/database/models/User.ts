@@ -34,9 +34,8 @@ export interface IUser extends Document {
   awaitingNanoBananaImage: boolean;
   awaitingFormatConversion?: boolean;
   pendingConversionFiles?: string[];
-  batchConversionFiles?: string[];
+  conversionUpscale?: boolean;
   batchConversionFormat?: string | null;
-  awaitingBatchConversion?: boolean;
   proEnhanceSettings?: {
     quality: string | null;
     scale: string | null;
@@ -153,9 +152,8 @@ const UserSchema = new Schema<IUser>(
     awaitingNanoBananaImage: { type: Boolean, default: false },
     awaitingFormatConversion: { type: Boolean, default: false },
     pendingConversionFiles: { type: [String], default: [] },
-    batchConversionFiles: { type: [String], default: [] },
+    conversionUpscale: { type: Boolean, default: false },
     batchConversionFormat: { type: String, default: null },
-    awaitingBatchConversion: { type: Boolean, default: false },
     proEnhanceSettings: {
       type: {
         quality: { type: String, default: null },

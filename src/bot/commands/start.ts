@@ -75,7 +75,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     );
 
     // ── 3. Find or create user ─────────────────────────────────────────────────
-    const { user, isNew } = await User.findOrCreate({
+    const { user } = await User.findOrCreate({
       telegramId,
       firstName,
       username,
@@ -111,25 +111,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     }
 
     // ── 5. Admin notification for new joins ────────────────────────────────────
-    if (isNew) {
-      const notifyOnJoin = (await Settings.get('notify_on_join')) as boolean;
-      const alertChannelRaw = process.env.ALERT_CHANNEL_ID?.trim();
-
-      // Only send this legacy admin DM if notifyOnJoin is true AND there is NO alert channel set
-      if (notifyOnJoin === true && !alertChannelRaw) {
-        const adminIds = (process.env.ADMIN_IDS ?? '')
-          .split(',')
-          .map((id) => parseInt(id.trim(), 10))
-          .filter((id) => !isNaN(id));
-
-        const notif = `👤 *عضو جديد!*\nالاسم: ${firstName}\nالآيدي: \`${telegramId}\``;
-        for (const aid of adminIds) {
-          ctx.api
-            .sendMessage(aid, notif, { parse_mode: 'Markdown' })
-            .catch(() => { });
-        }
-      }
-    }
+    // Legacy notification removed.
 
     // ── 6. Reload fresh user to get updated quota after any reward ─────────────
     const freshUser = (await User.findOne({ telegramId })) ?? user;
