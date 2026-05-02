@@ -54,23 +54,45 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
     const count = updatedUser?.pendingConversionFiles?.length || 1;
 
-    await ctx.reply(
-      `✅ تم استلام الصورة <b>${count}</b>\n` +
-      `📋 <b>الصيغة الحالية:</b> ${detectedFormat}\n\n` +
-      `هل توجد صور أخرى تريد تحويلها أيضاً؟`,
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '✅ نعم، أرسل صورة أخرى', callback_data: 'conv_batch_add' },
-              { text: '❌ لا، اختر الصيغة', callback_data: 'conv_batch_finish' },
+    if (count >= 5) {
+      // Max reached — force format selection
+      await ctx.reply(
+        `✅ تم استلام الصورة <b>${count}</b>\n\n` +
+        `⚠️ <b>تنبيه:</b> وصلت للحد الأقصى المسموح به (5 صور).\n\n` +
+        `🔓 للحصول على حد أعلى، تواصل مع المطور.\n\n` +
+        `اختر الآن ما تريد:`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish' }],
+              [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}` }],
+              [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
             ],
-            [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' }],
-          ],
-        },
-      }
-    );
+          },
+        }
+      );
+    } else {
+      // Under limit — ask if more
+      await ctx.reply(
+        `✅ تم استلام الصورة <b>${count}</b>\n` +
+        `📋 <b>الصيغة الحالية:</b> ${detectedFormat}\n\n` +
+        `هل توجد صور أخرى تريد تحويلها أيضاً؟\n` +
+        `<i>المتبقي: ${5 - count} صورة</i>`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: `✅ نعم (${5 - count} متبقي)`, callback_data: 'conv_batch_add' },
+                { text: '❌ لا، اختر الصيغة', callback_data: 'conv_batch_finish' },
+              ],
+              [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' }],
+            ],
+          },
+        }
+      );
+    }
     return; // STRICT RETURN — stop all other processing
   }
 

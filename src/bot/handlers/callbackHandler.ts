@@ -1278,8 +1278,16 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── More images: YES
   if (data === 'conv_batch_add') {
-    await ctx.answerCallbackQuery();
     const telegramId = ctx.from!.id.toString();
+    const currentUser = await User.findOne({ telegramId });
+    const currentCount = currentUser?.pendingConversionFiles?.length || 0;
+
+    if (currentCount >= 5) {
+      await ctx.answerCallbackQuery({ text: '⚠️ وصلت للحد الأقصى (5 صور)', show_alert: true });
+      return;
+    }
+
+    await ctx.answerCallbackQuery();
     await User.findOneAndUpdate(
       { telegramId },
       { $set: { awaitingFormatConversion: true } }
