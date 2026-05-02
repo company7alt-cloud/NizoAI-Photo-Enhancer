@@ -48,9 +48,9 @@ export async function startCommand(ctx: BotContext): Promise<void> {
       const alertChannelRaw = process.env.ALERT_CHANNEL_ID?.trim();
       const adminIdsRaw = process.env.ADMIN_IDS || '';
       const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
-      
+
       const targets: (string | number)[] = [];
-      
+
       if (alertChannelRaw) {
         // Correctly parse negative channel IDs for Telegram API
         const channelIdNum = Number(alertChannelRaw);
@@ -106,7 +106,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
             'تم إضافة 5 محاولات مجانية لرصيدك بنجاح 💎✨\n' +
             'استمر في مشاركة رابطك واكسب أكثر! 🔥'
           )
-          .catch(() => {});
+          .catch(() => { });
       }
     }
 
@@ -114,7 +114,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     if (isNew) {
       const notifyOnJoin = (await Settings.get('notify_on_join')) as boolean;
       const alertChannelRaw = process.env.ALERT_CHANNEL_ID?.trim();
-      
+
       // Only send this legacy admin DM if notifyOnJoin is true AND there is NO alert channel set
       if (notifyOnJoin === true && !alertChannelRaw) {
         const adminIds = (process.env.ADMIN_IDS ?? '')
@@ -126,7 +126,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
         for (const aid of adminIds) {
           ctx.api
             .sendMessage(aid, notif, { parse_mode: 'Markdown' })
-            .catch(() => {});
+            .catch(() => { });
         }
       }
     }
@@ -170,10 +170,10 @@ export async function startCommand(ctx: BotContext): Promise<void> {
 
     const keyboard = new InlineKeyboard();
     if (devLink) keyboard.url('المطور', devLink);
-    
+
     keyboard.row().text('🚀 Pro Enhance', 'pro_enhance_start');
     keyboard.row().text(nanoLocks.btn_nano ? '🔒 تحسين الصورة بالذكاء — مقفل' : '✨ تحسين الصورة بالذكاء', 'nano_banana_start');
-    
+
     keyboard.row().text('🔄 تحويل صيغة الصورة', 'convert_format_start');
     keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
     if (chanLink) keyboard.row().url('القناة', chanLink);
@@ -200,11 +200,11 @@ export async function inviteCommand(ctx: BotContext): Promise<void> {
 
   await ctx.reply(
     `🔗 *رابط الإحالة الخاص بك:*\n\n` +
-      `${link}\n\n` +
-      `🎁 *كيف يعمل النظام؟*\n` +
-      `• شارك رابطك مع أصدقائك\n` +
-      `• عند انضمام أي شخص جديد عبر رابطك تحصل على *20 نقطة* فوراً!\n` +
-      `• النقاط تُضاف لرصيدك التلقائي بعد تحقق انضمامه ✨`,
+    `${link}\n\n` +
+    `🎁 *كيف يعمل النظام؟*\n` +
+    `• شارك رابطك مع أصدقائك\n` +
+    `• عند انضمام أي شخص جديد عبر رابطك تحصل على *20 نقطة* فوراً!\n` +
+    `• النقاط تُضاف لرصيدك التلقائي بعد تحقق انضمامه ✨`,
     { parse_mode: 'Markdown' }
   );
 }

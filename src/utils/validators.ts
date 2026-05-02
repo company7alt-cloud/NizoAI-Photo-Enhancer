@@ -13,6 +13,7 @@ export interface SessionData {
   };
   pendingConversionFileId?: string;
   pendingConversionFormat?: string;
+  pendingBatchFiles?: string[];
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;
