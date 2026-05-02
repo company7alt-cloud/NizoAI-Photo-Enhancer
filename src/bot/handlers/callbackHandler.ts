@@ -59,6 +59,43 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
   if (!data || !ctx.from) return;
 
+  if (data === 'check_force_sub') {
+    const channelId = process.env.FORCE_SUB_CHANNEL_ID?.trim();
+
+    if (!channelId) {
+      await ctx.answerCallbackQuery({
+        text: '✅ يمكنك استخدام البوت الآن!',
+        show_alert: true
+      }).catch(() => {});
+      await ctx.deleteMessage().catch(() => {});
+      return;
+    }
+
+    try {
+      const member = await ctx.api.getChatMember(channelId, ctx.from!.id);
+      const validStatuses = ['creator', 'administrator', 'member', 'restricted'];
+
+      if (validStatuses.includes(member.status)) {
+        await ctx.answerCallbackQuery({
+          text: '✅ تم التحقق! يمكنك استخدام البوت الآن 🎉',
+          show_alert: true
+        }).catch(() => {});
+        await ctx.deleteMessage().catch(() => {});
+      } else {
+        await ctx.answerCallbackQuery({
+          text: '❌ لم تشترك بعد! اشترك في القناة ثم اضغط التحقق مجدداً.',
+          show_alert: true
+        }).catch(() => {});
+      }
+    } catch (error) {
+      await ctx.answerCallbackQuery({
+        text: '⚠️ حدث خطأ في التحقق. يرجى المحاولة مجدداً.',
+        show_alert: true
+      }).catch(() => {});
+    }
+    return;
+  }
+
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
   const isAdminUser = adminIds.includes(ctx.from!.id.toString());
   const settings = await getSettings();

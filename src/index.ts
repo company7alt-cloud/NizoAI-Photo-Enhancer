@@ -20,6 +20,7 @@ import { startCommand, inviteCommand } from './bot/commands/start';
 import { registerAdminCommands } from './bot/commands/admin';
 import { imageHandler } from './bot/handlers/imageHandler';
 import { callbackHandler } from './bot/handlers/callbackHandler';
+import { forceSubscribeMiddleware } from './bot/middlewares/forceSubscribe';
 
 // ─── Bot Instance ──────────────────────────────────────────────────────────────
 
@@ -27,6 +28,7 @@ const bot = new Bot<BotContext>(process.env.BOT_TOKEN);
 
 // ─── Middlewares ───────────────────────────────────────────────────────────────
 
+bot.use(forceSubscribeMiddleware);
 bot.use(session({ initial: () => ({}) }));
 
 bot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
