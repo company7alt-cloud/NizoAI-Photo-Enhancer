@@ -247,7 +247,20 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const { InputFile } = await import('grammy');
       await ctx.replyWithDocument(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
-        caption: `💎 صورتك جاهزة بتقنية Pro Enhance! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${freshUser?.dailyQuota}`
+        caption: `💎 صورتك جاهزة بتقنية Pro Enhance! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${freshUser?.dailyQuota}`,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🖼 PNG', callback_data: 'conv_png' },
+              { text: '🖼 JPG', callback_data: 'conv_jpg' },
+              { text: '🖼 WEBP', callback_data: 'conv_webp' },
+            ],
+            [
+              { text: '🖼 AVIF', callback_data: 'conv_avif' },
+              { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+            ],
+          ],
+        },
       });
       await ctx.replyWithPhoto(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
         caption: '🖼 معاينة سريعة'

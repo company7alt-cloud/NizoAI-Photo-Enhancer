@@ -1,5 +1,6 @@
 // src/bot/handlers/callbackHandler.ts
 import { InputFile } from 'grammy';
+import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin } from '../../utils/validators';
@@ -178,6 +179,19 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
       await ctx.replyWithDocument(new InputFile(resultBuffer, outputFileName), {
         caption: `🎉 صورتك جاهزة بدقة 2K! 🌟\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🖼 PNG', callback_data: 'conv_png' },
+              { text: '🖼 JPG', callback_data: 'conv_jpg' },
+              { text: '🖼 WEBP', callback_data: 'conv_webp' },
+            ],
+            [
+              { text: '🖼 AVIF', callback_data: 'conv_avif' },
+              { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+            ],
+          ],
+        },
       });
       await ctx.deleteMessage().catch(() => { });
 
@@ -235,6 +249,19 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
       await ctx.replyWithDocument(new InputFile(resultBuffer, outputFileName), {
         caption: `💎 صورتك جاهزة بدقة 4K الفائقة! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🖼 PNG', callback_data: 'conv_png' },
+              { text: '🖼 JPG', callback_data: 'conv_jpg' },
+              { text: '🖼 WEBP', callback_data: 'conv_webp' },
+            ],
+            [
+              { text: '🖼 AVIF', callback_data: 'conv_avif' },
+              { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+            ],
+          ],
+        },
       });
       await ctx.deleteMessage().catch(() => { });
 
@@ -326,7 +353,22 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       // 8. Send result as document
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
-        { caption: '✨ تم تحسين صورتك بنجاح! جودة 4K-Ai 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة' }
+        {
+          caption: '✨ تم تحسين صورتك بنجاح! جودة 4K-Ai 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🖼 PNG', callback_data: 'conv_png' },
+                { text: '🖼 JPG', callback_data: 'conv_jpg' },
+                { text: '🖼 WEBP', callback_data: 'conv_webp' },
+              ],
+              [
+                { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+              ],
+            ],
+          },
+        }
       );
 
       // 9. Send preview
@@ -1043,5 +1085,114 @@ if (data === 'admin_close' && isAdminUser) {
     await ctx.deleteMessage().catch(() => {});
     return;
   }
+
+// ══════════════════════════════════════
+// 🖼 تحويل صيغة الملف
+// ══════════════════════════════════════
+if (['conv_png', 'conv_jpg', 'conv_webp', 'conv_avif', 'conv_tiff'].includes(data)) {
+  await ctx.answerCallbackQuery({ text: 'جاري تحويل الصيغة... ⏳' });
+
+  const format = data.replace('conv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff';
+  const document = (ctx.callbackQuery as any)?.message?.document;
+
+  if (!document) {
+    await ctx.reply('❌ لم أتمكن من العثور على الملف الأصلي. أرسل الصورة مجدداً.');
+    return;
+  }
+
+  // Telegram Bot API hard limit: cannot download files > 20MB
+  if (document.file_size && document.file_size > 20 * 1024 * 1024) {
+    await ctx.reply(
+      '❌ عذراً، حجم الملف يتجاوز 20 ميجابايت.\n' +
+      'قيود تيليجرام تمنع تحويل الملفات الكبيرة جداً.'
+    );
+    return;
+  }
+
+  const loadingMsg = await ctx.reply(`🔄 جاري التحويل إلى ${format.toUpperCase()}...`);
+
+  try {
+    // Download file from Telegram
+    const tgFile = await ctx.api.getFile(document.file_id);
+    if (!tgFile.file_path) throw new Error('لم يتم الحصول على مسار الملف من Telegram');
+
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+    const response = await fetch(fileUrl);
+    if (!response.ok) throw new Error(`فشل تحميل الملف: ${response.status}`);
+
+    const inputBuffer = Buffer.from(await response.arrayBuffer());
+
+    // Pure format conversion — NO resizing, NO quality loss
+    let convertedBuffer: Buffer;
+    switch (format) {
+      case 'png':
+        convertedBuffer = await sharp(inputBuffer)
+          .png({ compressionLevel: 0, effort: 1 })
+          .toBuffer();
+        break;
+      case 'jpg':
+        convertedBuffer = await sharp(inputBuffer)
+          .jpeg({ quality: 100, chromaSubsampling: '4:4:4', force: true })
+          .toBuffer();
+        break;
+      case 'webp':
+        convertedBuffer = await sharp(inputBuffer)
+          .webp({ quality: 100, lossless: true, force: true })
+          .toBuffer();
+        break;
+      case 'avif':
+        convertedBuffer = await sharp(inputBuffer)
+          .avif({ quality: 100, effort: 0, force: true })
+          .toBuffer();
+        break;
+      case 'tiff':
+        convertedBuffer = await sharp(inputBuffer)
+          .tiff({ quality: 100, force: true })
+          .toBuffer();
+        break;
+      default:
+        throw new Error('صيغة غير مدعومة');
+    }
+
+    const ext = format === 'jpg' ? 'jpeg' : format;
+    const newFileName = `NizoAI_${format.toUpperCase()}_${Date.now()}.${ext}`;
+
+    // Delete loading message
+    try {
+      await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id);
+    } catch {}
+
+    // Send converted file to user
+    await ctx.replyWithDocument(
+      new InputFile(convertedBuffer, newFileName),
+      {
+        caption:
+          `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح 🎉\n` +
+          `📐 الجودة والأبعاد الأصلية محفوظة 100%`,
+        parse_mode: 'HTML',
+      }
+    );
+
+  } catch (error) {
+    console.error('[Conversion Error]:', error);
+
+    // Delete loading message on error
+    try {
+      await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id);
+    } catch {}
+
+    // Alert admin with full user info
+    await sendAdminAlert(
+      ctx as any,
+      `Format Conversion Error (${format.toUpperCase()}): ${(error as Error).message}`
+    );
+
+    await ctx.reply(
+      '❌ حدث خطأ أثناء تحويل الملف.\n' +
+      'تم إشعار المطور تلقائياً وسيتم حل المشكلة 💙'
+    );
+  }
+  return;
+}
 
 }
