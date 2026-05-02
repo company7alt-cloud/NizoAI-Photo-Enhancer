@@ -42,6 +42,8 @@ export interface IUser extends Document {
     imageType: string | null;
     isAwaitingImage?: boolean;
   };
+  forceSubMessageId?: number | null;
+  forceSubChatId?: number | null;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -163,6 +165,8 @@ const UserSchema = new Schema<IUser>(
       },
       default: () => ({ quality: null, scale: null, imageType: null, isAwaitingImage: false }),
     },
+    forceSubMessageId: { type: Number, default: null },
+    forceSubChatId: { type: Number, default: null },
   },
   {
     timestamps: false,

@@ -68,6 +68,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         show_alert: true
       }).catch(() => {});
       await ctx.deleteMessage().catch(() => {});
+      await User.findOneAndUpdate(
+        { telegramId: ctx.from!.id.toString() },
+        { $set: { forceSubMessageId: null, forceSubChatId: null } }
+      );
       return;
     }
 
@@ -81,6 +85,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           show_alert: true
         }).catch(() => {});
         await ctx.deleteMessage().catch(() => {});
+        await User.findOneAndUpdate(
+          { telegramId: ctx.from!.id.toString() },
+          { $set: { forceSubMessageId: null, forceSubChatId: null } }
+        );
       } else {
         await ctx.answerCallbackQuery({
           text: '❌ لم تشترك بعد! اشترك في القناة ثم اضغط التحقق مجدداً.',

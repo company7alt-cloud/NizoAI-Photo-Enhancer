@@ -1,5 +1,6 @@
 import { NextFunction, InlineKeyboard } from 'grammy';
 import { BotContext } from '../../utils/validators';
+import { User } from '../../database/models/User';
 
 const EXEMPT_CALLBACKS = ['check_force_sub'];
 const EXEMPT_COMMANDS = ['/start'];
@@ -48,6 +49,16 @@ export async function forceSubscribeMiddleware(
     `1️⃣ اضغط زر الاشتراك أدناه\n` +
     `2️⃣ بعد الاشتراك اضغط <b>تحققت من اشتراكي</b> ✅`;
 
+  const userId = ctx.from.id.toString();
+
+  // Delete previous force sub message if exists
+  const existingUser = await User.findOne({ telegramId: userId });
+  if (existingUser?.forceSubMessageId && existingUser?.forceSubChatId) {
+    try {
+      await ctx.api.deleteMessage(existingUser.forceSubChatId, existingUser.forceSubMessageId);
+    } catch (e) { /* Message may already be deleted */ }
+  }
+
   if (ctx.callbackQuery) {
     await ctx.answerCallbackQuery({
       text: '⛔ يجب الاشتراك في القناة أولاً!',
@@ -55,8 +66,20 @@ export async function forceSubscribeMiddleware(
     }).catch(() => {});
   }
 
-  await ctx.reply(text, {
+  const sentMsg = await ctx.reply(text, {
     parse_mode: 'HTML',
     reply_markup: keyboard
   });
+
+  // Save new message_id to DB
+  await User.findOneAndUpdate(
+    { telegramId: userId },
+    {
+      $set: {
+        forceSubMessageId: sentMsg.message_id,
+        forceSubChatId: sentMsg.chat.id
+      }
+    },
+    { upsert: true }
+  );
 }
