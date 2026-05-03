@@ -362,7 +362,61 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
   const imagePart = parts.find((p: any) => p.inline_data?.data);
   if (!imagePart) throw new Error('Gemini did not return an image.');
 
-  return Buffer.from(imagePart.inline_data.data, 'base64') as Buffer;
+  const rawBuffer = Buffer.from(imagePart.inline_data.data, 'base64') as Buffer;
+
+  // ── Remove Gemini watermark from bottom-right corner ──
+  const metadata = await sharp(rawBuffer).metadata();
+  const imgWidth = metadata.width || 1000;
+  const imgHeight = metadata.height || 1000;
+
+  // Watermark region: bottom-right ~20% width, ~9% height
+  const wmWidth = Math.round(imgWidth * 0.20);
+  const wmHeight = Math.round(imgHeight * 0.09);
+  const wmLeft = imgWidth - wmWidth;
+  const wmTop = imgHeight - wmHeight;
+
+  // Sample clean patch from LEFT of watermark (same vertical position)
+  const sampleLeft = Math.max(0, wmLeft - wmWidth - 10);
+  const sampleWidth = Math.min(wmWidth, wmLeft - 10);
+
+  let cleanBuffer: Buffer;
+
+  if (sampleWidth > 10) {
+    const leftPatch = await sharp(rawBuffer)
+      .extract({
+        left: sampleLeft,
+        top: wmTop,
+        width: sampleWidth,
+        height: wmHeight,
+      })
+      .resize(wmWidth, wmHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+      .blur(1.5)
+      .toBuffer();
+
+    cleanBuffer = await sharp(rawBuffer)
+      .composite([{ input: leftPatch, left: wmLeft, top: wmTop, blend: 'over' }])
+      .jpeg({ quality: 96, chromaSubsampling: '4:4:4', force: true })
+      .toBuffer();
+  } else {
+    const wmRegion = await sharp(rawBuffer)
+      .extract({ left: wmLeft, top: wmTop, width: wmWidth, height: wmHeight })
+      .blur(15)
+      .toBuffer();
+
+    cleanBuffer = await sharp(rawBuffer)
+      .composite([{ input: wmRegion, left: wmLeft, top: wmTop, blend: 'over' }])
+      .jpeg({ quality: 96, chromaSubsampling: '4:4:4', force: true })
+      .toBuffer();
+  }
+
+  // Safety valve — if output is suspiciously small, return raw
+  if (cleanBuffer.length < 10000) {
+    cleanBuffer = await sharp(rawBuffer)
+      .jpeg({ quality: 96, chromaSubsampling: '4:4:4', force: true })
+      .toBuffer();
+  }
+
+  return cleanBuffer;
 }
 
 export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
