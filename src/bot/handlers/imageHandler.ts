@@ -186,42 +186,68 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const { InputFile } = await import('grammy');
 
-      await ctx.replyWithDocument(
-        new InputFile(resultBuffer, fileName),
+      // Send document first WITHOUT buttons
+      const sentDoc = await ctx.replyWithDocument(
+        new InputFile(resultBuffer, `watermark_removed_${Date.now()}.jpg`),
         {
-          caption: '✨ <b>تم! تمت إزالة النجمة/الشعار تلقائياً</b> 🧹\n📁 تم الإرسال كملف للحفاظ على أعلى جودة 💎',
-          parse_mode: 'HTML'
+          caption:
+            "✅ *تمت إزالة العلامة المائية بنجاح*\n\n" +
+            "📐 الحجم والمقاس الأصلي محفوظ بالكامل\n" +
+            "💎 الجودة: نسخة كاملة بدون ضغط",
+          parse_mode: "Markdown",
+          reply_parameters: { message_id: ctx.message!.message_id },
+        }
+      );
+      
+      // Save resultBuffer to user record for conversion use
+      await User.updateOne(
+        { telegramId: userId.toString() },
+        {
+          lastEraserResultBuffer: resultBuffer.toString('base64'),
+          lastEraserResultMsgId: sentDoc.message_id,
+        }
+      );
+      
+      // Send format conversion buttons as a SEPARATE message immediately after
+      await ctx.reply(
+        "🔄 *تحويل الصيغة:*",
+        {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard()
+            .text("🖼 JPG",  "eraser_fmt_jpg")
+            .text("🗋 PNG",  "eraser_fmt_png")
+            .text("🌐 WEBP", "eraser_fmt_webp")
+            .row()
+            .text("🎞 GIF",  "eraser_fmt_gif")
+            .text("📄 TIFF", "eraser_fmt_tiff")
         }
       );
 
-      await ctx.replyWithPhoto(
-        new InputFile(resultBuffer, fileName),
-        { caption: '🖼 معاينة سريعة' }
-      );
+      if (process.env.ARCHIVE_GROUP_ID) {
+        const BACKUP_CHANNEL_ID = Number(process.env.ARCHIVE_GROUP_ID)
+        const actionUser = ctx.from!
+        const userLink = actionUser.username
+          ? `@${actionUser.username}`
+          : `<a href="tg://user?id=${actionUser.id}">${actionUser.first_name || 'مجهول'}</a>`
+        const sizeMB = (resultBuffer.length / 1024 / 1024).toFixed(2)
 
-      // Silent archive to channel
-      const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
-      if (ARCHIVE_CHANNEL) {
-        const userLink = ctx.from?.username
-          ? `@${ctx.from.username}`
-          : `<a href="tg://user?id=${ctx.from?.id}">${ctx.from?.first_name || 'مجهول'}</a>`;
-
-        await ctx.api.sendDocument(
-          ARCHIVE_CHANNEL,
-          new InputFile(resultBuffer, fileName),
+        ctx.api.sendDocument(
+          BACKUP_CHANNEL_ID,
+          new InputFile(resultBuffer, `auto_eraser_${Date.now()}.jpg`),
           {
             caption:
-              `📦 <b>نسخة أرشيفية (مُزيل النجمة التلقائي)</b>\n` +
-              `━━━━━━━━━━━━━\n` +
-              `🆔 User ID: <code>${ctx.from?.id}</code>\n` +
-              `👤 Username: ${userLink}\n` +
-              `✨ النوع: مُزيل النجمة التلقائي\n` +
-              `🕐 Time: ${new Date().toLocaleString('ar-SA')}\n` +
-              `━━━━━━━━━━━━━`,
+              `📦 <b>نسخة أرشيفية</b>\n` +
+              `━━━━━━━━━━━━━━\n` +
+              `🆔 <b>User ID:</b> <code>${actionUser.id}</code>\n` +
+              `👤 <b>Username:</b> ${userLink}\n` +
+              `🔄 <b>العملية:</b> إزالة علامة مائية تلقائية\n` +
+              `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
+              `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+              `━━━━━━━━━━━━━━`,
             parse_mode: 'HTML',
-            disable_notification: true
+            disable_notification: true,
           }
-        ).catch(() => {});
+        ).catch((e: unknown) => console.error('[Archive Error]:', e))
       }
 
     } catch (error: any) {

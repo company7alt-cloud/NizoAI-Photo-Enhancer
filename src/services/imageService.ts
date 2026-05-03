@@ -573,8 +573,16 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
 
     // STEP 8 — Resize to exact original dimensions and format
     resultBuffer = await sharp(resultBuffer)
-      .resize(W, H, { fit: 'fill' })
-      .toFormat(fmt)
+      .resize(W, H, {
+        fit: 'fill',
+        kernel: sharp.kernel.lanczos3,   // highest quality resampling
+        withoutEnlargement: false
+      })
+      .toFormat(fmt as keyof sharp.FormatEnum, {
+        quality: 100,      // maximum quality for jpeg/webp
+        lossless: true,    // for webp lossless mode
+        compression: 0,    // for png no compression
+      })
       .toBuffer();
 
     console.log(`[AutoEraser] Done. Output size: ${resultBuffer.length} bytes`);
@@ -591,8 +599,16 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
 
     resultBuffer = await sharp(inputBuffer)
       .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
-      .resize(W, H, { fit: 'fill' })
-      .toFormat(fmt)
+      .resize(W, H, {
+        fit: 'fill',
+        kernel: sharp.kernel.lanczos3,
+        withoutEnlargement: false
+      })
+      .toFormat(fmt as keyof sharp.FormatEnum, {
+        quality: 100,
+        lossless: true,
+        compression: 0,
+      })
       .toBuffer();
 
     console.log(`[AutoEraser] Fallback done. Output size: ${resultBuffer.length} bytes`);

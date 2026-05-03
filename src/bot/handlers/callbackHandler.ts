@@ -104,6 +104,56 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  if (data.startsWith("eraser_fmt_")) {
+    await ctx.answerCallbackQuery();
+    
+    const user = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (!user?.lastEraserResultBuffer) {
+      await ctx.reply("❌ انتهت صلاحية الملف. أرسل الصورة مجدداً.");
+      return;
+    }
+    
+    const formatMap: Record<string, string> = {
+      eraser_fmt_jpg:  'jpeg',
+      eraser_fmt_png:  'png',
+      eraser_fmt_webp: 'webp',
+      eraser_fmt_gif:  'gif',
+      eraser_fmt_tiff: 'tiff',
+    };
+    
+    const targetFormat = formatMap[data];
+    if (!targetFormat) return;
+    
+    const processingMsg = await ctx.reply(`⏳ جاري تحويل الصيغة إلى ${data.split('_')[2].toUpperCase()}...`);
+    
+    try {
+      const inputBuffer = Buffer.from(user.lastEraserResultBuffer, 'base64');
+      
+      // Convert using sharp
+      const convertedBuffer = await sharp(inputBuffer)
+        .toFormat(targetFormat as keyof sharp.FormatEnum, {
+          quality: 100,
+          lossless: targetFormat === 'webp',
+        })
+        .toBuffer();
+      
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+      
+      const ext = targetFormat === 'jpeg' ? 'jpg' : targetFormat;
+      await ctx.replyWithDocument(
+        new InputFile(convertedBuffer, `converted_${Date.now()}.${ext}`),
+        {
+          caption: `✅ تم التحويل إلى ${ext.toUpperCase()} بنجاح`,
+        }
+      );
+    } catch (err: any) {
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+      await ctx.reply("❌ فشل التحويل. حاول مرة أخرى.");
+      console.error("[EraserFmt] Error:", err.message);
+    }
+    return;
+  }
+
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
   const isAdminUser = adminIds.includes(ctx.from!.id.toString());
   const settings = await getSettings();
