@@ -396,125 +396,71 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
 }
 
 export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
-  sharp.cache(false);
-  sharp.concurrency(1); // CRITICAL: Limits threads to save RAM on 512MB servers
-
+  // Download image
   const imageResponse = await fetch(imageUrl);
   const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
-  const MAX_DIM = 1024; // Safe size for 512MB RAM
-  let workingBuffer: any = rawBuffer;
+  // Get dimensions
   const metadata = await sharp(rawBuffer).metadata();
-  let width = metadata.width!;
-  let height = metadata.height!;
+  const width = metadata.width!;
+  const height = metadata.height!;
 
-  if (width > MAX_DIM || height > MAX_DIM) {
-    workingBuffer = await sharp(rawBuffer).resize(MAX_DIM, MAX_DIM, { fit: 'inside' }).toBuffer();
-    const newMeta = await sharp(workingBuffer).metadata();
-    width = newMeta.width!;
-    height = newMeta.height!;
-  }
+  // Gemini watermark is always bottom-right corner
+  // Size: approximately 5.5% of width/height (scales with image)
+  const wmW = Math.ceil(width  * 0.055);
+  const wmH = Math.ceil(height * 0.055);
+  const wmLeft = width  - wmW;
+  const wmTop  = height - wmH;
 
-  let { data, info } = await sharp(workingBuffer).raw().toBuffer({ resolveWithObject: true });
-  const maskData = Buffer.alloc(width * height, 0);
+  // ── Strategy: sample 3 patches from around the watermark area ──
+  // Then blend them to reconstruct the background intelligently
 
-  let minX = width, minY = height, maxX = 0, maxY = 0;
-  let hasRed = false;
-
-  for (let i = 0; i < width * height; i++) {
-    const r = data[i * info.channels];
-    const g = data[i * info.channels + 1];
-    const b = data[i * info.channels + 2];
-
-    // STRICT RED: High red, very low green/blue
-    if (r > 180 && g < 100 && b < 100) {
-      maskData[i] = 255;
-      hasRed = true;
-      const x = i % width;
-      const y = Math.floor(i / width);
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-
-  // CRITICAL MEMORY FIX: Free raw pixel data immediately to prevent OOM
-  data = null as any;
-
-  if (!hasRed) return workingBuffer as Buffer;
-
-  // SAFEGUARD: Prevent nuking the whole image. If the detected mask bounding box covers more than 50% of the image area, abort!
-  const boxArea = (maxX - minX) * (maxY - minY);
-  const imageArea = width * height;
-  if (boxArea > imageArea * 0.5) {
-    console.log('[Eraser] Mask is too large (false positive). Aborting to prevent image destruction.');
-    return workingBuffer as Buffer;
-  }
-
-  const maskBuffer = await sharp(maskData, { raw: { width, height, channels: 1 } })
-    .blur(5)
-    .png()
+  // Patch 1: from directly above the watermark
+  const patch1Top = Math.max(0, wmTop - wmH);
+  const p1 = await sharp(rawBuffer)
+    .extract({ left: wmLeft, top: patch1Top, width: wmW, height: wmH })
     .toBuffer();
 
-  const imageBase64 = `data:image/jpeg;base64,${(await sharp(workingBuffer).jpeg().toBuffer()).toString('base64')}`;
-  const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
+  // Patch 2: from the left of the watermark
+  const patch2Left = Math.max(0, wmLeft - wmW);
+  const p2 = await sharp(rawBuffer)
+    .extract({ left: patch2Left, top: wmTop, width: wmW, height: wmH })
+    .toBuffer();
 
-  let resultBuffer: Buffer | null = null;
+  // Patch 3: diagonal (above-left)
+  const p3 = await sharp(rawBuffer)
+    .extract({ left: patch2Left, top: patch1Top, width: wmW, height: wmH })
+    .toBuffer();
 
-  try {
-    const output = await replicate.run(
-      "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
-      {
-        input: {
-          image: imageBase64,
-          mask: maskBase64,
-          prompt: "seamless background, clean space, perfect texture matching",
-          negative_prompt: "watermark, logo, mark, patches",
-          disable_safety_checker: true,
-          num_inference_steps: 20
-        }
-      }
-    );
+  // Blend the 3 patches together with equal weight to get smooth fill
+  const blended = await sharp(p1)
+    .composite([
+      { input: p2, blend: 'multiply' },
+      { input: p3, blend: 'screen' }
+    ])
+    .blur(1.5)
+    .resize(wmW, wmH, { fit: 'fill' })
+    .toBuffer();
 
-    const resultUrl = Array.isArray(output) ? output[0] : output;
-    if (resultUrl) {
-      const res = await fetch(resultUrl.toString());
-      const aiBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
-      if (aiBuffer.length > 10000) {
-        resultBuffer = aiBuffer;
-      }
-    }
-  } catch (error) {
-    console.error('[Eraser] AI Failed:', error);
-  }
+  // Apply a subtle gaussian blur to the fill patch edges for seamless blending
+  const fillPatch = await sharp(blended)
+    .resize(wmW + 4, wmH + 4, { fit: 'fill' })
+    .blur(2)
+    .resize(wmW, wmH, { fit: 'fill' })
+    .toBuffer();
 
-  if (!resultBuffer) {
-    console.log('[Eraser] Local fallback triggered.');
-    minX = Math.max(0, minX - 10);
-    minY = Math.max(0, minY - 10);
-    maxX = Math.min(width - 1, maxX + 10);
-    maxY = Math.min(height - 1, maxY + 10);
+  // Composite the fill patch over the watermark region
+  const result = await sharp(rawBuffer)
+    .composite([{
+      input: fillPatch,
+      left: wmLeft,
+      top: wmTop,
+      blend: 'over'
+    }])
+    .png({ compressionLevel: 6 })
+    .toBuffer();
 
-    const boxWidth = maxX - minX;
-    const boxHeight = maxY - minY;
-
-    if (boxWidth > 0 && boxHeight > 0) {
-      const localPatch = await sharp(workingBuffer)
-        .extract({ left: minX, top: minY, width: boxWidth, height: boxHeight })
-        .blur(15)
-        .toBuffer();
-
-      resultBuffer = await sharp(workingBuffer)
-        .composite([{ input: localPatch, left: minX, top: minY, blend: 'over' }])
-        .jpeg({ quality: 96, force: true })
-        .toBuffer();
-    } else {
-      resultBuffer = workingBuffer;
-    }
-  }
-
-  return (resultBuffer || workingBuffer) as any;
+  return result as Buffer;
 }
 
 export async function convertImageFormat(
