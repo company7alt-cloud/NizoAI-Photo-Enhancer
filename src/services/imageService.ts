@@ -420,7 +420,6 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
 }
 
 export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
-  // Download original image
   const imageResponse = await fetch(imageUrl);
   const imageBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
@@ -428,47 +427,39 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
   const width = metadata.width!;
   const height = metadata.height!;
 
-  // Watermark region: bottom-right corner, 8% width x 8% height
+  // Watermark region: bottom-right corner, 8% dimensions
   const wmWidth = Math.ceil(width * 0.08);
   const wmHeight = Math.ceil(height * 0.08);
   const wmLeft = width - wmWidth;
   const wmTop = height - wmHeight;
 
-  // Create black mask image (same size as original)
-  // White area = region to erase, Black = keep
-  const maskBuffer = await sharp({
-    create: {
-      width,
-      height,
-      channels: 3,
-      background: { r: 0, g: 0, b: 0 }
+  // BULLETPROOF MASK: using raw pixels instead of broken SVG
+  const maskData = Buffer.alloc(width * height, 0); // Fill black
+  for (let y = wmTop; y < height; y++) {
+    for (let x = wmLeft; x < width; x++) {
+      maskData[y * width + x] = 255; // Fill watermark area with white
     }
+  }
+
+  const maskBuffer = await sharp(maskData, {
+    raw: { width, height, channels: 1 }
   })
-  .composite([{
-    input: Buffer.from(
-      `<svg width="${width}" height="${height}">
-        <rect x="${wmLeft}" y="${wmTop}" width="${wmWidth}" height="${wmHeight}" fill="white"/>
-      </svg>`
-    ),
-    blend: 'over'
-  }])
   .png()
   .toBuffer();
 
-  // Convert both to base64 data URIs for Replicate
-  const imageBase64 = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
+  const imageBase64 = `data:image/jpeg;base64,${(await sharp(imageBuffer).jpeg().toBuffer()).toString('base64')}`;
   const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
 
-  // Send to Replicate LaMa (best free inpainting model)
   const output = await replicate.run(
     "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
     {
       input: {
         image: imageBase64,
         mask: maskBase64,
-        prompt: "empty background, clear space, high quality",
+        prompt: "seamless background, clean space, perfect texture matching, high quality",
+        negative_prompt: "watermark, logo, text, signature, mark, blur, patches",
         disable_safety_checker: true,
-        num_inference_steps: 20,
+        num_inference_steps: 30,
         guidance_scale: 7.5,
       }
     }

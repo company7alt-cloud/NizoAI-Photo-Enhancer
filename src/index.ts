@@ -392,6 +392,8 @@ const shutdown = async () => {
   process.exit(0);
 };
 
+process.removeAllListeners('SIGTERM');
+process.removeAllListeners('SIGINT');
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
@@ -420,12 +422,3 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap();
-
-process.once('SIGINT', () => {
-  console.log('Stopping bot gracefully (SIGINT)...');
-  bot.stop();
-});
-process.once('SIGTERM', () => {
-  console.log('Stopping bot gracefully (SIGTERM)...');
-  bot.stop();
-});
