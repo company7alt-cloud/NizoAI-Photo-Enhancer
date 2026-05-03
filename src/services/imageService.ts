@@ -432,7 +432,7 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
   let height = metadata.height!;
 
   if (width > MAX_DIM || height > MAX_DIM) {
-    workingBuffer = await sharp(rawBuffer).resize(MAX_DIM, MAX_DIM, { fit: 'inside' }).toBuffer();
+    workingBuffer = await sharp(rawBuffer).resize(MAX_DIM, MAX_DIM, { fit: 'inside' }).toBuffer() as Buffer;
     const newMeta = await sharp(workingBuffer).metadata();
     width = newMeta.width!;
     height = newMeta.height!;
