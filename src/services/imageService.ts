@@ -498,7 +498,7 @@ export async function processTwoStepInpainting(
   return Buffer.from(new Uint8Array(await res.arrayBuffer())) as Buffer;
 }
 
-// ── AUTO WATERMARK REMOVAL (bottom-right corner, no user marking needed) ──────
+// ── AUTO WATERMARK REMOVAL (bottom-right corner, sharp content-aware fill) ─────
 export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Buffer> {
   // STEP 1 — Download original image
   const imageResponse = await fetch(imageUrl);
@@ -511,63 +511,60 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
   const H = metadata.height!;
   console.log(`[AutoEraser] Image dimensions: ${W}x${H}`);
 
-  // STEP 3 — Define watermark zone (bottom-right corner)
-  const zoneX = Math.round(W * 0.72);
-  const zoneY = Math.round(H * 0.82);
-  const zoneW = W - zoneX; // W * 0.28
-  const zoneH = H - zoneY; // H * 0.18
-  console.log(`[AutoEraser] Watermark zone: x=${zoneX}, y=${zoneY}, w=${zoneW}, h=${zoneH}`);
+  // STEP 3 — Define watermark patch coordinates
+  const patchX = Math.round(W * 0.72);
+  const patchY = Math.round(H * 0.82);
+  const patchW = W - patchX;
+  const patchH = H - patchY;
+  console.log(`[AutoEraser] Watermark patch: x=${patchX}, y=${patchY}, w=${patchW}, h=${patchH}`);
 
-  // STEP 4 — Generate inpainting mask: black image + white rectangle over zone
-  const blackBase = await sharp({
-    create: { width: W, height: H, channels: 3, background: { r: 0, g: 0, b: 0 } }
-  }).png().toBuffer();
-
-  const whiteBox = await sharp({
-    create: { width: zoneW, height: zoneH, channels: 3, background: { r: 255, g: 255, b: 255 } }
-  }).png().toBuffer();
-
-  const maskBuffer = await sharp(blackBase)
-    .composite([{ input: whiteBox, left: zoneX, top: zoneY }])
-    .blur(3)
-    .png()
+  // STEP 4 — Extract three reference samples from outside the watermark zone
+  //   sampleA — directly LEFT of watermark
+  const sampleA = await sharp(rawBuffer)
+    .extract({ left: patchX - patchW, top: patchY, width: patchW, height: patchH })
     .toBuffer();
 
-  // STEP 5 — Convert to base64 data URIs for Replicate
-  const imageJpegBuffer = await sharp(rawBuffer).jpeg({ quality: 95 }).toBuffer();
-  const imageBase64 = `data:image/jpeg;base64,${imageJpegBuffer.toString('base64')}`;
-  const maskBase64  = `data:image/png;base64,${maskBuffer.toString('base64')}`;
+  //   sampleB — directly ABOVE watermark
+  const sampleB = await sharp(rawBuffer)
+    .extract({ left: patchX, top: patchY - patchH, width: patchW, height: patchH })
+    .toBuffer();
 
-  console.log(`[AutoEraser] Calling Replicate inpainting...`);
+  //   sampleC — DIAGONAL upper-left (most natural blend donor)
+  const sampleC = await sharp(rawBuffer)
+    .extract({ left: patchX - patchW, top: patchY - patchH, width: patchW, height: patchH })
+    .toBuffer();
 
-  // STEP 6 — Call stable-diffusion-inpainting
-  const output = await replicate.run(
-    "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
-    {
-      input: {
-        image:  imageBase64,
-        mask:   maskBase64,
-        prompt: "clean background, seamless texture, no watermark, no logo, no text, photorealistic, high quality",
-        negative_prompt: "watermark, logo, text, star, signature, blur, distortion, artifacts",
-        num_inference_steps: 50,
-        guidance_scale: 7.5,
-        inpainting_full_res: true,
-        inpainting_full_res_padding: 32,
-      }
-    }
-  );
+  console.log(`[AutoEraser] Reference samples extracted — building replacement patch...`);
 
-  const resultUrl = Array.isArray(output) ? output[0] : output;
-  if (!resultUrl) throw new Error('Inpainting API returned no image.');
+  // STEP 5 — Resize all samples to exact patch dimensions
+  const baseResized = await sharp(sampleC)
+    .resize(patchW, patchH, { fit: 'fill' })
+    .toBuffer();
 
-  console.log(`[AutoEraser] Downloading result from Replicate...`);
+  const blendA = await sharp(sampleA)
+    .resize(patchW, patchH, { fit: 'fill' })
+    .toBuffer();
 
-  // STEP 7 — Download result and resize back to original dimensions
-  const res = await fetch(resultUrl.toString());
-  if (!res.ok) throw new Error(`Result download failed: ${res.status}`);
-  const resultBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
+  const blendB = await sharp(sampleB)
+    .resize(patchW, patchH, { fit: 'fill' })
+    .toBuffer();
 
-  const finalBuffer = await sharp(resultBuffer)
+  // STEP 6 — Build the replacement patch:
+  //   Start with sampleC, multiply-blend sampleA (50%) and sampleB (50%)
+  //   Then sharpen to match surrounding texture
+  const replacementPatch = await sharp(baseResized)
+    .composite([
+      { input: blendA, blend: 'multiply', raw: undefined },
+      { input: blendB, blend: 'multiply', raw: undefined },
+    ])
+    .sharpen()
+    .toBuffer();
+
+  console.log(`[AutoEraser] Replacement patch built — compositing onto original...`);
+
+  // STEP 7 — Composite the patch onto the original image at (patchX, patchY)
+  const finalBuffer = await sharp(rawBuffer)
+    .composite([{ input: replacementPatch, left: patchX, top: patchY }])
     .resize({ width: W, height: H, fit: 'fill' })
     .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true })
     .toBuffer();
