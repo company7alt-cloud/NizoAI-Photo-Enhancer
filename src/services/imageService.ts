@@ -498,79 +498,107 @@ export async function processTwoStepInpainting(
   return Buffer.from(new Uint8Array(await res.arrayBuffer())) as Buffer;
 }
 
-// ── AUTO WATERMARK REMOVAL (bottom-right corner, sharp content-aware fill) ─────
+// ── AUTO WATERMARK REMOVAL (bottom-right corner, SDXL inpainting + sharp fallback) ──
 export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Buffer> {
   // STEP 1 — Download original image
   const imageResponse = await fetch(imageUrl);
   if (!imageResponse.ok) throw new Error(`Download failed: ${imageResponse.status}`);
-  const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
+  const inputBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
-  // STEP 2 — Read dimensions
-  const metadata = await sharp(rawBuffer).metadata();
-  const W = metadata.width!;
-  const H = metadata.height!;
-  console.log(`[AutoEraser] Image dimensions: ${W}x${H}`);
+  // STEP 2 — Read metadata
+  const meta = await sharp(inputBuffer).metadata();
+  const W   = meta.width!;
+  const H   = meta.height!;
+  const fmt = (meta.format ?? 'jpeg') as keyof sharp.FormatEnum;
+  console.log(`[AutoEraser] Dimensions: ${W}x${H}`);
 
-  // STEP 3 — Define watermark patch coordinates
-  const patchX = Math.round(W * 0.72);
-  const patchY = Math.round(H * 0.82);
-  const patchW = W - patchX;
-  const patchH = H - patchY;
-  console.log(`[AutoEraser] Watermark patch: x=${patchX}, y=${patchY}, w=${patchW}, h=${patchH}`);
+  // STEP 3 — Define watermark zone (bottom-right corner)
+  const zoneX = Math.round(W * 0.70);
+  const zoneY = Math.round(H * 0.83);
+  const zoneW = W - zoneX;
+  const zoneH = H - zoneY;
+  console.log(`[AutoEraser] Zone: x=${zoneX} y=${zoneY} w=${zoneW} h=${zoneH}`);
 
-  // STEP 4 — Extract three reference samples from outside the watermark zone
-  //   sampleA — directly LEFT of watermark
-  const sampleA = await sharp(rawBuffer)
-    .extract({ left: patchX - patchW, top: patchY, width: patchW, height: patchH })
+  // STEP 4 — Build black mask with white rectangle over the watermark zone (sharp only)
+  const maskBuffer = await sharp({
+    create: { width: W, height: H, channels: 3, background: { r: 0, g: 0, b: 0 } }
+  })
+    .composite([{
+      input: await sharp({
+        create: { width: zoneW, height: zoneH, channels: 3, background: { r: 255, g: 255, b: 255 } }
+      }).png().toBuffer(),
+      left: zoneX,
+      top:  zoneY
+    }])
+    .png()
     .toBuffer();
 
-  //   sampleB — directly ABOVE watermark
-  const sampleB = await sharp(rawBuffer)
-    .extract({ left: patchX, top: patchY - patchH, width: patchW, height: patchH })
-    .toBuffer();
+  // STEP 5 — Base64 data URIs
+  const imageB64 = `data:image/jpeg;base64,${(await sharp(inputBuffer).jpeg({ quality: 95 }).toBuffer()).toString('base64')}`;
+  const maskB64  = `data:image/png;base64,${maskBuffer.toString('base64')}`;
 
-  //   sampleC — DIAGONAL upper-left (most natural blend donor)
-  const sampleC = await sharp(rawBuffer)
-    .extract({ left: patchX - patchW, top: patchY - patchH, width: patchW, height: patchH })
-    .toBuffer();
+  // STEP 6 — Replicate SDXL inpainting with 120 s timeout
+  console.log(`[AutoEraser] Calling Replicate...`);
+  let resultBuffer: Buffer;
 
-  console.log(`[AutoEraser] Reference samples extracted — building replacement patch...`);
+  try {
+    const replicateOutput = await Promise.race<unknown>([
+      replicate.run(
+        "lucataco/sdxl-inpainting:a5b13068cc81a89a4fbeefeccc774869fcb34df4dbc92c1555e0f2771d49dde7",
+        {
+          input: {
+            image:                imageB64,
+            mask:                 maskB64,
+            prompt:               "seamless background continuation, matching texture and lighting, photorealistic, no watermark, no logo, no text, 8k quality",
+            negative_prompt:      "watermark, logo, text, star, mark, signature, blur, distortion, artifact, smear, low quality",
+            num_inference_steps:  40,
+            guidance_scale:       8,
+            strength:             0.99,
+          }
+        }
+      ),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Replicate timeout after 120 s')), 120_000)
+      )
+    ]);
 
-  // STEP 5 — Resize all samples to exact patch dimensions
-  const baseResized = await sharp(sampleC)
-    .resize(patchW, patchH, { fit: 'fill' })
-    .toBuffer();
+    // STEP 7 — Fetch and decode the output URL
+    const outputUrl = Array.isArray(replicateOutput)
+      ? String(replicateOutput[0])
+      : String(replicateOutput);
 
-  const blendA = await sharp(sampleA)
-    .resize(patchW, patchH, { fit: 'fill' })
-    .toBuffer();
+    const replicateResponse = await fetch(outputUrl);
+    const resultArrayBuffer = await replicateResponse.arrayBuffer();
+    resultBuffer = Buffer.from(resultArrayBuffer);
 
-  const blendB = await sharp(sampleB)
-    .resize(patchW, patchH, { fit: 'fill' })
-    .toBuffer();
+    // STEP 8 — Resize to exact original dimensions and format
+    resultBuffer = await sharp(resultBuffer)
+      .resize(W, H, { fit: 'fill' })
+      .toFormat(fmt)
+      .toBuffer();
 
-  // STEP 6 — Build the replacement patch:
-  //   Start with sampleC, multiply-blend sampleA (50%) and sampleB (50%)
-  //   Then sharpen to match surrounding texture
-  const replacementPatch = await sharp(baseResized)
-    .composite([
-      { input: blendA, blend: 'multiply', raw: undefined },
-      { input: blendB, blend: 'multiply', raw: undefined },
-    ])
-    .sharpen()
-    .toBuffer();
+    console.log(`[AutoEraser] Done. Output size: ${resultBuffer.length} bytes`);
 
-  console.log(`[AutoEraser] Replacement patch built — compositing onto original...`);
+  } catch (err: any) {
+    // ── FALLBACK: sharp patch clone from the region directly LEFT of the zone ──
+    console.log(`[AutoEraser] Replicate failed, using fallback: ${err?.message}`);
 
-  // STEP 7 — Composite the patch onto the original image at (patchX, patchY)
-  const finalBuffer = await sharp(rawBuffer)
-    .composite([{ input: replacementPatch, left: patchX, top: patchY }])
-    .resize({ width: W, height: H, fit: 'fill' })
-    .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true })
-    .toBuffer();
+    const patchBuffer = await sharp(inputBuffer)
+      .extract({ left: zoneX - zoneW, top: zoneY, width: zoneW, height: zoneH })
+      .resize(zoneW, zoneH, { fit: 'fill' })
+      .sharpen({ sigma: 1.2 })
+      .toBuffer();
 
-  console.log(`[AutoEraser] ✅ Done: ${(finalBuffer.length / 1024).toFixed(1)} KB`);
-  return finalBuffer;
+    resultBuffer = await sharp(inputBuffer)
+      .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
+      .resize(W, H, { fit: 'fill' })
+      .toFormat(fmt)
+      .toBuffer();
+
+    console.log(`[AutoEraser] Fallback done. Output size: ${resultBuffer.length} bytes`);
+  }
+
+  return resultBuffer;
 }
 
 export async function convertImageFormat(

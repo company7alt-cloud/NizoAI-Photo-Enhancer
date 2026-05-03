@@ -115,16 +115,26 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     const autoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
     const isAutoAdmin = autoAdminIds.includes(userId.toString());
 
-    // Accept photo OR document
+    // Guard: make sure we actually received a photo or image document
+    const photo = ctx.message?.photo;
+    if (!photo || photo.length === 0) {
+      if (!ctx.message?.document?.mime_type?.startsWith('image/')) {
+        await ctx.reply('❌ لم أتمكن من استلام الصورة. أرسلها مرة أخرى.');
+        return;
+      }
+    }
+
+    // Accept photo OR document — always pick the largest photo for best quality
     let fileId: string | undefined;
-    if (ctx.message?.photo && ctx.message.photo.length > 0) {
-      fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+    const largest = photo && photo.length > 0 ? photo[photo.length - 1] : undefined;
+    if (largest) {
+      fileId = largest.file_id;
     } else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
       fileId = ctx.message.document.file_id;
     }
 
     if (!fileId) {
-      await ctx.reply('⚠️ أرسل صورة عادية أو ملف صورة للمتابعة.');
+      await ctx.reply('❌ لم أتمكن من استلام الصورة. أرسلها مرة أخرى.');
       return;
     }
 
@@ -159,9 +169,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     }
 
     const processingMsg = await ctx.reply(
-      '🧹 <b>جاري إزالة العلامة تلقائياً...</b>\n' +
-      'الذكاء الاصطناعي يعمل على الزاوية السفلية اليمنى 🪄\n' +
-      'لحظات وتكون جاهزة 🌟',
+      '⏳ جاري تحليل الصورة وإزالة العلامة المائية بالذكاء الاصطناعي...\n⏱ قد يستغرق 30-60 ثانية',
       { parse_mode: 'HTML' }
     );
 
