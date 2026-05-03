@@ -451,35 +451,26 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     const imageBase64 = `data:image/jpeg;base64,${workingBuffer.toString('base64')}`;
     const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
 
-    // Send to Replicate LaMa — best free inpainting model
-    console.log('[Eraser] Sending to Replicate LaMa...');
-    let prediction = await replicate.predictions.create({
-      version: "cjwbw/lama:1a7737078263158fbce9d0a68d87a416a20d75586ae797dd08ac774597b416bb",
-      input: {
-        image: imageBase64,
-        mask: maskBase64
+    // Send to Replicate SD Inpainting
+    console.log('[Eraser] Sending to Replicate SD Inpainting...');
+    const output = await replicate.run(
+      "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
+      { 
+        input: { 
+          image: imageBase64, 
+          mask: maskBase64,
+          prompt: "seamless background, clean space, perfect texture matching, high quality",
+          negative_prompt: "watermark, logo, text, signature, mark, blur, patches",
+          disable_safety_checker: true,
+          num_inference_steps: 30,
+          guidance_scale: 7.5
+        } 
       }
-    });
+    );
 
-    console.log(`[Eraser] Prediction: ${prediction.id}`);
-
-    const startTime = Date.now();
-    while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
-      if (Date.now() - startTime > 90000) throw new Error('Eraser timeout after 90 seconds');
-      await new Promise(r => setTimeout(r, 2000));
-      prediction = await replicate.predictions.get(prediction.id);
-      console.log(`[Eraser] Status: ${prediction.status}`);
-    }
-
-    if (prediction.status === 'failed') {
-      throw new Error(`Eraser prediction failed: ${prediction.error}`);
-    }
-
-    const output = prediction.output;
-    let resultUrl: string;
-    if (typeof output === 'string') resultUrl = output;
-    else if (Array.isArray(output) && output.length > 0) resultUrl = String(output[0]);
-    else throw new Error(`Unexpected eraser output: ${JSON.stringify(output)}`);
+    const resultUrl_raw = Array.isArray(output) ? output[0] : output;
+    if (!resultUrl_raw) throw new Error('SD Inpainting returned no output');
+    const resultUrl = String(resultUrl_raw);
 
     const resultResponse = await fetch(resultUrl);
     if (!resultResponse.ok) throw new Error(`Eraser result download failed: ${resultResponse.status}`);
