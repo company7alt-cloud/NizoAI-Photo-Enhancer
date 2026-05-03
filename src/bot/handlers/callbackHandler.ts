@@ -116,6 +116,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     'process_4k_ai': locks.btn_4kai,
     'locked_8k_ai': locks.btn_8kai,
     'nano_banana_start': locks.btn_nano,
+    'eraser_start': locks.btn_eraser,
   };
 
   if (!isAdminUser && lockMap[data] === true) {
@@ -1039,6 +1040,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
         [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
         [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
+        [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 الممحاة السحرية`, callback_data: 'atoggle_btn_eraser' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
     });
@@ -1064,6 +1066,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
         [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
         [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
+        [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 الممحاة السحرية`, callback_data: 'atoggle_btn_eraser' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
     });
@@ -1697,4 +1700,57 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  if (data === 'eraser_start') {
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const eraserUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (!eraserUser) return;
+    const eraserAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isEraserAdmin = eraserAdminIds.includes(ctx.from!.id.toString());
+
+    if (!isEraserAdmin && eraserUser.dailyQuota < 1) {
+      await ctx.reply(
+        `⚠️ أوه لا! رصيدك خلص 🥺\n` +
+        `تحتاج <b>محاولة واحدة</b> فقط للممحاة السحرية 🪄\n` +
+        `رصيدك الحالي: <b>${eraserUser.dailyQuota}</b>\n\n` +
+        `💡 احصل على محاولات مجانية من زر الهدية اليومية 🎁`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingEraserImage: true } }
+    );
+
+    await ctx.reply(
+      '🪄 <b>الممحاة السحرية جاهزة لك!</b> ✨\n\n' +
+      'أزعجتك علامة مائية؟ أو شيء مخرب جمال صورتك؟ ولا يهمك! 😎\n\n' +
+      '📝 <b>ثلاث خطوات بسيطة:</b>\n\n' +
+      '1️⃣ افتح صورتك في أي تطبيق رسم على جوالك\n' +
+      '2️⃣ شخبط <b>باللون الأحمر</b> 🔴 فوق الشيء اللي تبي تمسحه\n' +
+      '3️⃣ أرسل الصورة هنا كـ <b>ملف (Document)</b> 📎\n\n' +
+      '⚡ <b>السعر:</b> محاولة واحدة فقط!\n' +
+      '📏 <b>الحد الأقصى:</b> 5 ميجابايت\n\n' +
+      'يلا أرسل وخلنا نسوي سحر! ✨',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '❌ إلغاء العملية', callback_data: 'cancel_eraser' }]]
+        }
+      }
+    );
+    return;
+  }
+
+  if (data === 'cancel_eraser') {
+    await ctx.answerCallbackQuery({ text: 'تم إلغاء الممحاة السحرية ❌' }).catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingEraserImage: false } }
+    );
+    await ctx.deleteMessage().catch(() => {});
+    return;
+  }
 }

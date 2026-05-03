@@ -32,6 +32,7 @@ export interface IUser extends Document {
   isBlocked: boolean;
   lastSeenAt: Date | null;
   awaitingNanoBananaImage: boolean;
+  awaitingEraserImage?: boolean;
   awaitingFormatConversion?: boolean;
   pendingConversionFiles?: string[];
   conversionUpscale?: boolean;
@@ -152,6 +153,7 @@ const UserSchema = new Schema<IUser>(
     isBlocked: { type: Boolean, default: false },
     lastSeenAt: { type: Date, default: null },
     awaitingNanoBananaImage: { type: Boolean, default: false },
+    awaitingEraserImage: { type: Boolean, default: false },
     awaitingFormatConversion: { type: Boolean, default: false },
     pendingConversionFiles: { type: [String], default: [] },
     conversionUpscale: { type: Boolean, default: false },

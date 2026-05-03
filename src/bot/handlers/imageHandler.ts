@@ -136,6 +136,166 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  if (user?.awaitingEraserImage) {
+
+    // LOCK CHECK
+    const { getSettings: getEraserSettings } = await import('../../services/settingsService');
+    const eraserGlobalSettings = await getEraserSettings();
+    const eraserAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isEraserAdminUser = eraserAdminIds.includes(userId.toString());
+
+    if (eraserGlobalSettings.locks.btn_eraser && !isEraserAdminUser) {
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { awaitingEraserImage: false } }
+      );
+      await ctx.reply('⚠️ عذراً، تم إقفال الميزة للصيانة. يرجى المحاولة لاحقاً 🔒');
+      return;
+    }
+
+    // GET FILE
+    let fileId: string | undefined;
+    let fileSize: number | undefined;
+
+    if (ctx.message?.document?.mime_type?.startsWith('image/')) {
+      fileId = ctx.message.document.file_id;
+      fileSize = ctx.message.document.file_size;
+    } else if (ctx.message?.photo && ctx.message.photo.length > 0) {
+      const largestPhoto = ctx.message.photo[ctx.message.photo.length - 1];
+      fileId = largestPhoto.file_id;
+      fileSize = largestPhoto.file_size;
+    }
+
+    if (!fileId) {
+      // Do NOT reset state — let user try again with correct format
+      await ctx.reply(
+        '📎 أرسل الصورة كـ <b>ملف (Document)</b> للحفاظ على جودة الألوان وضمان دقة الإزالة 🎯',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    // STRICT 5MB SIZE CHECK — closes session permanently if exceeded
+    const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+    if (fileSize && fileSize > MAX_SIZE_BYTES) {
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { awaitingEraserImage: false } }
+      );
+      await ctx.reply(
+        '⛔ <b>الصورة أكبر من الحد المسموح!</b>\n\n' +
+        'الحد الأقصى المسموح به هو <b>5 ميجابايت</b> فقط 📏\n\n' +
+        '❌ <b>تم إنهاء الجلسة تلقائياً.</b>\n\n' +
+        'لفتح هذه الميزة للأحجام الأكبر، يرجى التواصل مع مطور البوت 👨💻',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    // ATOMIC DEDUCTION + STATE RESET (Race Condition Protection)
+    if (!isEraserAdminUser) {
+      const updatedUser = await User.findOneAndUpdate(
+        {
+          telegramId: userId.toString(),
+          dailyQuota: { $gte: 1 },
+          awaitingEraserImage: true
+        },
+        {
+          $inc: { dailyQuota: -1 },
+          $set: { awaitingEraserImage: false }
+        },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        await User.findOneAndUpdate(
+          { telegramId: userId.toString() },
+          { $set: { awaitingEraserImage: false } }
+        );
+        await ctx.reply(
+          '⚠️ رصيدك غير كافٍ! تحتاج <b>محاولة واحدة</b> لاستخدام الممحاة السحرية 🪄',
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+    } else {
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { awaitingEraserImage: false } }
+      );
+    }
+
+    const processingMsg = await ctx.reply(
+      '🪄 <b>استلمت الصورة!</b>\n' +
+      'جاري نثر السحر وإخفاء الشوائب بعناية فائقة... ✨\n' +
+      'لحظات وتكون جاهزة 😎',
+      { parse_mode: 'HTML' }
+    );
+
+    try {
+      const tgFile = await ctx.api.getFile(fileId);
+      const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+
+      const { processWatermarkEraser } = await import('../../services/imageService');
+      const resultBuffer = await processWatermarkEraser(imageUrl);
+      const fileName = `NizoAI_MagicEraser_${Date.now()}.png`;
+
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+
+      const { InputFile } = await import('grammy');
+
+      await ctx.replyWithDocument(
+        new InputFile(resultBuffer, fileName),
+        {
+          caption: '🪄 <b>تـم! السحر اشتغل وصورتك نظيفة</b> ✨\n📁 أرسلتها لك كملف للحفاظ على جودتها الخرافية 💎',
+          parse_mode: 'HTML'
+        }
+      );
+
+      await ctx.replyWithPhoto(
+        new InputFile(resultBuffer, fileName),
+        { caption: '🖼 معاينة سريعة قبل التحميل' }
+      );
+
+      // SILENT ARCHIVE
+      const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+      if (ARCHIVE_CHANNEL) {
+        const userLink = ctx.from?.username
+          ? `@${ctx.from.username}`
+          : `<a href="tg://user?id=${ctx.from?.id}">${ctx.from?.first_name || 'مجهول'}</a>`;
+
+        await ctx.api.sendDocument(
+          ARCHIVE_CHANNEL,
+          new InputFile(resultBuffer, fileName),
+          {
+            caption:
+              `📦 <b>نسخة أرشيفية (الممحاة السحرية)</b>\n` +
+              `━━━━━━━━━━━━━\n` +
+              `🆔 User ID: <code>${ctx.from?.id}</code>\n` +
+              `👤 Username: ${userLink}\n` +
+              `🪄 النوع: إزالة الشوائب\n` +
+              `🕐 Time: ${new Date().toLocaleString('ar-SA')}\n` +
+              `━━━━━━━━━━━━━`,
+            parse_mode: 'HTML',
+            disable_notification: true
+          }
+        ).catch(() => {});
+      }
+
+    } catch (error: any) {
+      if (!isEraserAdminUser) {
+        await User.findOneAndUpdate(
+          { telegramId: userId.toString() },
+          { $inc: { dailyQuota: 1 } }
+        );
+      }
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      console.error('[Eraser] Error:', error?.message);
+      await ctx.reply('❌ عذراً، الممحاة واجهت مشكلة. تم إعادة المحاولة لرصيدك تلقائياً ✨');
+    }
+    return;
+  }
+
   if (user?.awaitingNanoBananaImage) {
 
     // SECURITY LAYER 1: Check if feature locked after user started
