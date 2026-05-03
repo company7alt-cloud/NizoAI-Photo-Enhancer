@@ -160,16 +160,11 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     if (ctx.message?.document?.mime_type?.startsWith('image/')) {
       fileId = ctx.message.document.file_id;
       fileSize = ctx.message.document.file_size;
-    } else if (ctx.message?.photo && ctx.message.photo.length > 0) {
-      const largestPhoto = ctx.message.photo[ctx.message.photo.length - 1];
-      fileId = largestPhoto.file_id;
-      fileSize = largestPhoto.file_size;
     }
 
     if (!fileId) {
-      // Do NOT reset state — let user try again with correct format
       await ctx.reply(
-        '📎 أرسل الصورة كـ <b>ملف (Document)</b> للحفاظ على جودة الألوان وضمان دقة الإزالة 🎯',
+        '📎 أرسل الصورة كـ <b>ملف (Document)</b> فقط للحفاظ على جودة الألوان ودقة الإزالة 🎯',
         { parse_mode: 'HTML' }
       );
       return;
@@ -255,6 +250,31 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       await ctx.replyWithPhoto(
         new InputFile(resultBuffer, fileName),
         { caption: '🖼 معاينة سريعة قبل التحميل' }
+      );
+
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { lastEraserResultUrl: imageUrl } }
+      );
+
+      await ctx.reply(
+        '🔄 <b>تحويل الصيغة</b>\n\nاختر صيغة الصورة التي تريدها:',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🖼 JPG', callback_data: `convert_jpg_${Date.now()}` },
+                { text: '📄 PNG', callback_data: `convert_png_${Date.now()}` },
+                { text: '🌐 WEBP', callback_data: `convert_webp_${Date.now()}` },
+              ],
+              [
+                { text: '🎞 GIF', callback_data: `convert_gif_${Date.now()}` },
+                { text: '📐 TIFF', callback_data: `convert_tiff_${Date.now()}` },
+              ]
+            ]
+          }
+        }
       );
 
       // SILENT ARCHIVE

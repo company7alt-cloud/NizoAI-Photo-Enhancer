@@ -1040,7 +1040,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
         [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
         [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
-        [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 الممحاة السحرية`, callback_data: 'atoggle_btn_eraser' }],
+        [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
     });
@@ -1066,7 +1066,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
         [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
         [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
-        [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 الممحاة السحرية`, callback_data: 'atoggle_btn_eraser' }],
+        [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
     });
@@ -1725,19 +1725,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
 
     await ctx.reply(
-      '🪄 <b>الممحاة السحرية جاهزة لك!</b> ✨\n\n' +
-      'أزعجتك علامة مائية؟ أو شيء مخرب جمال صورتك؟ ولا يهمك! 😎\n\n' +
-      '📝 <b>ثلاث خطوات بسيطة:</b>\n\n' +
-      '1️⃣ افتح صورتك في أي تطبيق رسم على جوالك\n' +
-      '2️⃣ شخبط <b>باللون الأحمر</b> 🔴 فوق الشيء اللي تبي تمسحه\n' +
-      '3️⃣ أرسل الصورة هنا كـ <b>ملف (Document)</b> 📎\n\n' +
-      '⚡ <b>السعر:</b> محاولة واحدة فقط!\n' +
-      '📏 <b>الحد الأقصى:</b> 5 ميجابايت\n\n' +
-      'يلا أرسل وخلنا نسوي سحر! ✨',
+      '✨ <b>مُزيل العلامات المائية</b>\n\n' +
+      'أرسل لي الصورة كـ <b>ملف (Document)</b> 📎\n' +
+      'وسأقوم بإزالة العلامة المائية تلقائياً بدقة عالية 🎯\n\n' +
+      '📏 <b>الحد الأقصى:</b> 5 ميجابايت\n' +
+      '💎 <b>السعر:</b> محاولة واحدة فقط',
       {
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: [[{ text: '❌ إلغاء العملية', callback_data: 'cancel_eraser' }]]
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_eraser' }]]
         }
       }
     );
@@ -1745,12 +1741,57 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'cancel_eraser') {
-    await ctx.answerCallbackQuery({ text: 'تم إلغاء الممحاة السحرية ❌' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'تم إلغاء مُزيل العلامات المائية ❌' }).catch(() => {});
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { awaitingEraserImage: false } }
     );
     await ctx.deleteMessage().catch(() => {});
+    return;
+  }
+  if (data.startsWith('convert_')) {
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    // Extract format from callback_data (e.g., convert_jpg_1234567890 → jpg)
+    const parts = data.split('_');
+    const format = parts[1] as 'jpg' | 'png' | 'webp' | 'gif' | 'tiff';
+    const validFormats = ['jpg', 'png', 'webp', 'gif', 'tiff'];
+
+    if (!validFormats.includes(format)) return;
+
+    // Get user's last processed image URL
+    const convertUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (!convertUser?.lastEraserResultUrl) {
+      await ctx.reply('⚠️ انتهت صلاحية الصورة. يرجى إعادة المعالجة من جديد.');
+      return;
+    }
+
+    const processingMsg = await ctx.reply(`⏳ جاري تحويل الصورة إلى ${format.toUpperCase()}...`);
+
+    try {
+      // Re-process the original image to get clean result
+      const { processWatermarkEraser, convertImageFormat } = await import('../../services/imageService');
+      const erasedBuffer = await processWatermarkEraser(convertUser.lastEraserResultUrl);
+      const { buffer: convertedBuffer, ext } = await convertImageFormat(erasedBuffer, format);
+
+      const fileName = `NizoAI_Clean_${Date.now()}.${ext}`;
+
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+
+      const { InputFile } = await import('grammy');
+      await ctx.replyWithDocument(
+        new InputFile(convertedBuffer, fileName),
+        { caption: `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح! 🎉`, parse_mode: 'HTML' }
+      );
+
+      // Delete the format selection message to keep chat clean
+      await ctx.deleteMessage().catch(() => {});
+
+    } catch (error: any) {
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      console.error('[Convert] Error:', error?.message);
+      await ctx.reply('❌ حدث خطأ أثناء التحويل. يرجى المحاولة مجدداً.');
+    }
     return;
   }
 }

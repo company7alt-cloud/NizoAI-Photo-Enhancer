@@ -369,44 +369,72 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
   const imageResponse = await fetch(imageUrl);
   const imageBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
-  const { data, info } = await sharp(imageBuffer)
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+  const metadata = await sharp(imageBuffer).metadata();
+  const width = metadata.width!;
+  const height = metadata.height!;
 
-  const { width, height, channels } = info;
-  const maskData = Buffer.alloc(width * height);
+  // Gemini watermark: bottom-right corner, ~6% of dimensions
+  const wmWidth = Math.ceil(width * 0.07);
+  const wmHeight = Math.ceil(height * 0.07);
+  const wmLeft = width - wmWidth;
+  const wmTop = height - wmHeight;
 
-  for (let i = 0; i < width * height; i++) {
-    const r = data[i * channels];
-    const g = data[i * channels + 1];
-    const b = data[i * channels + 2];
-    maskData[i] = (r > 150 && g < 80 && b < 80) ? 255 : 0;
+  // Sample patch from just ABOVE the watermark to use as fill
+  const sampleTop = Math.max(0, wmTop - wmHeight);
+  const samplePatch = await sharp(imageBuffer)
+    .extract({ left: wmLeft, top: sampleTop, width: wmWidth, height: wmHeight })
+    .toBuffer();
+
+  const fillPatch = await sharp(samplePatch)
+    .resize(wmWidth, wmHeight, { fit: 'fill' })
+    .toBuffer();
+
+  // Composite fill over watermark area
+  const result = await sharp(imageBuffer)
+    .composite([{
+      input: fillPatch,
+      left: wmLeft,
+      top: wmTop,
+      blend: 'over'
+    }])
+    .png({ quality: 100 })
+    .toBuffer();
+
+  return result as Buffer;
+}
+
+export async function convertImageFormat(
+  buffer: Buffer,
+  format: 'jpg' | 'png' | 'webp' | 'gif' | 'tiff'
+): Promise<{ buffer: Buffer; mimeType: string; ext: string }> {
+  let result: Buffer;
+  let mimeType: string;
+
+  switch (format) {
+    case 'jpg':
+      result = await sharp(buffer).jpeg({ quality: 95 }).toBuffer() as Buffer;
+      mimeType = 'image/jpeg';
+      break;
+    case 'png':
+      result = await sharp(buffer).png({ compressionLevel: 6 }).toBuffer() as Buffer;
+      mimeType = 'image/png';
+      break;
+    case 'webp':
+      result = await sharp(buffer).webp({ quality: 95 }).toBuffer() as Buffer;
+      mimeType = 'image/webp';
+      break;
+    case 'gif':
+      result = await sharp(buffer).gif().toBuffer() as Buffer;
+      mimeType = 'image/gif';
+      break;
+    case 'tiff':
+      result = await sharp(buffer).tiff({ quality: 95 }).toBuffer() as Buffer;
+      mimeType = 'image/tiff';
+      break;
+    default:
+      result = buffer;
+      mimeType = 'image/png';
   }
 
-  const maskBuffer = await sharp(maskData, {
-    raw: { width, height, channels: 1 }
-  }).png().toBuffer();
-
-  const imageBase64 = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
-  const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
-
-  const output = await replicate.run(
-    "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
-    {
-      input: {
-        image: imageBase64,
-        mask: maskBase64,
-        prompt: "clean background, remove watermark, seamless texture, high quality",
-        num_inference_steps: 20,
-        guidance_scale: 7.5,
-      }
-    }
-  );
-
-  const resultUrl = Array.isArray(output) ? output[0] : output;
-  if (!resultUrl) throw new Error('No output from Replicate');
-
-  const resultResponse = await fetch(resultUrl.toString());
-  const resultArray = await resultResponse.arrayBuffer();
-  return Buffer.from(new Uint8Array(resultArray)) as Buffer;
+  return { buffer: result, mimeType, ext: format === 'jpg' ? 'jpg' : format };
 }

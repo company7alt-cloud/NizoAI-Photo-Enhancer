@@ -161,7 +161,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
 
     keyboard.row().text('🔄 تحويل صيغة الصورة', 'convert_format_start');
     keyboard.row().text(
-      eraserLocks.btn_eraser ? '🔒 الممحاة السحرية — مقفل' : '🪄 الممحاة السحرية | 💎 محاولة واحدة',
+      eraserLocks.btn_eraser ? '🔒 مُزيل العلامات المائية — مقفل' : '✨ مُزيل العلامات المائية | 💎 محاولة واحدة',
       'eraser_start'
     );
     keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');

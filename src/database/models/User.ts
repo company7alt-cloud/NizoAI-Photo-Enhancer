@@ -45,6 +45,7 @@ export interface IUser extends Document {
   };
   forceSubMessageId?: number | null;
   forceSubChatId?: number | null;
+  lastEraserResultUrl?: string | null;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -169,6 +170,7 @@ const UserSchema = new Schema<IUser>(
     },
     forceSubMessageId: { type: Number, default: null },
     forceSubChatId: { type: Number, default: null },
+    lastEraserResultUrl: { type: String, default: null },
   },
   {
     timestamps: false,
