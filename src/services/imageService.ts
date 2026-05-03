@@ -506,7 +506,7 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     }
   }
 
-  return resultBuffer;
+  return (resultBuffer || workingBuffer) as Buffer;
 }
 
 export async function convertImageFormat(
