@@ -421,56 +421,88 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
 
 export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
   const imageResponse = await fetch(imageUrl);
-  const imageBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
+  const rawArray = await imageResponse.arrayBuffer();
+  const rawBuffer = Buffer.from(new Uint8Array(rawArray)) as Buffer;
 
-  const metadata = await sharp(imageBuffer).metadata();
+  const metadata = await sharp(rawBuffer).metadata();
   const width = metadata.width!;
   const height = metadata.height!;
 
-  // Watermark region: bottom-right corner, 8% dimensions
+  // Watermark region (bottom-right 8%)
   const wmWidth = Math.ceil(width * 0.08);
   const wmHeight = Math.ceil(height * 0.08);
   const wmLeft = width - wmWidth;
   const wmTop = height - wmHeight;
 
-  // BULLETPROOF MASK: using raw pixels instead of broken SVG
-  const maskData = Buffer.alloc(width * height, 0); // Fill black
-  for (let y = wmTop; y < height; y++) {
-    for (let x = wmLeft; x < width; x++) {
-      maskData[y * width + x] = 255; // Fill watermark area with white
+  let resultBuffer: Buffer | null = null;
+
+  try {
+    // 1. Try AI Inpainting
+    const maskData = Buffer.alloc(width * height, 0);
+    for (let y = wmTop; y < height; y++) {
+      for (let x = wmLeft; x < width; x++) {
+        maskData[y * width + x] = 255;
+      }
+    }
+    const maskBuffer = await sharp(maskData, { raw: { width, height, channels: 1 } }).png().toBuffer();
+
+    const imageBase64 = `data:image/jpeg;base64,${(await sharp(rawBuffer).jpeg().toBuffer()).toString('base64')}`;
+    const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
+
+    const output = await replicate.run(
+      "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
+      {
+        input: {
+          image: imageBase64,
+          mask: maskBase64,
+          prompt: "seamless background, clean space, perfect texture matching",
+          disable_safety_checker: true,
+          num_inference_steps: 20
+        }
+      }
+    );
+
+    const resultUrl = Array.isArray(output) ? output[0] : output;
+    if (resultUrl) {
+      const res = await fetch(resultUrl.toString());
+      resultBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
+    }
+  } catch (error) {
+    console.error('[Eraser] Replicate API failed, falling back to local processing.');
+  }
+
+  // 2. ULTIMATE SAFETY VALVE: If AI failed OR returned a black image (< 10KB)
+  if (!resultBuffer || resultBuffer.length < 10000) {
+    console.log('[Eraser] AI returned black image or failed. Applying local blur-blend fallback.');
+    
+    const sampleLeft = Math.max(0, wmLeft - wmWidth - 10);
+    const sampleWidth = Math.min(wmWidth, wmLeft - 10);
+
+    if (sampleWidth > 10) {
+      const leftPatch = await sharp(rawBuffer)
+        .extract({ left: sampleLeft, top: wmTop, width: sampleWidth, height: wmHeight })
+        .resize(wmWidth, wmHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+        .blur(1.5)
+        .toBuffer();
+
+      resultBuffer = await sharp(rawBuffer)
+        .composite([{ input: leftPatch, left: wmLeft, top: wmTop, blend: 'over' }])
+        .jpeg({ quality: 96, chromaSubsampling: '4:4:4', force: true })
+        .toBuffer();
+    } else {
+      const wmRegion = await sharp(rawBuffer)
+        .extract({ left: wmLeft, top: wmTop, width: wmWidth, height: wmHeight })
+        .blur(15)
+        .toBuffer();
+
+      resultBuffer = await sharp(rawBuffer)
+        .composite([{ input: wmRegion, left: wmLeft, top: wmTop, blend: 'over' }])
+        .jpeg({ quality: 96, chromaSubsampling: '4:4:4', force: true })
+        .toBuffer();
     }
   }
 
-  const maskBuffer = await sharp(maskData, {
-    raw: { width, height, channels: 1 }
-  })
-  .png()
-  .toBuffer();
-
-  const imageBase64 = `data:image/jpeg;base64,${(await sharp(imageBuffer).jpeg().toBuffer()).toString('base64')}`;
-  const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
-
-  const output = await replicate.run(
-    "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
-    {
-      input: {
-        image: imageBase64,
-        mask: maskBase64,
-        prompt: "seamless background, clean space, perfect texture matching, high quality",
-        negative_prompt: "watermark, logo, text, signature, mark, blur, patches",
-        disable_safety_checker: true,
-        num_inference_steps: 30,
-        guidance_scale: 7.5,
-      }
-    }
-  );
-
-  const resultUrl = Array.isArray(output) ? output[0] : output;
-  if (!resultUrl) throw new Error('No output from Replicate');
-
-  const resultResponse = await fetch(resultUrl.toString());
-  const resultArray = await resultResponse.arrayBuffer();
-  return Buffer.from(new Uint8Array(resultArray)) as Buffer;
+  return resultBuffer;
 }
 
 export async function convertImageFormat(
