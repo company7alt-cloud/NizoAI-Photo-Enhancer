@@ -180,7 +180,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const { removeBottomRightWatermarkAI } = await import('../../services/imageService');
       const resultBuffer = await removeBottomRightWatermarkAI(imageUrl);
 
-      const fileName = `NizoAI_AutoEraser_${Date.now()}.jpg`;
+
 
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
 
