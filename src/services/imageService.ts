@@ -426,7 +426,8 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     const g = data[i * info.channels + 1];
     const b = data[i * info.channels + 2];
 
-    if (r > 100 && r > g + 40 && r > b + 40) {
+    // STRICT RED: High red, very low green/blue
+    if (r > 180 && g < 100 && b < 100) {
       maskData[i] = 255;
       hasRed = true;
       const x = i % width;
@@ -442,6 +443,14 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
   data = null as any;
 
   if (!hasRed) return workingBuffer as Buffer;
+
+  // SAFEGUARD: Prevent nuking the whole image. If the detected mask bounding box covers more than 50% of the image area, abort!
+  const boxArea = (maxX - minX) * (maxY - minY);
+  const imageArea = width * height;
+  if (boxArea > imageArea * 0.5) {
+    console.log('[Eraser] Mask is too large (false positive). Aborting to prevent image destruction.');
+    return workingBuffer as Buffer;
+  }
 
   const maskBuffer = await sharp(maskData, { raw: { width, height, channels: 1 } })
     .blur(5)
