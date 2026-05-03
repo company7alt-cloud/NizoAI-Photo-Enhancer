@@ -210,6 +210,19 @@ bot.on('message:text', async (ctx, next) => {
       );
       return;
     }
+    if (inputType === 'vip_size_bypass') {
+      const targetUser = await User.findOne({ telegramId: inputText.trim() });
+      if (!targetUser) {
+        await ctx.reply('❌ لم يتم العثور على مستخدم بهذا الـ ID.');
+        return;
+      }
+      await User.findOneAndUpdate({ telegramId: targetUser.telegramId }, { $set: { vipSizeBypass: true } });
+      await ctx.reply(`✅ <b>تم التفعيل!</b>\nالمستخدم (<code>${targetUser.telegramId}</code>) يستطيع الآن إرسال صور بحجم يصل إلى 15 ميجابايت 🌟`, { parse_mode: 'HTML' });
+      try {
+        await ctx.api.sendMessage(targetUser.telegramId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nبناءً على طلبك، تم فتح الحد الأقصى للممحاة السحرية. يمكنك الآن إرسال صور بحجم يصل إلى <b>15 ميجابايت</b>! 😎', { parse_mode: 'HTML' });
+      } catch (e) {}
+      return;
+    }
   }
 
   // 3. Fund Campaign Logic (Priority 3 - Kept exactly as original)

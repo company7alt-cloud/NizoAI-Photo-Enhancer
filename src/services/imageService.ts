@@ -474,7 +474,7 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
   // 2. ULTIMATE SAFETY VALVE: If AI failed OR returned a black image (< 10KB)
   if (!resultBuffer || resultBuffer.length < 10000) {
     console.log('[Eraser] AI returned black image or failed. Applying local blur-blend fallback.');
-    
+
     const sampleLeft = Math.max(0, wmLeft - wmWidth - 10);
     const sampleWidth = Math.min(wmWidth, wmLeft - 10);
 

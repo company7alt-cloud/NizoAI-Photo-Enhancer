@@ -1041,6 +1041,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
         [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
         [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+        [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
     });
@@ -1067,6 +1068,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
         [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
         [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+        [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
     });
@@ -1076,6 +1078,13 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       ctx.msgId!,
       { reply_markup: buildAdminKeyboard(newLocks) }
     );
+    return;
+  }
+
+  if (data === 'admin_vip_size') {
+    await ctx.answerCallbackQuery();
+    await User.findOneAndUpdate({ telegramId: ctx.from!.id.toString() }, { $set: { adminAwaitingInput: 'vip_size_bypass' } });
+    await ctx.reply('🌟 <b>تفعيل الأحجام الكبيرة (VIP)</b>\n\nأرسل الآن <b>ID</b> الخاص بالمستخدم لفتح الحد له إلى 15 ميجابايت:', { parse_mode: 'HTML' });
     return;
   }
 

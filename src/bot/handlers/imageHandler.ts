@@ -170,19 +170,26 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    // STRICT 5MB SIZE CHECK — closes session permanently if exceeded
-    const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+    const userVip = user.vipSizeBypass || false;
+    const MAX_SIZE_BYTES = (userVip ? 15 : 5) * 1024 * 1024;
+
     if (fileSize && fileSize > MAX_SIZE_BYTES) {
-      await User.findOneAndUpdate(
-        { telegramId: userId.toString() },
-        { $set: { awaitingEraserImage: false } }
-      );
+      await User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { awaitingEraserImage: false } });
+      
+      const adminIds = (process.env.ADMIN_IDS || '').split(',');
+      const mainAdmin = adminIds.length > 0 ? adminIds[0].trim() : '';
+
       await ctx.reply(
-        '⛔ <b>الصورة أكبر من الحد المسموح!</b>\n\n' +
-        'الحد الأقصى المسموح به هو <b>5 ميجابايت</b> فقط 📏\n\n' +
-        '❌ <b>تم إنهاء الجلسة تلقائياً.</b>\n\n' +
-        'لفتح هذه الميزة للأحجام الأكبر، يرجى التواصل مع مطور البوت 👨💻',
-        { parse_mode: 'HTML' }
+        `⛔ <b>الصورة أكبر من الحد المسموح!</b>\n\n` +
+        `الحد الأقصى المسموح لك هو <b>${userVip ? '15' : '5'} ميجابايت</b> 📏\n\n` +
+        `❌ <b>تم إنهاء الجلسة تلقائياً.</b>\n\n` +
+        `لفتح هذه الميزة للأحجام الكبيرة (VIP)، يرجى التواصل مع مطور البوت 👨💻`,
+        { 
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [[{ text: '👨💻 تواصل مع المطور', url: `tg://user?id=${mainAdmin}` }]]
+          }
+        }
       );
       return;
     }
