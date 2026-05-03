@@ -498,6 +498,84 @@ export async function processTwoStepInpainting(
   return Buffer.from(new Uint8Array(await res.arrayBuffer())) as Buffer;
 }
 
+// ── AUTO WATERMARK REMOVAL (bottom-right corner, no user marking needed) ──────
+export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Buffer> {
+  // STEP 1 — Download original image
+  const imageResponse = await fetch(imageUrl);
+  if (!imageResponse.ok) throw new Error(`Download failed: ${imageResponse.status}`);
+  const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
+
+  // STEP 2 — Read dimensions
+  const metadata = await sharp(rawBuffer).metadata();
+  const W = metadata.width!;
+  const H = metadata.height!;
+  console.log(`[AutoEraser] Image dimensions: ${W}x${H}`);
+
+  // STEP 3 — Define watermark zone (bottom-right corner)
+  const zoneX = Math.round(W * 0.72);
+  const zoneY = Math.round(H * 0.82);
+  const zoneW = W - zoneX; // W * 0.28
+  const zoneH = H - zoneY; // H * 0.18
+  console.log(`[AutoEraser] Watermark zone: x=${zoneX}, y=${zoneY}, w=${zoneW}, h=${zoneH}`);
+
+  // STEP 4 — Generate inpainting mask: black image + white rectangle over zone
+  const blackBase = await sharp({
+    create: { width: W, height: H, channels: 3, background: { r: 0, g: 0, b: 0 } }
+  }).png().toBuffer();
+
+  const whiteBox = await sharp({
+    create: { width: zoneW, height: zoneH, channels: 3, background: { r: 255, g: 255, b: 255 } }
+  }).png().toBuffer();
+
+  const maskBuffer = await sharp(blackBase)
+    .composite([{ input: whiteBox, left: zoneX, top: zoneY }])
+    .blur(3)
+    .png()
+    .toBuffer();
+
+  // STEP 5 — Convert to base64 data URIs for Replicate
+  const imageJpegBuffer = await sharp(rawBuffer).jpeg({ quality: 95 }).toBuffer();
+  const imageBase64 = `data:image/jpeg;base64,${imageJpegBuffer.toString('base64')}`;
+  const maskBase64  = `data:image/png;base64,${maskBuffer.toString('base64')}`;
+
+  console.log(`[AutoEraser] Calling Replicate inpainting...`);
+
+  // STEP 6 — Call stable-diffusion-inpainting
+  const output = await replicate.run(
+    "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
+    {
+      input: {
+        image:  imageBase64,
+        mask:   maskBase64,
+        prompt: "clean background, seamless texture, no watermark, no logo, no text, photorealistic, high quality",
+        negative_prompt: "watermark, logo, text, star, signature, blur, distortion, artifacts",
+        num_inference_steps: 50,
+        guidance_scale: 7.5,
+        inpainting_full_res: true,
+        inpainting_full_res_padding: 32,
+      }
+    }
+  );
+
+  const resultUrl = Array.isArray(output) ? output[0] : output;
+  if (!resultUrl) throw new Error('Inpainting API returned no image.');
+
+  console.log(`[AutoEraser] Downloading result from Replicate...`);
+
+  // STEP 7 — Download result and resize back to original dimensions
+  const res = await fetch(resultUrl.toString());
+  if (!res.ok) throw new Error(`Result download failed: ${res.status}`);
+  const resultBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
+
+  const finalBuffer = await sharp(resultBuffer)
+    .resize({ width: W, height: H, fit: 'fill' })
+    .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true })
+    .toBuffer();
+
+  console.log(`[AutoEraser] ✅ Done: ${(finalBuffer.length / 1024).toFixed(1)} KB`);
+  return finalBuffer;
+}
+
 export async function convertImageFormat(
   buffer: Buffer,
   format: 'jpg' | 'png' | 'webp' | 'gif' | 'tiff'

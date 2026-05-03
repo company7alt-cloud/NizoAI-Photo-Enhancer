@@ -117,6 +117,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     'locked_8k_ai': locks.btn_8kai,
     'nano_banana_start': locks.btn_nano,
     'eraser_start': locks.btn_eraser,
+    'remove_watermark_auto': locks.btn_eraser,
   };
 
   if (!isAdminUser && lockMap[data] === true) {
@@ -1814,6 +1815,59 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       { telegramId: ctx.from!.id.toString() },
       { $set: { awaitingEraserImage: true, awaitingEraserOriginal: false } }
     );
+    return;
+  }
+
+  // ══════════════════════════════════════
+  // 🧹 مُزيل النجمة التلقائي — one-shot auto watermark removal
+  // ══════════════════════════════════════
+  if (data === 'remove_watermark_auto') {
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const autoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isAutoAdmin = autoAdminIds.includes(ctx.from!.id.toString());
+
+    const autoUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (!autoUser) return;
+
+    if (!isAutoAdmin && autoUser.dailyQuota < 2) {
+      await ctx.reply(
+        `⚠️ رصيدك غير كافٍ! 🥺\n` +
+        `تحتاج <b>نقطتين (2)</b> لاستخدام مُزيل النجمة التلقائي 🧹\n` +
+        `رصيدك الحالي: <b>${autoUser.dailyQuota}</b>\n\n` +
+        `💡 احصل على محاولات مجانية من زر الهدية اليومية 🎁`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingAutoEraserImage: true } }
+    );
+
+    await ctx.reply(
+      '🧹 <b>مُزيل النجمة التلقائي</b>\n\n' +
+      'أرسل الصورة التي تريد إزالة النجمة/الشعار منها 📷\n\n' +
+      '✨ سأقوم تلقائياً بإزالة العلامة من <b>الزاوية السفلية اليمنى</b> بالذكاء الاصطناعي\n' +
+      '💎 <b>السعر: نقطتان (2)</b>',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_auto_eraser' }]]
+        }
+      }
+    );
+    return;
+  }
+
+  if (data === 'cancel_auto_eraser') {
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingAutoEraserImage: false } }
+    );
+    await ctx.deleteMessage().catch(() => {});
     return;
   }
 

@@ -164,8 +164,13 @@ export async function startCommand(ctx: BotContext): Promise<void> {
       eraserLocks.btn_eraser ? '🔒 مُزيل العلامات المائية — مقفل' : '✨ مُزيل العلامات المائية | 💎 محاولة واحدة',
       'eraser_start'
     );
+    keyboard.row().text(
+      eraserLocks.btn_eraser ? '🔒 مُزيل النجمة التلقائي — مقفل' : '🧹 مُزيل النجمة التلقائي',
+      'remove_watermark_auto'
+    );
     keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
     if (chanLink) keyboard.row().url('القناة', chanLink);
+
 
     keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
 

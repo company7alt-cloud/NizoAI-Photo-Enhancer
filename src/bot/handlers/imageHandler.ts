@@ -109,9 +109,133 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   }
 
   // ══════════════════════════════════════
+  // 🧹 AUTO ERASER — one-shot bottom-right watermark removal
+  // ══════════════════════════════════════
+  if (user?.awaitingAutoEraserImage) {
+    const autoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isAutoAdmin = autoAdminIds.includes(userId.toString());
+
+    // Accept photo OR document
+    let fileId: string | undefined;
+    if (ctx.message?.photo && ctx.message.photo.length > 0) {
+      fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+    } else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
+      fileId = ctx.message.document.file_id;
+    }
+
+    if (!fileId) {
+      await ctx.reply('⚠️ أرسل صورة عادية أو ملف صورة للمتابعة.');
+      return;
+    }
+
+    // Atomic: reset flag + deduct 2 attempts in one DB call
+    if (!isAutoAdmin) {
+      const updatedUser = await User.findOneAndUpdate(
+        {
+          telegramId: userId.toString(),
+          awaitingAutoEraserImage: true
+        },
+        {
+          $inc: { dailyQuota: -2, totalEnhancements: 1 },
+          $set: { awaitingAutoEraserImage: false }
+        },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        // State already consumed by concurrent request
+        await User.findOneAndUpdate(
+          { telegramId: userId.toString() },
+          { $set: { awaitingAutoEraserImage: false } }
+        );
+        await ctx.reply('⚠️ تم معالجة طلب آخر في نفس الوقت. ابدأ من جديد.');
+        return;
+      }
+    } else {
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { awaitingAutoEraserImage: false } }
+      );
+    }
+
+    const processingMsg = await ctx.reply(
+      '🧹 <b>جاري إزالة العلامة تلقائياً...</b>\n' +
+      'الذكاء الاصطناعي يعمل على الزاوية السفلية اليمنى 🪄\n' +
+      'لحظات وتكون جاهزة 🌟',
+      { parse_mode: 'HTML' }
+    );
+
+    try {
+      const tgFile = await ctx.api.getFile(fileId);
+      const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+
+      const { removeBottomRightWatermarkAI } = await import('../../services/imageService');
+      const resultBuffer = await removeBottomRightWatermarkAI(imageUrl);
+
+      const fileName = `NizoAI_AutoEraser_${Date.now()}.jpg`;
+
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+
+      const { InputFile } = await import('grammy');
+
+      await ctx.replyWithDocument(
+        new InputFile(resultBuffer, fileName),
+        {
+          caption: '✨ <b>تم! تمت إزالة النجمة/الشعار تلقائياً</b> 🧹\n📁 تم الإرسال كملف للحفاظ على أعلى جودة 💎',
+          parse_mode: 'HTML'
+        }
+      );
+
+      await ctx.replyWithPhoto(
+        new InputFile(resultBuffer, fileName),
+        { caption: '🖼 معاينة سريعة' }
+      );
+
+      // Silent archive to channel
+      const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+      if (ARCHIVE_CHANNEL) {
+        const userLink = ctx.from?.username
+          ? `@${ctx.from.username}`
+          : `<a href="tg://user?id=${ctx.from?.id}">${ctx.from?.first_name || 'مجهول'}</a>`;
+
+        await ctx.api.sendDocument(
+          ARCHIVE_CHANNEL,
+          new InputFile(resultBuffer, fileName),
+          {
+            caption:
+              `📦 <b>نسخة أرشيفية (مُزيل النجمة التلقائي)</b>\n` +
+              `━━━━━━━━━━━━━\n` +
+              `🆔 User ID: <code>${ctx.from?.id}</code>\n` +
+              `👤 Username: ${userLink}\n` +
+              `✨ النوع: مُزيل النجمة التلقائي\n` +
+              `🕐 Time: ${new Date().toLocaleString('ar-SA')}\n` +
+              `━━━━━━━━━━━━━`,
+            parse_mode: 'HTML',
+            disable_notification: true
+          }
+        ).catch(() => {});
+      }
+
+    } catch (error: any) {
+      // Restore 2 attempts on failure
+      if (!isAutoAdmin) {
+        await User.findOneAndUpdate(
+          { telegramId: userId.toString() },
+          { $inc: { dailyQuota: 2, totalEnhancements: -1 } }
+        );
+      }
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      console.error('[AutoEraser] Error:', error?.message);
+      await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة نقطتيك تلقائياً ✨');
+    }
+    return;
+  }
+
+  // ══════════════════════════════════════
   // STEP 1: Receive reference image (marked with red)
   // ══════════════════════════════════════
   if (user?.awaitingEraserImage) {
+
 
     // Lock check
     const { getSettings: getEraserSettings } = await import('../../services/settingsService');
