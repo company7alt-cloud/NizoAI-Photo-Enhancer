@@ -397,10 +397,12 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
 
 export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
   sharp.cache(false);
+  sharp.concurrency(1); // CRITICAL: Limits threads to save RAM on 512MB servers
+
   const imageResponse = await fetch(imageUrl);
   const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
-  const MAX_DIM = 1500;
+  const MAX_DIM = 1024; // Safe size for 512MB RAM
   let workingBuffer: any = rawBuffer;
   const metadata = await sharp(rawBuffer).metadata();
   let width = metadata.width!;
@@ -413,7 +415,7 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     height = newMeta.height!;
   }
 
-  const { data, info } = await sharp(workingBuffer).raw().toBuffer({ resolveWithObject: true });
+  let { data, info } = await sharp(workingBuffer).raw().toBuffer({ resolveWithObject: true });
   const maskData = Buffer.alloc(width * height, 0);
 
   let minX = width, minY = height, maxX = 0, maxY = 0;
@@ -424,7 +426,6 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     const g = data[i * info.channels + 1];
     const b = data[i * info.channels + 2];
 
-    // Red dominant threshold
     if (r > 100 && r > g + 40 && r > b + 40) {
       maskData[i] = 255;
       hasRed = true;
@@ -437,9 +438,11 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     }
   }
 
-  if (!hasRed) return workingBuffer; // No red mask drawn, return original
+  // CRITICAL MEMORY FIX: Free raw pixel data immediately to prevent OOM
+  data = null as any;
 
-  // Apply Photoshop-like Feather to mask
+  if (!hasRed) return workingBuffer as Buffer;
+
   const maskBuffer = await sharp(maskData, { raw: { width, height, channels: 1 } })
     .blur(5)
     .png()
@@ -469,7 +472,6 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     if (resultUrl) {
       const res = await fetch(resultUrl.toString());
       const aiBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
-      // Safety Check: Avoid Black Screen (< 10KB)
       if (aiBuffer.length > 10000) {
         resultBuffer = aiBuffer;
       }
@@ -478,11 +480,8 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     console.error('[Eraser] AI Failed:', error);
   }
 
-  // 🛡️ THE BULLETPROOF SAFETY VALVE: Local Bounding Box Fallback
   if (!resultBuffer) {
-    console.log('[Eraser] Black screen detected or AI failed! Using local bounding box fallback.');
-
-    // Add 10px padding to the bounding box
+    console.log('[Eraser] Local fallback triggered.');
     minX = Math.max(0, minX - 10);
     minY = Math.max(0, minY - 10);
     maxX = Math.min(width - 1, maxX + 10);
@@ -506,7 +505,7 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     }
   }
 
-  return (resultBuffer || workingBuffer) as Buffer;
+  return (resultBuffer || workingBuffer) as any;
 }
 
 export async function convertImageFormat(
