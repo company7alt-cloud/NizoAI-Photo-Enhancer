@@ -396,99 +396,117 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
 }
 
 export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
-  try {
-    console.log('[Eraser] Starting via Replicate LaMa inpainting...');
+  sharp.cache(false);
+  const imageResponse = await fetch(imageUrl);
+  const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
-    const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) throw new Error(`Download failed: ${imageResponse.status}`);
-    const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
+  const MAX_DIM = 1500;
+  let workingBuffer: any = rawBuffer;
+  const metadata = await sharp(rawBuffer).metadata();
+  let width = metadata.width!;
+  let height = metadata.height!;
 
-    // Resize to max 1024px to prevent OOM on Render 512MB RAM
-    const metadata = await sharp(rawBuffer).metadata();
-    const width = metadata.width ?? 0;
-    const height = metadata.height ?? 0;
-    console.log(`[Eraser] Input: ${width}x${height}`);
+  if (width > MAX_DIM || height > MAX_DIM) {
+    workingBuffer = await sharp(rawBuffer).resize(MAX_DIM, MAX_DIM, { fit: 'inside' }).toBuffer();
+    const newMeta = await sharp(workingBuffer).metadata();
+    width = newMeta.width!;
+    height = newMeta.height!;
+  }
 
-    const MAX_DIM = 1024;
-    let workingBuffer: Buffer;
-    let finalWidth: number;
-    let finalHeight: number;
+  const { data, info } = await sharp(workingBuffer).raw().toBuffer({ resolveWithObject: true });
+  const maskData = Buffer.alloc(width * height, 0);
 
-    if (width > MAX_DIM || height > MAX_DIM) {
-      workingBuffer = Buffer.from(await sharp(rawBuffer)
-        .resize(MAX_DIM, MAX_DIM, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 95 })
-        .toBuffer());
-      const newMeta = await sharp(workingBuffer).metadata();
-      finalWidth = newMeta.width ?? MAX_DIM;
-      finalHeight = newMeta.height ?? MAX_DIM;
-    } else {
-      workingBuffer = Buffer.from(await sharp(rawBuffer).jpeg({ quality: 95 }).toBuffer());
-      finalWidth = width;
-      finalHeight = height;
+  let minX = width, minY = height, maxX = 0, maxY = 0;
+  let hasRed = false;
+
+  for (let i = 0; i < width * height; i++) {
+    const r = data[i * info.channels];
+    const g = data[i * info.channels + 1];
+    const b = data[i * info.channels + 2];
+
+    // Red dominant threshold
+    if (r > 100 && r > g + 40 && r > b + 40) {
+      maskData[i] = 255;
+      hasRed = true;
+      const x = i % width;
+      const y = Math.floor(i / width);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
     }
+  }
 
-    // Auto-detect watermark region: bottom-right corner 10% x 8%
-    const wmWidth = Math.ceil(finalWidth * 0.10);
-    const wmHeight = Math.ceil(finalHeight * 0.08);
-    const wmLeft = finalWidth - wmWidth;
-    const wmTop = finalHeight - wmHeight;
+  if (!hasRed) return workingBuffer; // No red mask drawn, return original
 
-    console.log(`[Eraser] Mask region: left=${wmLeft} top=${wmTop} w=${wmWidth} h=${wmHeight}`);
+  // Apply Photoshop-like Feather to mask
+  const maskBuffer = await sharp(maskData, { raw: { width, height, channels: 1 } })
+    .blur(5)
+    .png()
+    .toBuffer();
 
-    // Generate white mask on black background using SVG
-    const svgMask = `<svg xmlns="http://www.w3.org/2000/svg" width="${finalWidth}" height="${finalHeight}">
-      <rect width="${finalWidth}" height="${finalHeight}" fill="black"/>
-      <rect x="${wmLeft}" y="${wmTop}" width="${wmWidth}" height="${wmHeight}" fill="white" rx="4"/>
-    </svg>`;
+  const imageBase64 = `data:image/jpeg;base64,${(await sharp(workingBuffer).jpeg().toBuffer()).toString('base64')}`;
+  const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
 
-    const maskBuffer = Buffer.from(await sharp(Buffer.from(svgMask))
-      .resize(finalWidth, finalHeight)
-      .png()
-      .toBuffer());
+  let resultBuffer: Buffer | null = null;
 
-    // Convert to base64 data URIs
-    const imageBase64 = `data:image/jpeg;base64,${workingBuffer.toString('base64')}`;
-    const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
-
-    // Send to Replicate SD Inpainting
-    console.log('[Eraser] Sending to Replicate SD Inpainting...');
+  try {
     const output = await replicate.run(
       "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
-      { 
-        input: { 
-          image: imageBase64, 
+      {
+        input: {
+          image: imageBase64,
           mask: maskBase64,
-          prompt: "seamless background, clean space, perfect texture matching, high quality",
-          negative_prompt: "watermark, logo, text, signature, mark, blur, patches",
+          prompt: "seamless background, clean space, perfect texture matching",
+          negative_prompt: "watermark, logo, mark, patches",
           disable_safety_checker: true,
-          num_inference_steps: 30,
-          guidance_scale: 7.5
-        } 
+          num_inference_steps: 20
+        }
       }
     );
 
-    const resultUrl_raw = Array.isArray(output) ? output[0] : output;
-    if (!resultUrl_raw) throw new Error('SD Inpainting returned no output');
-    const resultUrl = String(resultUrl_raw);
-
-    const resultResponse = await fetch(resultUrl);
-    if (!resultResponse.ok) throw new Error(`Eraser result download failed: ${resultResponse.status}`);
-    const resultBuffer = Buffer.from(new Uint8Array(await resultResponse.arrayBuffer()));
-
-    // Light sharpening to restore detail after inpainting
-    const finalBuffer = Buffer.from(await sharp(resultBuffer)
-      .sharpen({ sigma: 0.8 })
-      .jpeg({ quality: 92 })
-      .toBuffer());
-
-    console.log(`[Eraser] ✅ Done: ${(finalBuffer.length / 1024).toFixed(1)} KB`);
-    return finalBuffer;
-
-  } catch (error: any) {
-    console.error(`[Eraser] ❌ Error: ${error?.message || error}`);
-    throw error;
+    const resultUrl = Array.isArray(output) ? output[0] : output;
+    if (resultUrl) {
+      const res = await fetch(resultUrl.toString());
+      const aiBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
+      // Safety Check: Avoid Black Screen (< 10KB)
+      if (aiBuffer.length > 10000) {
+        resultBuffer = aiBuffer;
+      }
+    }
+  } catch (error) {
+    console.error('[Eraser] AI Failed:', error);
   }
+
+  // 🛡️ THE BULLETPROOF SAFETY VALVE: Local Bounding Box Fallback
+  if (!resultBuffer) {
+    console.log('[Eraser] Black screen detected or AI failed! Using local bounding box fallback.');
+
+    // Add 10px padding to the bounding box
+    minX = Math.max(0, minX - 10);
+    minY = Math.max(0, minY - 10);
+    maxX = Math.min(width - 1, maxX + 10);
+    maxY = Math.min(height - 1, maxY + 10);
+
+    const boxWidth = maxX - minX;
+    const boxHeight = maxY - minY;
+
+    if (boxWidth > 0 && boxHeight > 0) {
+      const localPatch = await sharp(workingBuffer)
+        .extract({ left: minX, top: minY, width: boxWidth, height: boxHeight })
+        .blur(15)
+        .toBuffer();
+
+      resultBuffer = await sharp(workingBuffer)
+        .composite([{ input: localPatch, left: minX, top: minY, blend: 'over' }])
+        .jpeg({ quality: 96, force: true })
+        .toBuffer();
+    } else {
+      resultBuffer = workingBuffer;
+    }
+  }
+
+  return resultBuffer;
 }
 
 export async function convertImageFormat(
