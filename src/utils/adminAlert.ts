@@ -43,7 +43,7 @@ export async function sendAdminAlert(ctx: Context, errorDetails: string): Promis
           inline_keyboard: [
             [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` }],
             [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` }],
-            [{ text: '💬 فتح محادثة دعم مع العميل', callback_data: `admin_support_${userId}` }],
+            [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}` }],
           ],
         },
       });
