@@ -366,6 +366,7 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
 }
 
 export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
+  // Download original image
   const imageResponse = await fetch(imageUrl);
   const imageBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
@@ -373,34 +374,58 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
   const width = metadata.width!;
   const height = metadata.height!;
 
-  // Gemini watermark: bottom-right corner, ~6% of dimensions
-  const wmWidth = Math.ceil(width * 0.07);
-  const wmHeight = Math.ceil(height * 0.07);
+  // Watermark region: bottom-right corner, 8% width x 8% height
+  const wmWidth = Math.ceil(width * 0.08);
+  const wmHeight = Math.ceil(height * 0.08);
   const wmLeft = width - wmWidth;
   const wmTop = height - wmHeight;
 
-  // Sample patch from just ABOVE the watermark to use as fill
-  const sampleTop = Math.max(0, wmTop - wmHeight);
-  const samplePatch = await sharp(imageBuffer)
-    .extract({ left: wmLeft, top: sampleTop, width: wmWidth, height: wmHeight })
-    .toBuffer();
+  // Create black mask image (same size as original)
+  // White area = region to erase, Black = keep
+  const maskBuffer = await sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: { r: 0, g: 0, b: 0 }
+    }
+  })
+  .composite([{
+    input: Buffer.from(
+      `<svg width="${width}" height="${height}">
+        <rect x="${wmLeft}" y="${wmTop}" width="${wmWidth}" height="${wmHeight}" fill="white"/>
+      </svg>`
+    ),
+    blend: 'over'
+  }])
+  .png()
+  .toBuffer();
 
-  const fillPatch = await sharp(samplePatch)
-    .resize(wmWidth, wmHeight, { fit: 'fill' })
-    .toBuffer();
+  // Convert both to base64 data URIs for Replicate
+  const imageBase64 = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
+  const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
 
-  // Composite fill over watermark area
-  const result = await sharp(imageBuffer)
-    .composite([{
-      input: fillPatch,
-      left: wmLeft,
-      top: wmTop,
-      blend: 'over'
-    }])
-    .png({ quality: 100 })
-    .toBuffer();
+  // Send to Replicate LaMa (best free inpainting model)
+  const output = await replicate.run(
+    "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
+    {
+      input: {
+        image: imageBase64,
+        mask: maskBase64,
+        prompt: "seamless background, no watermark, clean, same texture as surrounding area",
+        negative_prompt: "watermark, logo, text, signature, mark",
+        num_inference_steps: 30,
+        guidance_scale: 7.5,
+      }
+    }
+  );
 
-  return result as Buffer;
+  const resultUrl = Array.isArray(output) ? output[0] : output;
+  if (!resultUrl) throw new Error('No output from Replicate');
+
+  const resultResponse = await fetch(resultUrl.toString());
+  const resultArray = await resultResponse.arrayBuffer();
+  return Buffer.from(new Uint8Array(resultArray)) as Buffer;
 }
 
 export async function convertImageFormat(
