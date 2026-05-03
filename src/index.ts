@@ -310,6 +310,33 @@ bot.on('message:text', async (ctx, next) => {
     return; // Stop — don't process as standard message
   }
 
+  // ── Report interceptor for text messages ──
+  if (user?.awaitingReport) {
+    await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
+
+    const messageId = ctx.message?.message_id;
+    const chatId = ctx.chat?.id;
+
+    if (messageId && chatId) {
+      await ctx.reply(
+        '📤 <b>هل تريد مشاركة هذا البلاغ مع مطور البوت؟</b>\n\n' +
+        'سيتم إرسال رسالتك للمطور مباشرة وسيتم الرد عليك في أقرب وقت 💙',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}` },
+                { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm' },
+              ],
+            ],
+          },
+        }
+      );
+    }
+    return;
+  }
+
   await next();
 });
 
@@ -347,6 +374,33 @@ bot.on([':photo', ':document'], async (ctx, next) => {
         }
       );
       return; // Stop processing, do not send to imageHandler
+    }
+  }
+
+  // ── Report interceptor for photos and documents ──
+  if (user?.awaitingReport) {
+    await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
+
+    const messageId = ctx.message?.message_id;
+    const chatId = ctx.chat?.id;
+
+    if (messageId && chatId) {
+      await ctx.reply(
+        '📤 <b>هل تريد مشاركة هذا البلاغ مع مطور البوت؟</b>\n\n' +
+        'سيتم إرسال رسالتك للمطور مباشرة وسيتم الرد عليك في أقرب وقت 💙',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}` },
+                { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm' },
+              ],
+            ],
+          },
+        }
+      );
+      return; // STOP — do not pass to imageHandler
     }
   }
 
