@@ -97,32 +97,30 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   }
 
   if (reportUser?.awaitingReport) {
+    // Reset state immediately
     await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
 
-    const adminIdsRaw = process.env.ADMIN_IDS || '';
-    const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
-    const userId = ctx.from?.id;
-    const firstName = ctx.from?.first_name || 'مجهول';
-    const username = ctx.from?.username ? `@${ctx.from.username}` : 'لا يوجد معرف';
-    const userLink = `tg://user?id=${userId}`;
+    const messageId = ctx.message?.message_id;
+    const chatId = ctx.chat?.id;
 
-    const reportHeader =
-      `🚨 <b>بلاغ جديد من عميل</b>\n\n` +
-      `👤 <b>العميل:</b> <a href="${userLink}">${firstName}</a>\n` +
-      `🔗 <b>المعرف:</b> ${username}\n` +
-      `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
-      `📅 <b>التوقيت:</b> ${new Date().toLocaleString('ar-SA')}`;
+    if (!messageId || !chatId) return;
 
-    for (const adminId of adminIds) {
-      try {
-        await ctx.api.sendMessage(adminId, reportHeader, { parse_mode: 'HTML' });
-        await ctx.forwardMessage(adminId);
-      } catch (e) {
-        console.error('[Report] Forward error:', e);
+    // Ask user for confirmation before forwarding
+    await ctx.reply(
+      '📤 <b>هل تريد مشاركة هذا البلاغ مع مطور البوت؟</b>\n\n' +
+      'سيتم إرسال رسالتك للمطور مباشرة وسيتم الرد عليك في أقرب وقت 💙',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}` },
+              { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm' },
+            ],
+          ],
+        },
       }
-    }
-
-    await ctx.reply('✅ تم تحويل بلاغك إلى المطور بنجاح 💌\nسيتم الرد عليك في أسرع وقت ممكن 🌹');
+    );
     return;
   }
 
