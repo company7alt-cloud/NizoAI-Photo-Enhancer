@@ -396,63 +396,145 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
 }
 
 export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
-  // Download image
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
+
+  // Download original image
   const imageResponse = await fetch(imageUrl);
   const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
-  // Get dimensions
   const metadata = await sharp(rawBuffer).metadata();
-  const width = metadata.width!;
+  const width  = metadata.width!;
   const height = metadata.height!;
 
-  // Gemini watermark is always bottom-right corner
-  // Size: approximately 5.5% of width/height (scales with image)
-  const wmW = Math.ceil(width  * 0.055);
-  const wmH = Math.ceil(height * 0.055);
+  // Gemini watermark: bottom-right corner, ~5.5% of each dimension
+  const wmW    = Math.ceil(width  * 0.055);
+  const wmH    = Math.ceil(height * 0.055);
   const wmLeft = width  - wmW;
   const wmTop  = height - wmH;
 
-  // ── Strategy: sample 3 patches from around the watermark area ──
-  // Then blend them to reconstruct the background intelligently
+  // Step 1: Crop just the watermark region + surrounding context
+  // We crop a larger area (3x watermark size) for Gemini to understand context
+  const contextW    = Math.min(width,  wmW * 3);
+  const contextH    = Math.min(height, wmH * 3);
+  const contextLeft = Math.max(0, width  - contextW);
+  const contextTop  = Math.max(0, height - contextH);
 
-  // Patch 1: from directly above the watermark
-  const patch1Top = Math.max(0, wmTop - wmH);
-  const p1 = await sharp(rawBuffer)
-    .extract({ left: wmLeft, top: patch1Top, width: wmW, height: wmH })
+  const contextPatch = await sharp(rawBuffer)
+    .extract({ left: contextLeft, top: contextTop, width: contextW, height: contextH })
+    .png()
     .toBuffer();
 
-  // Patch 2: from the left of the watermark
-  const patch2Left = Math.max(0, wmLeft - wmW);
-  const p2 = await sharp(rawBuffer)
-    .extract({ left: patch2Left, top: wmTop, width: wmW, height: wmH })
+  const contextBase64 = contextPatch.toString('base64');
+
+  // Step 2: Ask Gemini to describe the background under the watermark
+  const geminiResponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            {
+              text: `This image shows a bottom-right corner of a photo. There is a small white 4-pointed star watermark in the very bottom-right corner. 
+              
+              Describe ONLY the background texture/color/pattern that exists directly behind and around this watermark star, in precise detail. 
+              What are the exact RGB color values or color description of the pixels surrounding the star? Is it dark, light, gradient? What texture?
+              
+              Respond in this exact JSON format only, no other text:
+              {"bg_color": "description", "is_dark": true/false, "dominant_color": "hex color like #1a1a1a", "texture": "solid/gradient/detailed"}`
+            },
+            {
+              inline_data: {
+                mime_type: 'image/png',
+                data: contextBase64
+              }
+            }
+          ]
+        }],
+        generationConfig: { temperature: 0.1 }
+      })
+    }
+  );
+
+  let bgInfo = { is_dark: true, dominant_color: '#000000', texture: 'solid' };
+
+  if (geminiResponse.ok) {
+    try {
+      const geminiData = await geminiResponse.json();
+      const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const jsonMatch = text.match(/\{.*\}/s);
+      if (jsonMatch) {
+        bgInfo = JSON.parse(jsonMatch[0]);
+      }
+    } catch (e) {
+      console.log('[Eraser] Could not parse Gemini response, using fallback');
+    }
+  }
+
+  // Step 3: Sample actual pixels from the area just ABOVE the watermark
+  const sampleH    = Math.max(4, Math.ceil(wmH * 0.8));
+  const sampleTop  = Math.max(0, wmTop - sampleH - 2);
+  const sampleLeft = Math.max(0, wmLeft - Math.ceil(wmW * 0.5));
+  const sampleW    = Math.min(width - sampleLeft, wmW + Math.ceil(wmW * 0.5));
+
+  const samplePatch = await sharp(rawBuffer)
+    .extract({ left: sampleLeft, top: sampleTop, width: sampleW, height: sampleH })
     .toBuffer();
 
-  // Patch 3: diagonal (above-left)
-  const p3 = await sharp(rawBuffer)
-    .extract({ left: patch2Left, top: patch1Top, width: wmW, height: wmH })
+  // Get average color from the sample patch
+  const { dominant } = await sharp(samplePatch)
+    .resize(1, 1, { fit: 'cover' })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const avgR = dominant[0] ?? 0;
+  const avgG = dominant[1] ?? 0;
+  const avgB = dominant[2] ?? 0;
+  void avgR; void avgG; void avgB; // suppress unused variable warnings
+
+  // Step 4: Build fill patch matching the exact background
+  const sampleAbove = await sharp(rawBuffer)
+    .extract({
+      left: wmLeft,
+      top: Math.max(0, wmTop - wmH * 2),
+      width: wmW,
+      height: Math.min(wmH * 2, wmTop)
+    })
     .toBuffer();
 
-  // Blend the 3 patches together with equal weight to get smooth fill
-  const blended = await sharp(p1)
-    .composite([
-      { input: p2, blend: 'multiply' },
-      { input: p3, blend: 'screen' }
-    ])
-    .blur(1.5)
-    .resize(wmW, wmH, { fit: 'fill' })
+  const fillPatch = await sharp(sampleAbove)
+    .resize(wmW, wmH, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+    .blur(0.8)
+    .modulate({
+      brightness: bgInfo.is_dark ? 0.98 : 1.02,
+      saturation: 0.95
+    })
     .toBuffer();
 
-  // Apply a subtle gaussian blur to the fill patch edges for seamless blending
-  const fillPatch = await sharp(blended)
-    .resize(wmW + 4, wmH + 4, { fit: 'fill' })
-    .blur(2)
-    .resize(wmW, wmH, { fit: 'fill' })
+  // Step 5: Apply fill with feathered edges for seamless blending
+  const maskSvg = Buffer.from(`
+    <svg width="${wmW}" height="${wmH}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="fade" cx="30%" cy="30%" r="80%">
+          <stop offset="0%" stop-color="white" stop-opacity="1"/>
+          <stop offset="70%" stop-color="white" stop-opacity="1"/>
+          <stop offset="100%" stop-color="white" stop-opacity="0.6"/>
+        </radialGradient>
+      </defs>
+      <rect width="${wmW}" height="${wmH}" fill="url(#fade)"/>
+    </svg>
+  `);
+
+  const maskedFill = await sharp(fillPatch)
+    .composite([{ input: maskSvg, blend: 'dest-in' }])
     .toBuffer();
 
-  // Composite the fill patch over the watermark region
+  // Step 6: Composite onto original image
   const result = await sharp(rawBuffer)
     .composite([{
-      input: fillPatch,
+      input: maskedFill,
       left: wmLeft,
       top: wmTop,
       blend: 'over'
@@ -460,6 +542,7 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     .png({ compressionLevel: 6 })
     .toBuffer();
 
+  console.log(`[Eraser] ✅ Watermark removed. BG: ${bgInfo.dominant_color}, Dark: ${bgInfo.is_dark}`);
   return result as Buffer;
 }
 
