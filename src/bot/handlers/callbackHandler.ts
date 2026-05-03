@@ -614,7 +614,72 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  // ══════════════════════════════════════
+  if (data.startsWith('confirm_report_')) {
+    await ctx.answerCallbackQuery();
+
+    // Parse chatId and messageId from callback data
+    const withoutPrefix = data.replace('confirm_report_', '');
+    const underscoreIdx = withoutPrefix.indexOf('_');
+    const sourceChatId = Number(withoutPrefix.substring(0, underscoreIdx));
+    const sourceMessageId = Number(withoutPrefix.substring(underscoreIdx + 1));
+
+    if (!sourceChatId || !sourceMessageId || isNaN(sourceChatId) || isNaN(sourceMessageId)) {
+      await ctx.editMessageText('❌ انتهت صلاحية البلاغ. يرجى إرسال بلاغ جديد.').catch(() => {});
+      return;
+    }
+
+    const adminIdsRaw = process.env.ADMIN_IDS || '';
+    const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
+
+    const userId = ctx.from?.id;
+    const firstName = ctx.from?.first_name || 'مجهول';
+    const username = ctx.from?.username ? `@${ctx.from.username}` : 'لا يوجد معرف';
+    const userLink = `tg://user?id=${userId}`;
+
+    const reportHeader =
+      `🚨 <b>بلاغ جديد من عميل</b>\n\n` +
+      `👤 <b>العميل:</b> <a href="${userLink}">${firstName}</a>\n` +
+      `🔗 <b>المعرف:</b> ${username}\n` +
+      `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
+      `📅 <b>التوقيت:</b> ${new Date().toLocaleString('ar-SA')}`;
+
+    let forwarded = false;
+
+    for (const adminId of adminIds) {
+      try {
+        // Send header with user info and action buttons
+        await ctx.api.sendMessage(Number(adminId), reportHeader, {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` }],
+              [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` }],
+              [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}` }],
+            ],
+          },
+        });
+
+        // Forward the original message (works for ALL types)
+        await ctx.api.forwardMessage(Number(adminId), sourceChatId, sourceMessageId);
+        forwarded = true;
+      } catch (e) {
+        console.error('[Report Forward] Error for admin', adminId, e);
+      }
+    }
+
+    // Update confirmation message
+    try {
+      await ctx.editMessageText(
+        forwarded
+          ? '✅ <b>تم إرسال بلاغك للمطور بنجاح!</b>\n\nسيتم الرد عليك في أقرب وقت ممكن 🌹'
+          : '❌ حدث خطأ أثناء إرسال البلاغ. حاول مجدداً.',
+        { parse_mode: 'HTML' }
+      );
+    } catch {}
+    return;
+  }
+
+    // ══════════════════════════════════════
   // 💬 فتح جلسة دعم مع العميل
   // ══════════════════════════════════════
   if (data.startsWith('admin_support_')) {
