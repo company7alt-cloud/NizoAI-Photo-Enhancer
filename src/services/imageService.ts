@@ -463,7 +463,7 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
   if (geminiResponse.ok) {
     try {
       const geminiData = await geminiResponse.json();
-      const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const text = (geminiData as any)?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const jsonMatch = text.match(/\{.*\}/s);
       if (jsonMatch) {
         bgInfo = JSON.parse(jsonMatch[0]);
@@ -484,14 +484,14 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
     .toBuffer();
 
   // Get average color from the sample patch
-  const { dominant } = await sharp(samplePatch)
+  const { data: dominantData } = await sharp(samplePatch)
     .resize(1, 1, { fit: 'cover' })
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  const avgR = dominant[0] ?? 0;
-  const avgG = dominant[1] ?? 0;
-  const avgB = dominant[2] ?? 0;
+  const avgR = dominantData[0] ?? 0;
+  const avgG = dominantData[1] ?? 0;
+  const avgB = dominantData[2] ?? 0;
   void avgR; void avgG; void avgB; // suppress unused variable warnings
 
   // Step 4: Build fill patch matching the exact background
