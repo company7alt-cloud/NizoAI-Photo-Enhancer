@@ -240,7 +240,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
               `━━━━━━━━━━━━━━\n` +
               `🆔 <b>User ID:</b> <code>${actionUser.id}</code>\n` +
               `👤 <b>Username:</b> ${userLink}\n` +
-              `🔄 <b>العملية:</b> إزالة علامة مائية تلقائية\n` +
+              `🔄 <b>العملية:</b> إزالة علامة مائية تلقائية 🧹\n` +
               `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
               `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
               `━━━━━━━━━━━━━━`,
