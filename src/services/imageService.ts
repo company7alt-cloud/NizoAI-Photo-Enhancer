@@ -412,9 +412,9 @@ export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> 
       input: {
         image: imageBase64,
         mask: maskBase64,
-        prompt: "seamless background, no watermark, clean, same texture as surrounding area",
-        negative_prompt: "watermark, logo, text, signature, mark",
-        num_inference_steps: 30,
+        prompt: "empty background, clear space, high quality",
+        disable_safety_checker: true,
+        num_inference_steps: 20,
         guidance_scale: 7.5,
       }
     }
