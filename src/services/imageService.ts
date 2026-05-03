@@ -325,154 +325,179 @@ export async function processProEnhance(
 }
 
 export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
-  const STRICT_PROMPT = `Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.`;
+  try {
+    console.log('[NanoAI] Starting via Replicate Real-ESRGAN...');
 
-  const imageResponse = await fetch(imageUrl);
-  const imageArrayBuffer = await imageResponse.arrayBuffer();
-  const base64Image = Buffer.from(new Uint8Array(imageArrayBuffer)).toString('base64');
-  const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
-  const mimeType = contentType.split(';')[0].trim();
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) throw new Error(`Download failed: ${imageResponse.status}`);
+    const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
-  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
+    const metadata = await sharp(rawBuffer).metadata();
+    const width = metadata.width ?? 0;
+    const height = metadata.height ?? 0;
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: STRICT_PROMPT },
-            { inline_data: { mime_type: mimeType, data: base64Image } }
-          ]
-        }]
-      })
+    let processedBuffer: Buffer;
+    if (width > 1400 || height > 1400) {
+      processedBuffer = Buffer.from(await sharp(rawBuffer)
+        .resize(1400, 1400, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 92 })
+        .toBuffer());
+    } else {
+      processedBuffer = Buffer.from(await sharp(rawBuffer).jpeg({ quality: 92 }).toBuffer());
     }
-  );
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini API error ${response.status}: ${errText.slice(0, 300)}`);
+    const base64Image = `data:image/jpeg;base64,${processedBuffer.toString('base64')}`;
+
+    let prediction = await replicate.predictions.create({
+      version: "42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b",
+      input: { image: base64Image, scale: 4, face_enhance: false }
+    });
+
+    console.log(`[NanoAI] Prediction created: ${prediction.id}`);
+
+    const startTime = Date.now();
+    while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
+      if (Date.now() - startTime > 90000) throw new Error('NanoAI timeout after 90 seconds');
+      await new Promise(r => setTimeout(r, 2000));
+      prediction = await replicate.predictions.get(prediction.id);
+      console.log(`[NanoAI] Status: ${prediction.status}`);
+    }
+
+    if (prediction.status === 'failed') {
+      throw new Error(`NanoAI prediction failed: ${prediction.error}`);
+    }
+
+    const output = prediction.output;
+    let resultUrl: string;
+    if (typeof output === 'string') resultUrl = output;
+    else if (Array.isArray(output) && output.length > 0) resultUrl = String(output[0]);
+    else throw new Error(`Unexpected NanoAI output: ${JSON.stringify(output)}`);
+
+    const resultResponse = await fetch(resultUrl);
+    if (!resultResponse.ok) throw new Error(`NanoAI result download failed: ${resultResponse.status}`);
+    const resultBuffer = Buffer.from(new Uint8Array(await resultResponse.arrayBuffer()));
+
+    let finalBuffer = Buffer.from(await sharp(resultBuffer)
+      .sharpen({ sigma: 1.5, m1: 2.0, m2: 0.8 })
+      .jpeg({ quality: 88 })
+      .toBuffer());
+
+    if (finalBuffer.length > 2 * 1024 * 1024) {
+      finalBuffer = Buffer.from(await sharp(finalBuffer).jpeg({ quality: 75 }).toBuffer());
+    }
+
+    console.log(`[NanoAI] ✅ Done: ${(finalBuffer.length / 1024).toFixed(1)} KB`);
+    return finalBuffer;
+
+  } catch (error: any) {
+    console.error(`[NanoAI] ❌ Error: ${error?.message || error}`);
+    throw error;
   }
-
-  const result = await response.json();
-  const parts = (result as any)?.candidates?.[0]?.content?.parts || [];
-  const imagePart = parts.find((p: any) => p.inline_data?.data);
-  if (!imagePart) throw new Error('Gemini did not return an image.');
-
-  const rawBuffer = Buffer.from(imagePart.inline_data.data, 'base64') as Buffer;
-
-  // ── Remove Gemini watermark from bottom-right corner ──
-  const metadata = await sharp(rawBuffer).metadata();
-  const imgWidth = metadata.width || 1000;
-  const imgHeight = metadata.height || 1000;
-
-  // Watermark region: bottom-right ~20% width, ~9% height
-  const wmWidth = Math.round(imgWidth * 0.20);
-  const wmHeight = Math.round(imgHeight * 0.09);
-  const wmLeft = imgWidth - wmWidth;
-  const wmTop = imgHeight - wmHeight;
-
-  // Sample clean patch from LEFT of watermark (same vertical position)
-  const sampleLeft = Math.max(0, wmLeft - wmWidth - 10);
-  const sampleWidth = Math.min(wmWidth, wmLeft - 10);
-
-  let cleanBuffer: Buffer;
-
-  if (sampleWidth > 10) {
-    const leftPatch = await sharp(rawBuffer)
-      .extract({
-        left: sampleLeft,
-        top: wmTop,
-        width: sampleWidth,
-        height: wmHeight,
-      })
-      .resize(wmWidth, wmHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
-      .blur(1.5)
-      .toBuffer();
-
-    cleanBuffer = await sharp(rawBuffer)
-      .composite([{ input: leftPatch, left: wmLeft, top: wmTop, blend: 'over' }])
-      .jpeg({ quality: 96, chromaSubsampling: '4:4:4', force: true })
-      .toBuffer();
-  } else {
-    const wmRegion = await sharp(rawBuffer)
-      .extract({ left: wmLeft, top: wmTop, width: wmWidth, height: wmHeight })
-      .blur(15)
-      .toBuffer();
-
-    cleanBuffer = await sharp(rawBuffer)
-      .composite([{ input: wmRegion, left: wmLeft, top: wmTop, blend: 'over' }])
-      .jpeg({ quality: 96, chromaSubsampling: '4:4:4', force: true })
-      .toBuffer();
-  }
-
-  // Safety valve — if output is suspiciously small, return raw
-  if (cleanBuffer.length < 10000) {
-    cleanBuffer = await sharp(rawBuffer)
-      .jpeg({ quality: 96, chromaSubsampling: '4:4:4', force: true })
-      .toBuffer();
-  }
-
-  return cleanBuffer;
 }
 
 export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
-  sharp.cache(false);
-  const imageResponse = await fetch(imageUrl);
-  const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
+  try {
+    console.log('[Eraser] Starting via Replicate LaMa inpainting...');
 
-  // Cap dimensions to 1500px to prevent OOM but maintain high quality
-  const MAX_DIM = 1500;
-  let workingBuffer = rawBuffer;
-  const metadata = await sharp(rawBuffer).metadata();
-  let width = metadata.width!;
-  let height = metadata.height!;
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) throw new Error(`Download failed: ${imageResponse.status}`);
+    const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
-  if (width > MAX_DIM || height > MAX_DIM) {
-    workingBuffer = await sharp(rawBuffer).resize(MAX_DIM, MAX_DIM, { fit: 'inside' }).toBuffer() as Buffer;
-    const newMeta = await sharp(workingBuffer).metadata();
-    width = newMeta.width!;
-    height = newMeta.height!;
-  }
+    // Resize to max 1024px to prevent OOM on Render 512MB RAM
+    const metadata = await sharp(rawBuffer).metadata();
+    const width = metadata.width ?? 0;
+    const height = metadata.height ?? 0;
+    console.log(`[Eraser] Input: ${width}x${height}`);
 
-  // 1. Smart Red Color Extraction (handles soft brush edges)
-  const { data, info } = await sharp(workingBuffer).raw().toBuffer({ resolveWithObject: true });
-  const maskData = Buffer.alloc(width * height, 0);
+    const MAX_DIM = 1024;
+    let workingBuffer: Buffer;
+    let finalWidth: number;
+    let finalHeight: number;
 
-  for (let i = 0; i < width * height; i++) {
-    const r = data[i * info.channels];
-    const g = data[i * info.channels + 1];
-    const b = data[i * info.channels + 2];
-    
-    // Smart threshold: R must be dominant over G and B
-    if (r > 100 && r > g + 40 && r > b + 40) {
-      maskData[i] = 255; // Mark as area to remove
+    if (width > MAX_DIM || height > MAX_DIM) {
+      workingBuffer = Buffer.from(await sharp(rawBuffer)
+        .resize(MAX_DIM, MAX_DIM, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 95 })
+        .toBuffer());
+      const newMeta = await sharp(workingBuffer).metadata();
+      finalWidth = newMeta.width ?? MAX_DIM;
+      finalHeight = newMeta.height ?? MAX_DIM;
+    } else {
+      workingBuffer = Buffer.from(await sharp(rawBuffer).jpeg({ quality: 95 }).toBuffer());
+      finalWidth = width;
+      finalHeight = height;
     }
+
+    // Auto-detect watermark region: bottom-right corner 10% x 8%
+    const wmWidth = Math.ceil(finalWidth * 0.10);
+    const wmHeight = Math.ceil(finalHeight * 0.08);
+    const wmLeft = finalWidth - wmWidth;
+    const wmTop = finalHeight - wmHeight;
+
+    console.log(`[Eraser] Mask region: left=${wmLeft} top=${wmTop} w=${wmWidth} h=${wmHeight}`);
+
+    // Generate white mask on black background using SVG
+    const svgMask = `<svg xmlns="http://www.w3.org/2000/svg" width="${finalWidth}" height="${finalHeight}">
+      <rect width="${finalWidth}" height="${finalHeight}" fill="black"/>
+      <rect x="${wmLeft}" y="${wmTop}" width="${wmWidth}" height="${wmHeight}" fill="white" rx="4"/>
+    </svg>`;
+
+    const maskBuffer = Buffer.from(await sharp(Buffer.from(svgMask))
+      .resize(finalWidth, finalHeight)
+      .png()
+      .toBuffer());
+
+    // Convert to base64 data URIs
+    const imageBase64 = `data:image/jpeg;base64,${workingBuffer.toString('base64')}`;
+    const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
+
+    // Send to Replicate LaMa — best free inpainting model
+    console.log('[Eraser] Sending to Replicate LaMa...');
+    let prediction = await replicate.predictions.create({
+      version: "cjwbw/lama:1a7737078263158fbce9d0a68d87a416a20d75586ae797dd08ac774597b416bb",
+      input: {
+        image: imageBase64,
+        mask: maskBase64
+      }
+    });
+
+    console.log(`[Eraser] Prediction: ${prediction.id}`);
+
+    const startTime = Date.now();
+    while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
+      if (Date.now() - startTime > 90000) throw new Error('Eraser timeout after 90 seconds');
+      await new Promise(r => setTimeout(r, 2000));
+      prediction = await replicate.predictions.get(prediction.id);
+      console.log(`[Eraser] Status: ${prediction.status}`);
+    }
+
+    if (prediction.status === 'failed') {
+      throw new Error(`Eraser prediction failed: ${prediction.error}`);
+    }
+
+    const output = prediction.output;
+    let resultUrl: string;
+    if (typeof output === 'string') resultUrl = output;
+    else if (Array.isArray(output) && output.length > 0) resultUrl = String(output[0]);
+    else throw new Error(`Unexpected eraser output: ${JSON.stringify(output)}`);
+
+    const resultResponse = await fetch(resultUrl);
+    if (!resultResponse.ok) throw new Error(`Eraser result download failed: ${resultResponse.status}`);
+    const resultBuffer = Buffer.from(new Uint8Array(await resultResponse.arrayBuffer()));
+
+    // Light sharpening to restore detail after inpainting
+    const finalBuffer = Buffer.from(await sharp(resultBuffer)
+      .sharpen({ sigma: 0.8 })
+      .jpeg({ quality: 92 })
+      .toBuffer());
+
+    console.log(`[Eraser] ✅ Done: ${(finalBuffer.length / 1024).toFixed(1)} KB`);
+    return finalBuffer;
+
+  } catch (error: any) {
+    console.error(`[Eraser] ❌ Error: ${error?.message || error}`);
+    throw error;
   }
-
-  // 2. Apply Feather Effect (Gaussian Blur on the mask) for seamless Photoshop-like blending
-  const maskBuffer = await sharp(maskData, { raw: { width, height, channels: 1 } })
-    .blur(5) // Equivalent to 5px feather in Photoshop
-    .png()
-    .toBuffer();
-
-  const imageBase64 = `data:image/jpeg;base64,${(await sharp(workingBuffer).jpeg().toBuffer()).toString('base64')}`;
-  const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
-
-  // 3. Send to pure LaMa model (Content-Aware Fill)
-  const output = await replicate.run(
-    "cjwbw/lama:1a7737078263158fbce9d0a68d87a416a20d75586ae797dd08ac774597b416bb",
-    { input: { image: imageBase64, mask: maskBase64 } }
-  );
-
-  const resultUrl = Array.isArray(output) ? output[0] : output;
-  if (!resultUrl) throw new Error('LaMa API failed to return output.');
-
-  const res = await fetch(resultUrl.toString());
-  return Buffer.from(new Uint8Array(await res.arrayBuffer()));
 }
 
 export async function convertImageFormat(

@@ -6,6 +6,9 @@ export interface SessionData {
         fileId: string;
         fileName: string;
     };
+    pendingConversionFileId?: string;
+    pendingConversionFormat?: string;
+    pendingBatchFiles?: string[];
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

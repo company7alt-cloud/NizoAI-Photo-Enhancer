@@ -1,32 +1,444 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.imageHandler = imageHandler;
 // src/bot/handlers/imageHandler.ts
 const grammy_1 = require("grammy");
 const User_1 = require("../../database/models/User");
 const validators_1 = require("../../utils/validators");
+const settingsService_1 = require("../../services/settingsService");
 async function imageHandler(ctx) {
+    const telegramId = ctx.from?.id.toString();
+    const reportUser = await User_1.User.findOne({ telegramId });
+    // ── Format Conversion Interceptor ──
+    const userRecord = reportUser;
+    if (userRecord?.awaitingFormatConversion) {
+        const doc = ctx.message?.document;
+        if (!doc) {
+            await ctx.reply('⚠️ أرسل الصورة كـ <b>مستند (ملف)</b> وليس كصورة عادية.\n' +
+                'اضغط 📎 ← اختر "ملف" ← اختر صورتك', { parse_mode: 'HTML' });
+            return; // STRICT RETURN — prevent double menu
+        }
+        const mimeType = doc.mime_type || '';
+        const isImage = mimeType.startsWith('image/') ||
+            doc.file_name?.match(/\.(jpg|jpeg|png|webp|avif|tiff|tif|bmp|gif|heic|heif)$/i);
+        if (!isImage) {
+            await ctx.reply('❌ الملف ليس صورة. أرسل ملف صورة صحيح.');
+            return; // STRICT RETURN
+        }
+        const mimeToFormat = {
+            'image/jpeg': 'JPG', 'image/jpg': 'JPG',
+            'image/png': 'PNG', 'image/webp': 'WEBP',
+            'image/avif': 'AVIF', 'image/tiff': 'TIFF',
+            'image/gif': 'GIF', 'image/bmp': 'BMP',
+            'image/heic': 'HEIC', 'image/heif': 'HEIF',
+        };
+        const detectedFormat = mimeToFormat[mimeType] ||
+            doc.file_name?.split('.').pop()?.toUpperCase() || 'غير معروف';
+        // Save file_id and pause awaiting state
+        const updatedUser = await User_1.User.findOneAndUpdate({ telegramId }, {
+            $push: { pendingConversionFiles: doc.file_id },
+            $set: { awaitingFormatConversion: false },
+        }, { new: true });
+        const count = updatedUser?.pendingConversionFiles?.length || 1;
+        if (count >= 5) {
+            // Max reached — force format selection
+            await ctx.reply(`✅ تم استلام الصورة <b>${count}</b>\n\n` +
+                `⚠️ <b>تنبيه:</b> وصلت للحد الأقصى المسموح به (5 صور).\n\n` +
+                `🔓 للحصول على حد أعلى، تواصل مع المطور.\n\n` +
+                `اختر الآن ما تريد:`, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish' }],
+                        [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}` }],
+                        [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+                    ],
+                },
+            });
+        }
+        else {
+            // Under limit — ask if more
+            await ctx.reply(`✅ تم استلام الصورة <b>${count}</b>\n` +
+                `📋 <b>الصيغة الحالية:</b> ${detectedFormat}\n\n` +
+                `هل توجد صور أخرى تريد تحويلها أيضاً؟\n` +
+                `<i>المتبقي: ${5 - count} صورة</i>`, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: `✅ نعم (${5 - count} متبقي)`, callback_data: 'conv_batch_add' },
+                            { text: '❌ لا، اختر الصيغة', callback_data: 'conv_batch_finish' },
+                        ],
+                        [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' }],
+                    ],
+                },
+            });
+        }
+        return; // STRICT RETURN — stop all other processing
+    }
+    if (reportUser?.awaitingReport) {
+        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
+        const adminIdsRaw = process.env.ADMIN_IDS || '';
+        const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
+        const userId = ctx.from?.id;
+        const firstName = ctx.from?.first_name || 'مجهول';
+        const username = ctx.from?.username ? `@${ctx.from.username}` : 'لا يوجد معرف';
+        const userLink = `tg://user?id=${userId}`;
+        const reportHeader = `🚨 <b>بلاغ جديد من عميل</b>\n\n` +
+            `👤 <b>العميل:</b> <a href="${userLink}">${firstName}</a>\n` +
+            `🔗 <b>المعرف:</b> ${username}\n` +
+            `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
+            `📅 <b>التوقيت:</b> ${new Date().toLocaleString('ar-SA')}`;
+        for (const adminId of adminIds) {
+            try {
+                await ctx.api.sendMessage(adminId, reportHeader, { parse_mode: 'HTML' });
+                await ctx.forwardMessage(adminId);
+            }
+            catch (e) {
+                console.error('[Report] Forward error:', e);
+            }
+        }
+        await ctx.reply('✅ تم تحويل بلاغك إلى المطور بنجاح 💌\nسيتم الرد عليك في أسرع وقت ممكن 🌹');
+        return;
+    }
+    // PRO ENHANCE INTERCEPTOR — must run before normal processing
     const userId = ctx.from?.id;
     if (!userId)
         return;
-    try {
-        // 1. Fetch fresh user from DB
-        const user = await User_1.User.findOne({ telegramId: userId });
-        if (!user) {
-            await ctx.reply('⚠️ يرجى إرسال /start أولاً لتسجيل حسابك.');
+    let user = await User_1.User.findOne({ telegramId: userId.toString() });
+    if (!user) {
+        await ctx.reply('⚠️ يرجى إرسال /start أولاً لتسجيل حسابك.');
+        return;
+    }
+    if (user?.awaitingEraserImage) {
+        // LOCK CHECK
+        const { getSettings: getEraserSettings } = await Promise.resolve().then(() => __importStar(require('../../services/settingsService')));
+        const eraserGlobalSettings = await getEraserSettings();
+        const eraserAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+        const isEraserAdminUser = eraserAdminIds.includes(userId.toString());
+        if (eraserGlobalSettings.locks.btn_eraser && !isEraserAdminUser) {
+            await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { awaitingEraserImage: false } });
+            await ctx.reply('⚠️ عذراً، تم إقفال الميزة للصيانة. يرجى المحاولة لاحقاً 🔒');
             return;
         }
+        // GET FILE
+        let fileId;
+        let fileSize;
+        if (ctx.message?.document?.mime_type?.startsWith('image/')) {
+            fileId = ctx.message.document.file_id;
+            fileSize = ctx.message.document.file_size;
+        }
+        if (!fileId) {
+            await ctx.reply('📎 أرسل الصورة كـ <b>ملف (Document)</b> فقط للحفاظ على جودة الألوان ودقة الإزالة 🎯', { parse_mode: 'HTML' });
+            return;
+        }
+        const userVip = user.vipSizeBypass || false;
+        const MAX_SIZE_BYTES = (userVip ? 15 : 5) * 1024 * 1024;
+        if (fileSize && fileSize > MAX_SIZE_BYTES) {
+            await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { awaitingEraserImage: false } });
+            const adminIds = (process.env.ADMIN_IDS || '').split(',');
+            const mainAdmin = adminIds.length > 0 ? adminIds[0].trim() : '';
+            await ctx.reply(`⛔ <b>الصورة أكبر من الحد المسموح!</b>\n\n` +
+                `الحد الأقصى المسموح لك هو <b>${userVip ? '15' : '5'} ميجابايت</b> 📏\n\n` +
+                `❌ <b>تم إنهاء الجلسة تلقائياً.</b>\n\n` +
+                `لفتح هذه الميزة للأحجام الكبيرة (VIP)، يرجى التواصل مع مطور البوت 👨💻`, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [[{ text: '👨💻 تواصل مع المطور', url: `tg://user?id=${mainAdmin}` }]]
+                }
+            });
+            return;
+        }
+        // ATOMIC DEDUCTION + STATE RESET (Race Condition Protection)
+        if (!isEraserAdminUser) {
+            const updatedUser = await User_1.User.findOneAndUpdate({
+                telegramId: userId.toString(),
+                dailyQuota: { $gte: 1 },
+                awaitingEraserImage: true
+            }, {
+                $inc: { dailyQuota: -1 },
+                $set: { awaitingEraserImage: false }
+            }, { new: true });
+            if (!updatedUser) {
+                await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { awaitingEraserImage: false } });
+                await ctx.reply('⚠️ رصيدك غير كافٍ! تحتاج <b>محاولة واحدة</b> لاستخدام الممحاة السحرية 🪄', { parse_mode: 'HTML' });
+                return;
+            }
+        }
+        else {
+            await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { awaitingEraserImage: false } });
+        }
+        const processingMsg = await ctx.reply('🪄 <b>استلمت الصورة!</b>\n' +
+            'جاري نثر السحر وإخفاء الشوائب بعناية فائقة... ✨\n' +
+            'لحظات وتكون جاهزة 😎', { parse_mode: 'HTML' });
+        try {
+            const tgFile = await ctx.api.getFile(fileId);
+            const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+            const { processWatermarkEraser } = await Promise.resolve().then(() => __importStar(require('../../services/imageService')));
+            const resultBuffer = await processWatermarkEraser(imageUrl);
+            const fileName = `NizoAI_MagicEraser_${Date.now()}.png`;
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
+            await ctx.replyWithDocument(new InputFile(resultBuffer, fileName), {
+                caption: '🪄 <b>تـم! السحر اشتغل وصورتك نظيفة</b> ✨\n📁 أرسلتها لك كملف للحفاظ على جودتها الخرافية 💎',
+                parse_mode: 'HTML'
+            });
+            await ctx.replyWithPhoto(new InputFile(resultBuffer, fileName), { caption: '🖼 معاينة سريعة قبل التحميل' });
+            await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { lastEraserResultUrl: imageUrl } });
+            await ctx.reply('🔄 <b>تحويل الصيغة</b>\n\nاختر صيغة الصورة التي تريدها:', {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🖼 JPG', callback_data: `convert_jpg_${Date.now()}` },
+                            { text: '📄 PNG', callback_data: `convert_png_${Date.now()}` },
+                            { text: '🌐 WEBP', callback_data: `convert_webp_${Date.now()}` },
+                        ],
+                        [
+                            { text: '🎞 GIF', callback_data: `convert_gif_${Date.now()}` },
+                            { text: '📐 TIFF', callback_data: `convert_tiff_${Date.now()}` },
+                        ]
+                    ]
+                }
+            });
+            // SILENT ARCHIVE
+            const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+            if (ARCHIVE_CHANNEL) {
+                const userLink = ctx.from?.username
+                    ? `@${ctx.from.username}`
+                    : `<a href="tg://user?id=${ctx.from?.id}">${ctx.from?.first_name || 'مجهول'}</a>`;
+                await ctx.api.sendDocument(ARCHIVE_CHANNEL, new InputFile(resultBuffer, fileName), {
+                    caption: `📦 <b>نسخة أرشيفية (الممحاة السحرية)</b>\n` +
+                        `━━━━━━━━━━━━━\n` +
+                        `🆔 User ID: <code>${ctx.from?.id}</code>\n` +
+                        `👤 Username: ${userLink}\n` +
+                        `🪄 النوع: إزالة الشوائب\n` +
+                        `🕐 Time: ${new Date().toLocaleString('ar-SA')}\n` +
+                        `━━━━━━━━━━━━━`,
+                    parse_mode: 'HTML',
+                    disable_notification: true
+                }).catch(() => { });
+            }
+        }
+        catch (error) {
+            if (!isEraserAdminUser) {
+                await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $inc: { dailyQuota: 1 } });
+            }
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            console.error('[Eraser] Error:', error?.message);
+            await ctx.reply('❌ عذراً، الممحاة واجهت مشكلة. تم إعادة المحاولة لرصيدك تلقائياً ✨');
+        }
+        return;
+    }
+    if (user?.awaitingNanoBananaImage) {
+        // SECURITY LAYER 1: Check if feature locked after user started
+        const { getSettings: getNanoSettings } = await Promise.resolve().then(() => __importStar(require('../../services/settingsService')));
+        const nanoGlobalSettings = await getNanoSettings();
+        const nanoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+        const isNanoAdminUser = nanoAdminIds.includes(userId.toString());
+        if (nanoGlobalSettings.locks.btn_nano && !isNanoAdminUser) {
+            await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { awaitingNanoBananaImage: false } });
+            await ctx.reply('⚠️ عذراً، تم إقفال الميزة للصيانة. يرجى المحاولة لاحقاً 🔒');
+            return;
+        }
+        // Get fileId BEFORE resetting state
+        // If no image found, keep state so user can try again
+        let fileId;
+        if (ctx.message?.photo && ctx.message.photo.length > 0) {
+            fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+        }
+        else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
+            fileId = ctx.message.document.file_id;
+        }
+        if (!fileId) {
+            // Do NOT reset state — let user try again with a valid image
+            await ctx.reply('⚠️ يرجى إرسال صورة صالحة للمتابعة.');
+            return;
+        }
+        // SECURITY LAYER 2: Atomic deduction + state reset in ONE MongoDB operation
+        // This prevents Race Condition from album sends (multiple images at once)
+        if (!isNanoAdminUser) {
+            const updatedUser = await User_1.User.findOneAndUpdate({
+                telegramId: userId.toString(),
+                dailyQuota: { $gte: 5 }, // Only proceeds if balance >= 5
+                awaitingNanoBananaImage: true // Only proceeds if still in waiting state
+            }, {
+                $inc: { dailyQuota: -5 },
+                $set: { awaitingNanoBananaImage: false }
+            }, { new: true });
+            if (!updatedUser) {
+                // Failed: either insufficient balance or concurrent request already consumed it
+                await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { awaitingNanoBananaImage: false } });
+                await ctx.reply('⚠️ رصيدك غير كافٍ أو تم معالجة طلب آخر في نفس الوقت.\n' +
+                    'تحتاج <b>5 محاولات</b> لاستخدام هذه الميزة.', { parse_mode: 'HTML' });
+                return;
+            }
+        }
+        else {
+            // Admin: reset state only, no deduction
+            await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { awaitingNanoBananaImage: false } });
+        }
+        const processingMsg = await ctx.reply('⏳ جاري تحسين صورتك بالذكاء الاصطناعي... ✨\nالرجاء الانتظار 🌟');
+        try {
+            const tgFile = await ctx.api.getFile(fileId);
+            const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+            const { processNanoBanana } = await Promise.resolve().then(() => __importStar(require('../../services/imageService')));
+            const resultBuffer = await processNanoBanana(imageUrl);
+            const fileName = `NanoAI_${Date.now()}.jpg`;
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
+            await ctx.replyWithDocument(new InputFile(resultBuffer, fileName), { caption: '✨ تم تحسين صورتك بنجاح! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة' });
+            await ctx.replyWithPhoto(new InputFile(resultBuffer, fileName), { caption: '🖼 معاينة سريعة' });
+            const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+            if (ARCHIVE_CHANNEL) {
+                const userLink = ctx.from?.username
+                    ? `@${ctx.from.username}`
+                    : `<a href="tg://user?id=${ctx.from?.id}">${ctx.from?.first_name || 'مجهول'}</a>`;
+                await ctx.api.sendDocument(ARCHIVE_CHANNEL, new InputFile(resultBuffer, fileName), {
+                    caption: `📦 <b>نسخة أرشيفية (Nano AI)</b>\n` +
+                        `━━━━━━━━━━━━━\n` +
+                        `🆔 User ID: <code>${ctx.from?.id}</code>\n` +
+                        `👤 Username: ${userLink}\n` +
+                        `💎 Resolution: Nano AI\n` +
+                        `🕐 Time: ${new Date().toLocaleString('ar-SA')}\n` +
+                        `━━━━━━━━━━━━━`,
+                    parse_mode: 'HTML',
+                    disable_notification: true
+                }).catch(() => { });
+            }
+        }
+        catch (error) {
+            // Refund on failure
+            if (!isNanoAdminUser) {
+                await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $inc: { dailyQuota: 5 } });
+            }
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            console.error('[NanoAI] Error:', error?.message);
+            await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 5 محاولاتك تلقائياً ✨');
+        }
+        return;
+    }
+    if (user.proEnhanceSettings?.isAwaitingImage) {
+        let fileId;
+        if (ctx.message?.photo && ctx.message.photo.length > 0) {
+            fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+        }
+        else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
+            fileId = ctx.message.document.file_id;
+        }
+        if (!fileId) {
+            await ctx.reply('⚠️ يرجى إرسال صورة صالحة (صورة أو ملف صورة) للمتابعة في Pro Enhance.');
+            return;
+        }
+        // ATOMIC UPDATE: Instantly reset flag to prevent double processing AND deduct quota
+        const settings = user.proEnhanceSettings;
+        const enhanceCost = settings.quality === 'max' ? 3 : 2;
+        const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+        const isAdmin = adminIds.includes(userId.toString());
+        if (!isAdmin && user.dailyQuota < enhanceCost) {
+            await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { 'proEnhanceSettings.isAwaitingImage': false } });
+            await ctx.reply('⚠️ رصيدك غير كافٍ. تم إلغاء طلب Pro Enhance.');
+            return;
+        }
+        await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, {
+            $set: { 'proEnhanceSettings.isAwaitingImage': false },
+            $inc: { dailyQuota: isAdmin ? 0 : -enhanceCost }
+        });
+        const processingMsg = await ctx.reply(`⏳ جاري استلام صورتك...\n` +
+            `🚀 بدأ التحسين بتقنية Pro Enhance\n` +
+            `💎 الجودة: ${settings.quality} | التكبير: ${settings.scale}x | النوع: ${settings.imageType}\n` +
+            `🌟 الرجاء الانتظار...`);
+        try {
+            const file = await ctx.api.getFile(fileId);
+            const telegramFileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+            // CRITICAL FIX: Use processProEnhance, NOT enhance!
+            const { processProEnhance } = await Promise.resolve().then(() => __importStar(require('../../services/imageService')));
+            const resultBuffer = await processProEnhance(telegramFileUrl, settings.quality, parseInt(settings.scale), settings.imageType);
+            await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $inc: { totalEnhancements: 1 } });
+            const { v4: uuidv4 } = await Promise.resolve().then(() => __importStar(require('uuid')));
+            const jobId = uuidv4().substring(0, 8).toUpperCase();
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            // Refresh user to get updated quota
+            const freshUser = await User_1.User.findOne({ telegramId: userId.toString() });
+            const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
+            await ctx.replyWithDocument(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
+                caption: `💎 صورتك جاهزة بتقنية Pro Enhance! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${freshUser?.dailyQuota}`,
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🖼 PNG', callback_data: 'conv_png' },
+                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
+                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                        ],
+                        [
+                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                        ],
+                    ],
+                },
+            });
+            await ctx.replyWithPhoto(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
+                caption: '🖼 معاينة سريعة'
+            });
+            const archiveId = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+            if (archiveId) {
+                await ctx.api.sendDocument(archiveId, new InputFile(resultBuffer, `archive_pro_${jobId}.jpg`), {
+                    caption: `📦 نسخة Pro أرشيفية\n━━━━━━━━━━━━━━\n🆔 User ID: ${userId}\n👤 Username: @${ctx.from.username || 'N/A'}\n🏷 Job ID: ${jobId}\n💎 الجودة: ${settings.quality} | التكبير: ${settings.scale}x | النوع: ${settings.imageType}\n📅 Time: ${new Date().toLocaleString('ar-SA')}\n━━━━━━━━━━━━━━`
+                }).catch(e => console.error('[Archive Pro] Failed:', e));
+            }
+        }
+        catch (error) {
+            console.error('[Pro Enhance] Error:', error?.message || error);
+            // Refund quota on failure
+            if (!isAdmin) {
+                await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $inc: { dailyQuota: enhanceCost } });
+            }
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            const { sendAdminAlert } = await Promise.resolve().then(() => __importStar(require('../../utils/adminAlert')));
+            await sendAdminAlert(ctx, `Pro Enhance Error: ${error.message}`);
+            await ctx.reply(`😔 عذراً، فشلت عملية Pro Enhance 🌸\n\n` +
+                `✅ تم إعادة ${enhanceCost} محاولات إلى رصيدك تلقائياً\n\n` +
+                `🔄 يمكنك إعادة المحاولة بصورة أخرى\n` +
+                `❓ إذا استمرت المشكلة، تواصل مع فريق الدعم عبر الزر الموجود في رسالة الترحيب 🛠️`);
+        }
+        return; // CRITICAL: Stop here — do not continue to normal 2K/4K processing
+    }
+    try {
         const admin = (0, validators_1.isAdmin)(userId);
         // 2. Additive reset to preserve debt
-        if (!admin &&
-            (!user.lastQuotaReset ||
-                Date.now() - new Date(user.lastQuotaReset).getTime() > 24 * 60 * 60 * 1000)) {
-            user.dailyQuota += 5;
-            if (user.dailyQuota > 5)
-                user.dailyQuota = 5;
-            user.lastQuotaReset = new Date();
-            await user.save();
-        }
         // 3. Check quota BEFORE accepting image
         if (!admin && user.dailyQuota <= 0) {
             const resetTime = new Date(new Date(user.lastQuotaReset).getTime() + 24 * 60 * 60 * 1000);
@@ -75,16 +487,23 @@ async function imageHandler(ctx) {
         // 7. Reply with resolution selection
         const quotaDisplay = admin ? '∞ (مدير)' : String(user.dailyQuota);
         const text = `اختر الدقة المطلوبة 🎯\n\n⚡ محاولاتك المتبقية اليوم: ${quotaDisplay} من أصل 5`;
+        const settings = await (0, settingsService_1.getSettings)();
+        const locks = settings.locks;
+        const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+        const isAdminUser = adminIds.includes(ctx.from.id.toString());
         const keyboard = new grammy_1.InlineKeyboard()
             .row()
-            .text('🚀 دقة 2K — محاولة واحدة', 'enhance_2k')
+            .text(locks.btn_2k ? '🔒 دقة 2K — مقفلة' : '🚀 دقة 2K — محاولة واحدة', 'enhance_2k')
             .row()
-            .text('✨ دقة 4K — محاولتان (جودة فائقة)', 'enhance_4k')
+            .text(locks.btn_4k ? '🔒 دقة 4K — مقفلة' : '✨ دقة 4K — محاولتان (جودة فائقة)', 'enhance_4k')
             .row()
-            .text('🔒 دقة 8K — مقفلة', 'locked_8k')
+            .text(locks.btn_8k ? '🔒 دقة 8K — مقفلة' : '💎 دقة 8K', 'locked_8k')
             .row()
-            .text('✨ 4K - Ai', 'process_4k_ai')
-            .text('🔒 8K - Ai', 'locked_8k_ai');
+            .text(locks.btn_4kai ? '🔒 4K-Ai — مقفل' : '✨ 4K - Ai', 'process_4k_ai')
+            .text(locks.btn_8kai ? '🔒 8K-Ai — مقفل' : '🔒 8K - Ai', 'locked_8k_ai');
+        if (isAdminUser) {
+            keyboard.row().text('⚙️ لوحة تحكم الأدمن', 'admin_panel');
+        }
         await ctx.reply(text, {
             reply_markup: keyboard,
             reply_to_message_id: ctx.msg?.message_id,

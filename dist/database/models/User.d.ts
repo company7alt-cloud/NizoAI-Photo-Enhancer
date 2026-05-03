@@ -13,6 +13,8 @@ export interface IUser extends Document {
     fundedChannels: string[];
     isVip: boolean;
     isBanned: boolean;
+    isRestricted: boolean;
+    lastRewardDate: Date | null;
     lastSeen: Date;
     joinedAt: Date;
     quotaDebt: number;
@@ -21,6 +23,28 @@ export interface IUser extends Document {
     referralRewardClaimed: boolean;
     isProcessingClaim: boolean;
     isProcessingImage: boolean;
+    awaitingReport: boolean;
+    supportSessionActive: boolean;
+    supportSessionAdminId: string | null;
+    adminAwaitingInput: string | null;
+    isBlocked: boolean;
+    lastSeenAt: Date | null;
+    awaitingNanoBananaImage: boolean;
+    awaitingEraserImage?: boolean;
+    awaitingFormatConversion?: boolean;
+    pendingConversionFiles?: string[];
+    conversionUpscale?: boolean;
+    batchConversionFormat?: string | null;
+    proEnhanceSettings?: {
+        quality: string | null;
+        scale: string | null;
+        imageType: string | null;
+        isAwaitingImage?: boolean;
+    };
+    forceSubMessageId?: number | null;
+    forceSubChatId?: number | null;
+    lastEraserResultUrl?: string | null;
+    vipSizeBypass: boolean;
 }
 export interface IUserModel extends Model<IUser> {
     findByTelegramId(telegramId: number): Promise<IUser | null>;

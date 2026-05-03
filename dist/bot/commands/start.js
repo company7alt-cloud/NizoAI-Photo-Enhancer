@@ -6,6 +6,7 @@ exports.inviteCommand = inviteCommand;
 const grammy_1 = require("grammy");
 const User_1 = require("../../database/models/User");
 const Settings_1 = require("../../database/models/Settings");
+const settingsService_1 = require("../../services/settingsService");
 // ─── /start ───────────────────────────────────────────────────────────────────
 async function startCommand(ctx) {
     const telegramId = ctx.from.id;
@@ -20,8 +21,47 @@ async function startCommand(ctx) {
         // ── 2. Check if user is brand-new (not in DB) ──────────────────────────────
         const existingUser = await User_1.User.findOne({ telegramId });
         const isActuallyNew = !existingUser;
+        const now = new Date();
+        const userId = ctx.from?.id;
+        const displayFirstName = ctx.from?.first_name || 'مجهول';
+        const displayUsername = ctx.from?.username ? `@${ctx.from.username}` : 'لا يوجد معرف';
+        const userLink = `tg://user?id=${userId}`;
+        const timeStr = now.toLocaleString('ar-SA');
+        if (!existingUser) {
+            // Count total users AFTER creating the new user
+            // Since this runs before user creation in the DB, we add +1 to reflect the true count
+            const totalUsers = (await User_1.User.countDocuments()) + 1;
+            const notifMessage = `🆕 <b>مستخدم جديد انضم للبوت!</b>\n\n` +
+                `👤 <b>الاسم:</b> <a href="${userLink}">${displayFirstName}</a>\n` +
+                `🔗 <b>المعرف:</b> ${displayUsername}\n` +
+                `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
+                `📅 <b>وقت الانضمام:</b> ${timeStr}\n\n` +
+                `👥 <b>إجمالي المستخدمين الآن: ${totalUsers}</b>`;
+            const alertChannelRaw = process.env.ALERT_CHANNEL_ID?.trim();
+            const adminIdsRaw = process.env.ADMIN_IDS || '';
+            const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
+            const targets = [];
+            if (alertChannelRaw) {
+                // Correctly parse negative channel IDs for Telegram API
+                const channelIdNum = Number(alertChannelRaw);
+                targets.push(!isNaN(channelIdNum) ? channelIdNum : alertChannelRaw);
+            }
+            else {
+                targets.push(...adminIds);
+            }
+            for (const target of targets) {
+                try {
+                    await ctx.api.sendMessage(target, notifMessage, { parse_mode: 'HTML' });
+                }
+                catch (e) {
+                    console.error('[NewUser Notify] failed for target', target, e);
+                }
+            }
+        }
+        // Update lastSeenAt every visit
+        await User_1.User.findOneAndUpdate({ telegramId: userId?.toString() }, { $set: { lastSeenAt: now } });
         // ── 3. Find or create user ─────────────────────────────────────────────────
-        const { user, isNew } = await User_1.User.findOrCreate({
+        const { user } = await User_1.User.findOrCreate({
             telegramId,
             firstName,
             username,
@@ -49,21 +89,7 @@ async function startCommand(ctx) {
             }
         }
         // ── 5. Admin notification for new joins ────────────────────────────────────
-        if (isNew) {
-            const notifyOnJoin = (await Settings_1.Settings.get('notify_on_join'));
-            if (notifyOnJoin === true) {
-                const adminIds = (process.env.ADMIN_IDS ?? '')
-                    .split(',')
-                    .map((id) => parseInt(id.trim(), 10))
-                    .filter((id) => !isNaN(id));
-                const notif = `👤 *عضو جديد!*\nالاسم: ${firstName}\nالآيدي: \`${telegramId}\``;
-                for (const aid of adminIds) {
-                    ctx.api
-                        .sendMessage(aid, notif, { parse_mode: 'Markdown' })
-                        .catch(() => { });
-                }
-            }
-        }
+        // Legacy notification removed.
         // ── 6. Reload fresh user to get updated quota after any reward ─────────────
         const freshUser = (await User_1.User.findOne({ telegramId })) ?? user;
         // ── 7. Build greeting ──────────────────────────────────────────────────────
@@ -77,7 +103,11 @@ async function startCommand(ctx) {
         else {
             quotaLine = `🎁 محاولاتك اليومية: ${freshUser.dailyQuota}`;
         }
+        const joinDate = freshUser.joinedAt
+            ? new Date(freshUser.joinedAt).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' })
+            : 'غير محدد';
         const greeting = `- مرحباً ( ${firstName} ) 🎃\n\n` +
+            `📅 تاريخ انضمامك: ${joinDate}\n\n` +
             `• هل ترغب في تحسين جودة الصور القديمة الى . 2k - 4k - 8k ؟\n\n` +
             `• من خلال بوت رفع جودة الصور يمكنك تحقيق ذالك بكل سهولة وتحسين جودة الصورة بذكاء الاصطناعي دون الحاجة لتطبيق او موقع 🙂🤍\n\n` +
             `👇👇👇\n\n` +
@@ -88,11 +118,21 @@ async function startCommand(ctx) {
         // ── 8. Inline keyboard (developer / channel links) ─────────────────────────
         const devLink = (await Settings_1.Settings.get('developerLink'));
         const chanLink = (await Settings_1.Settings.get('channelLink'));
+        const nanoSettings = await (0, settingsService_1.getSettings)();
+        const nanoLocks = nanoSettings.locks;
         const keyboard = new grammy_1.InlineKeyboard();
         if (devLink)
             keyboard.url('المطور', devLink);
+        keyboard.row().text('🚀 Pro Enhance', 'pro_enhance_start');
+        keyboard.row().text(nanoLocks.btn_nano ? '🔒 تحسين الصورة بالذكاء — مقفل' : '✨ تحسين الصورة بالذكاء', 'nano_banana_start');
+        const eraserSettingsData = await (0, settingsService_1.getSettings)();
+        const eraserLocks = eraserSettingsData.locks;
+        keyboard.row().text('🔄 تحويل صيغة الصورة', 'convert_format_start');
+        keyboard.row().text(eraserLocks.btn_eraser ? '🔒 مُزيل العلامات المائية — مقفل' : '✨ مُزيل العلامات المائية | 💎 محاولة واحدة', 'eraser_start');
+        keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
         if (chanLink)
-            keyboard.url('القناة', chanLink);
+            keyboard.row().url('القناة', chanLink);
+        keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
         await ctx.reply(greeting, {
             parse_mode: undefined,
             reply_markup: devLink || chanLink ? keyboard : undefined,

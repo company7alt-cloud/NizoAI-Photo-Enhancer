@@ -89,7 +89,7 @@ async function handleFundCampaignInput(adminId, text, api) {
         fundState.set(adminId, {
             step: 'awaiting_target',
             channelId,
-            channelLink: text.trim(),
+            channelLink: formatChannelUrl(text),
         });
         return { status: 'ask_target', channelId };
     }
@@ -130,6 +130,21 @@ async function broadcastFundCampaign(api, campaign) {
         .text('🎁 تحقق واحصل على مكافأتي', `claim_reward_${campaign.channelId}`);
     const broadcastMessages = [];
     for (const u of users) {
+        // Check if this user already claimed this channel before
+        const existingClaim = await User_1.User.findOne({
+            telegramId: u.telegramId,
+            fundedChannels: campaign.channelId
+        });
+        if (existingClaim) {
+            try {
+                await api.sendMessage(u.telegramId, `🌹 <b>عزيزي المستخدم</b>\n\n` +
+                    `في المرة السابقة استلمت نقاطاً مقابل انضمامك لهذه القناة.\n` +
+                    `نعتذر منك، لا يمكن الحصول على المكافأة مرة أخرى 💙`, { parse_mode: 'HTML' });
+            }
+            catch { }
+            failed++;
+            continue;
+        }
         try {
             const msg = await api.sendMessage(u.telegramId, message, {
                 parse_mode: 'Markdown',
@@ -178,8 +193,19 @@ async function claimChannelReward(userId, channelId, api) {
         if (!user)
             return 'NOT_MEMBER';
         // Duplicate-claim guard for legacy records
-        if (user.fundedChannels.includes(channelId))
+        if (user.fundedChannels.includes(channelId)) {
+            try {
+                const { InlineKeyboard } = await Promise.resolve().then(() => __importStar(require('grammy')));
+                const campaignDoc = await FundCampaign_1.FundCampaign.findOne({ channelId, isActive: true });
+                const channelLink = campaignDoc?.channelLink || '#';
+                const keyboard = new InlineKeyboard().url('📢 القناة', channelLink);
+                await api.sendMessage(userId, `🌹 <b>عزيزي المستخدم</b>\n\n` +
+                    `لقد استلمت مكافأتك مسبقاً عند انضمامك لهذه القناة.\n` +
+                    `نعتذر منك، لا يمكن استلام المكافأة مرة أخرى 💙`, { parse_mode: 'HTML', reply_markup: keyboard });
+            }
+            catch { }
             return 'ALREADY_CLAIMED';
+        }
         // ATOMIC CAMPAIGN UPDATE (Scarcity + Anti-Spam)
         const campaignId = campaign._id;
         const maxTarget = campaign.targetMembers;
@@ -210,16 +236,22 @@ async function claimChannelReward(userId, channelId, api) {
         });
         // After successful claim, check if campaign is now full
         if (updatedCampaign.claimCounter >= updatedCampaign.targetMembers) {
+            // First: disable campaign link immediately
+            await FundCampaign_1.FundCampaign.findByIdAndUpdate(campaignId, { isActive: false });
+            // Then: delete messages gradually 3 per second
             const remaining = updatedCampaign.broadcastMessages.filter(m => !m.claimed);
+            let deleteCount = 0;
             for (const { userId: uid, messageId } of remaining) {
                 try {
                     await api.deleteMessage(uid, messageId);
+                    deleteCount++;
                 }
-                catch (e) {
-                    // Ignore: user blocked bot or deleted the chat
+                catch (e) { }
+                // Rate limit: 3 deletions per second
+                if (deleteCount % 3 === 0) {
+                    await new Promise((r) => setTimeout(r, 1000));
                 }
             }
-            await FundCampaign_1.FundCampaign.findByIdAndUpdate(campaignId, { isActive: false });
         }
         return 'REWARDED';
     }
@@ -236,7 +268,7 @@ async function handleMemberLeft(userId, channelId, api) {
     // Only penalise if they had claimed this channel's reward
     if (!user.fundedChannels.includes(channelId))
         return;
-    // Deduct 5 atomically, allowing negative balances. Also reset claim tracking.
+    // Atomic deduction — allows negative balance
     const updatedUser = await User_1.User.findOneAndUpdate({ telegramId: userId }, {
         $inc: { dailyQuota: -5 },
         $pull: { fundedChannels: channelId },
@@ -244,6 +276,7 @@ async function handleMemberLeft(userId, channelId, api) {
     }, { new: true });
     if (!updatedUser)
         return;
+    // Update campaign record
     const campaign = await FundCampaign_1.FundCampaign.findOne({ channelId });
     if (campaign) {
         await FundCampaign_1.FundCampaign.findOneAndUpdate({ _id: campaign._id }, { $pull: { claimedUsers: userId } });
@@ -255,19 +288,33 @@ async function handleMemberLeft(userId, channelId, api) {
         .row()
         .text('🎁 تحقق واسترجع محاولاتي', `claim_reward_${channelId}`);
     try {
-        await api.sendMessage(userId, "⚠️ تم خصم 5 محاولات بسبب مغادرتك القناة. رصيدك الحالي انخفض.\n\nللتعويض واسترجاع محاولاتك، انضم للقناة مجدداً من الزر أدناه ثم اضغط على زر التحقق 👇", { reply_markup: keyboard });
+        await api.sendMessage(userId, `⚠️ <b>تنبيه هام</b>\n\n` +
+            `لاحظنا أنك غادرت القناة التي حصلت من خلالها على مكافأة 🎁\n\n` +
+            `تم خصم <b>5 محاولات</b> من رصيدك تلقائياً.\n` +
+            `رصيدك الحالي: <b>${updatedUser.dailyQuota}</b>\n\n` +
+            `للاسترداد: انضم للقناة مجدداً واضغط زر التحقق 👇`, { parse_mode: 'HTML', reply_markup: keyboard });
     }
-    catch {
-        // Silent — never disrupt the user's pending interactions
-    }
+    catch { }
 }
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
 function extractChannelIdentifier(input) {
-    // https://t.me/channelname  → @channelname
-    if (input.startsWith('https://t.me/') && !input.includes('+')) {
-        return '@' + input.replace('https://t.me/', '').split('/')[0];
+    const trimmed = input.trim();
+    if (trimmed.startsWith('https://t.me/') && !trimmed.includes('+')) {
+        return '@' + trimmed.replace('https://t.me/', '').split('/')[0];
     }
-    // @channelname or numeric ID — pass through
-    return input;
+    if (trimmed.startsWith('t.me/') && !trimmed.includes('+')) {
+        return '@' + trimmed.replace('t.me/', '').split('/')[0];
+    }
+    return trimmed;
+}
+function formatChannelUrl(input) {
+    const trimmed = input.trim();
+    if (trimmed.startsWith('@')) {
+        return `https://t.me/${trimmed.substring(1)}`;
+    }
+    if (!trimmed.startsWith('http')) {
+        return `https://t.me/${trimmed}`;
+    }
+    return trimmed;
 }
 //# sourceMappingURL=channelFundService.js.map

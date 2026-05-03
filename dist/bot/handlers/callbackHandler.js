@@ -39,67 +39,110 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.callbackHandler = callbackHandler;
 // src/bot/handlers/callbackHandler.ts
 const grammy_1 = require("grammy");
+const sharp_1 = __importDefault(require("sharp"));
 const uuid_1 = require("uuid");
-const fs_1 = __importDefault(require("fs"));
-const path_1 = __importDefault(require("path"));
-const os_1 = __importDefault(require("os"));
+const adm_zip_1 = __importDefault(require("adm-zip"));
+const pdfkit_1 = __importDefault(require("pdfkit"));
 const User_1 = require("../../database/models/User");
-const admin_1 = require("../commands/admin");
 const validators_1 = require("../../utils/validators");
-const channelFundService_1 = require("../../services/channelFundService");
 const imageService = __importStar(require("../../services/imageService"));
-const geminiService_1 = require("../../services/geminiService");
+const adminAlert_1 = require("../../utils/adminAlert");
+const BotSettings_1 = require("../../database/models/BotSettings");
+const channelFundService_1 = require("../../services/channelFundService");
+const FundCampaign_1 = require("../../database/models/FundCampaign");
+const settingsService_1 = require("../../services/settingsService");
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
+const BACKUP_CHANNEL_ID = ARCHIVE_GROUP_ID || CHANNEL_ID;
+async function showFormatSelection(ctx, count, _upscale) {
+    const isSingle = count === 1;
+    const keyboard = [
+        [
+            { text: '🖼 PNG', callback_data: 'fconv_png' },
+            { text: '🖼 JPG', callback_data: 'fconv_jpg' },
+            { text: '🖼 WEBP', callback_data: 'fconv_webp' },
+        ],
+        [
+            { text: '🖼 AVIF', callback_data: 'fconv_avif' },
+            { text: '🖼 TIFF', callback_data: 'fconv_tiff' },
+        ],
+    ];
+    // Add PDF and SVG only for single image
+    if (isSingle) {
+        keyboard.push([
+            { text: '📄 PDF', callback_data: 'fconv_pdf' },
+            { text: '🎨 SVG', callback_data: 'fconv_svg' },
+        ]);
+    }
+    keyboard.push([{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }]);
+    await ctx.reply(`🔄 <b>اختر الصيغة التي تريد التحويل إليها:</b>\n` +
+        (isSingle ? '📄 PDF و SVG متاحان للصورة الواحدة فقط' : ''), {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: keyboard },
+    });
+}
 async function callbackHandler(ctx) {
     const data = ctx.callbackQuery?.data;
     if (!data || !ctx.from)
         return;
-    // Route admin callbacks immediately
-    if (data.startsWith('admin_'))
-        return (0, admin_1.handleAdminCallback)(ctx);
-    // ── claim_reward_{channelId} ─────────────────────────────────────────────────
-    if (data.startsWith('claim_reward_')) {
-        await ctx.answerCallbackQuery();
-        const channelId = data.replace('claim_reward_', '');
-        const userId = ctx.from.id;
-        const result = await (0, channelFundService_1.claimChannelReward)(userId, channelId, ctx.api);
-        if (result === 'REWARDED') {
-            await ctx.reply('✅ تم التحقق! تم إضافة 5 محاولات لرصيدك 🎉\n' +
-                'استمتع بتحسين صورك بجودة احترافية 🌟');
-        }
-        else if (result === 'ALREADY_CLAIMED') {
+    if (data === 'check_force_sub') {
+        const channelId = process.env.FORCE_SUB_CHANNEL_ID?.trim();
+        if (!channelId) {
             await ctx.answerCallbackQuery({
-                text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅',
-                show_alert: true,
-            });
+                text: '✅ يمكنك استخدام البوت الآن!',
+                show_alert: true
+            }).catch(() => { });
+            await ctx.deleteMessage().catch(() => { });
+            await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { forceSubMessageId: null, forceSubChatId: null } });
+            return;
         }
-        else if (result === 'PROCESSING') {
-            await ctx.answerCallbackQuery({
-                text: 'جاري المعالجة، انتظر لحظة... ⏳',
-                show_alert: false,
-            });
+        try {
+            const member = await ctx.api.getChatMember(channelId, ctx.from.id);
+            const validStatuses = ['creator', 'administrator', 'member', 'restricted'];
+            if (validStatuses.includes(member.status)) {
+                await ctx.answerCallbackQuery({
+                    text: '✅ تم التحقق! يمكنك استخدام البوت الآن 🎉',
+                    show_alert: true
+                }).catch(() => { });
+                await ctx.deleteMessage().catch(() => { });
+                await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { forceSubMessageId: null, forceSubChatId: null } });
+            }
+            else {
+                await ctx.answerCallbackQuery({
+                    text: '❌ لم تشترك بعد! اشترك في القناة ثم اضغط التحقق مجدداً.',
+                    show_alert: true
+                }).catch(() => { });
+            }
         }
-        else if (result === 'NOT_MEMBER') {
+        catch (error) {
             await ctx.answerCallbackQuery({
-                text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط أدناه، ثم اضغط على زر التحقق للحصول على مكافأتك 🎁',
-                show_alert: true,
-            });
-        }
-        else if (result === 'ADMIN_BLOCKED') {
-            await ctx.answerCallbackQuery({
-                text: '🚫 المشرف لا يمكنه المطالبة بمكافأة حملته.',
-                show_alert: true,
-            });
-        }
-        else {
-            await ctx.answerCallbackQuery({
-                text: '❌ الحملة غير موجودة أو انتهت.',
-                show_alert: true,
-            });
+                text: '⚠️ حدث خطأ في التحقق. يرجى المحاولة مجدداً.',
+                show_alert: true
+            }).catch(() => { });
         }
         return;
     }
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isAdminUser = adminIds.includes(ctx.from.id.toString());
+    const settings = await (0, settingsService_1.getSettings)();
+    const locks = settings.locks;
+    const lockMap = {
+        'enhance_2k': locks.btn_2k,
+        'enhance_4k': locks.btn_4k,
+        'locked_8k': locks.btn_8k,
+        'process_4k_ai': locks.btn_4kai,
+        'locked_8k_ai': locks.btn_8kai,
+        'nano_banana_start': locks.btn_nano,
+        'eraser_start': locks.btn_eraser,
+    };
+    if (!isAdminUser && lockMap[data] === true) {
+        await ctx.answerCallbackQuery({
+            text: 'عذراً، هذا الزر مقفل حالياً للصيانة 🔒',
+            show_alert: true
+        }).catch(() => { });
+        return;
+    }
+    // Admin callbacks are now handled at the bottom of this file
     // ── STEP 1: Fetch FRESH user ──────────────────────────────────────────────────
     let user = await User_1.User.findOne({ telegramId: ctx.from.id });
     if (!user) {
@@ -117,18 +160,10 @@ async function callbackHandler(ctx) {
         void ctx.answerCallbackQuery({
             text: '🚫 عذراً، تم تقييد وصولك للبوت. للاستفسار تواصل مع المطور 💙',
             show_alert: true,
-        });
+        }).catch(() => { });
         return;
     }
-    // ── STEP 3: Reset quota if 24h have passed (Additive to preserve debt) ──────
-    if (!user.lastQuotaReset ||
-        Date.now() - new Date(user.lastQuotaReset).getTime() > 24 * 60 * 60 * 1000) {
-        user.dailyQuota += 5;
-        if (user.dailyQuota > 5)
-            user.dailyQuota = 5;
-        user.lastQuotaReset = new Date();
-        await user.save();
-    }
+    // ── STEP 3: Auto-reset logic removed. User MUST click daily reward button. ──
     // ── STEP 4: Admin flag ────────────────────────────────────────────────────────
     const admin = (0, validators_1.isAdmin)(ctx.from.id);
     // ── STEP 5: Locked 8K ─────────────────────────────────────────────────────────
@@ -136,14 +171,14 @@ async function callbackHandler(ctx) {
         void ctx.answerCallbackQuery({
             text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح ميزة الـ 8K ✨',
             show_alert: true,
-        });
+        }).catch(() => { });
         return;
     }
     if (data === 'locked_4k') {
         void ctx.answerCallbackQuery({
             text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح الميزة ✨',
             show_alert: true,
-        });
+        }).catch(() => { });
         return;
     }
     // ── Helper: get Telegram file URL from session ────────────────────────────────
@@ -157,34 +192,52 @@ async function callbackHandler(ctx) {
         return `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
     };
     // ── Helper: forward result to public channel ──────────────────────────────────
-    const forwardToChannel = async (buf, fileName, _resolution) => {
-        if (!CHANNEL_ID)
+    const forwardToChannel = async (buf, fileName, resolution, jobId) => {
+        if (!BACKUP_CHANNEL_ID)
             return;
+        const actionUser = ctx.from;
+        const userLink = actionUser?.username
+            ? `@${actionUser.username}`
+            : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+        const caption = `📦 <b>نسخة أرشيفية</b>\n` +
+            `━━━━━━━━━━━━━━\n` +
+            `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
+            `👤 <b>Username:</b> ${userLink}\n` +
+            `🏷 <b>Job ID:</b> <code>${jobId}</code>\n` +
+            `💎 <b>Resolution:</b> ${resolution}\n` +
+            `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+            `━━━━━━━━━━━━━━`;
         try {
-            await ctx.api.sendDocument(CHANNEL_ID, new grammy_1.InputFile(buf, fileName), {
-                disable_notification: true, // SILENT FORWARDING
-                caption: `✨ تمت المعالجة بنجاح`
+            await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(buf, fileName), {
+                disable_notification: true,
+                caption: caption,
+                parse_mode: 'HTML',
             });
         }
         catch (fwdErr) {
-            console.error('[Forwarding Error]', fwdErr);
+            console.error('[Archive Error]', fwdErr);
         }
     };
     // ── STEP 6: enhance_2k ───────────────────────────────────────────────────────
     if (data === 'enhance_2k') {
-        await ctx.answerCallbackQuery();
-        if (!admin && user.dailyQuota < 1) {
-            await ctx.reply('🌙 أوه! انتهت محاولاتك اليومية 🥺\nعد غداً وستجد 5 محاولات جديدة بانتظارك 🎁✨');
-            return;
+        const resolution = '2K';
+        await ctx.answerCallbackQuery().catch(() => { });
+        if (resolution !== '2K') {
+            if (!admin && user.dailyQuota < 1) {
+                await ctx.reply('🌙 أوه! انتهت محاولاتك اليومية 🥺\nعد غداً وستجد 5 محاولات جديدة بانتظارك 🎁✨');
+                return;
+            }
         }
         const telegramFileUrl = await getTelegramFileUrl();
         if (!telegramFileUrl) {
             await ctx.reply('❌ انتهت الجلسة. أرسل الصورة مجدداً.');
             return;
         }
-        if (!admin) {
-            user.dailyQuota -= 1;
-            await user.save();
+        if (resolution !== '2K') {
+            if (!admin) {
+                user.dailyQuota -= 1;
+                await user.save();
+            }
         }
         const jobId = (0, uuid_1.v4)().substring(0, 8).toUpperCase();
         await ctx.editMessageText('⏳ جاري تحسين صورتك بدقة 2K...\nالرجاء الانتظار لحظات 🌟');
@@ -196,30 +249,30 @@ async function callbackHandler(ctx) {
             const outputFileName = `NizoAI_2K_${jobId}.jpg`;
             await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, outputFileName), {
                 caption: `🎉 صورتك جاهزة بدقة 2K! 🌟\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🖼 PNG', callback_data: 'conv_png' },
+                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
+                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                        ],
+                        [
+                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                        ],
+                    ],
+                },
             });
             await ctx.deleteMessage().catch(() => { });
             // Forward to channel (silent — never affects user)
-            void forwardToChannel(resultBuffer, outputFileName, '2K');
-            // Silent archive
-            if (ARCHIVE_GROUP_ID) {
-                ctx.api
-                    .sendDocument(ARCHIVE_GROUP_ID, new grammy_1.InputFile(resultBuffer, `archive_${jobId}.jpg`), {
-                    caption: `📦 نسخة أرشيفية\n` +
-                        `━━━━━━━━━━━━━━\n` +
-                        `🆔 User ID: ${ctx.from.id}\n` +
-                        `👤 Username: @${ctx.from.username ?? 'N/A'}\n` +
-                        `🏷 Job ID: ${jobId}\n` +
-                        `💎 Resolution: 2K\n` +
-                        `📅 Time: ${new Date().toLocaleString('ar-SA')}\n` +
-                        `━━━━━━━━━━━━━━`,
-                })
-                    .catch((e) => console.error('[Archive] 2K failed:', e));
-            }
+            void forwardToChannel(resultBuffer, outputFileName, '2K', jobId);
         }
         catch {
-            if (!admin) {
-                user.dailyQuota += 1;
-                await user.save();
+            if (resolution !== '2K') {
+                if (!admin) {
+                    user.dailyQuota += 1;
+                    await user.save();
+                }
             }
             await ctx.deleteMessage().catch(() => { });
             await ctx.reply('😔 عذراً حدث خطأ أثناء معالجة صورتك 🌸\nتم إعادة محاولتك تلقائياً ✨\nجرب مرة أخرى وسنكون معك 💙');
@@ -228,7 +281,7 @@ async function callbackHandler(ctx) {
     }
     // ── STEP 7: enhance_4k ───────────────────────────────────────────────────────
     if (data === 'enhance_4k') {
-        await ctx.answerCallbackQuery();
+        await ctx.answerCallbackQuery().catch(() => { });
         if (!admin && user.dailyQuota < 2) {
             await ctx.reply(`💫 تحتاج محاولتين لدقة 4K الفائقة 🌟\nرصيدك الحالي: ${user.dailyQuota} محاولة 🥺\nاستخدم دقة 2K أو عد غداً لـ 5 محاولات جديدة 🎁`);
             return;
@@ -252,25 +305,23 @@ async function callbackHandler(ctx) {
             const outputFileName = `NizoAI_4K_${jobId}.jpg`;
             await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, outputFileName), {
                 caption: `💎 صورتك جاهزة بدقة 4K الفائقة! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🖼 PNG', callback_data: 'conv_png' },
+                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
+                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                        ],
+                        [
+                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                        ],
+                    ],
+                },
             });
             await ctx.deleteMessage().catch(() => { });
             // Forward to channel (silent — never affects user)
-            void forwardToChannel(resultBuffer, outputFileName, '4K');
-            // Silent archive
-            if (ARCHIVE_GROUP_ID) {
-                ctx.api
-                    .sendDocument(ARCHIVE_GROUP_ID, new grammy_1.InputFile(resultBuffer, `archive_${jobId}.jpg`), {
-                    caption: `📦 نسخة أرشيفية\n` +
-                        `━━━━━━━━━━━━━━\n` +
-                        `🆔 User ID: ${ctx.from.id}\n` +
-                        `👤 Username: @${ctx.from.username ?? 'N/A'}\n` +
-                        `🏷 Job ID: ${jobId}\n` +
-                        `💎 Resolution: 4K\n` +
-                        `📅 Time: ${new Date().toLocaleString('ar-SA')}\n` +
-                        `━━━━━━━━━━━━━━`,
-                })
-                    .catch((e) => console.error('[Archive] 4K failed:', e));
-            }
+            void forwardToChannel(resultBuffer, outputFileName, '4K', jobId);
         }
         catch {
             if (!admin) {
@@ -287,106 +338,1104 @@ async function callbackHandler(ctx) {
         void ctx.answerCallbackQuery({
             text: '🔒 هذه الميزة مقفلة. تواصل مع المدير لتفعيلها',
             show_alert: true,
-        });
+        }).catch(() => { });
         return;
     }
     if (data === 'process_4k_ai') {
-        const userId = ctx.from.id;
-        // STEP 1 — ATOMIC LOCK + BALANCE CHECK + DEDUCTION
-        const atomicUser = await User_1.User.findOneAndUpdate({
-            telegramId: userId,
-            isProcessingImage: { $ne: true },
-            dailyQuota: { $gte: 2 }
-        }, {
-            $set: { isProcessingImage: true },
-            $inc: { dailyQuota: -2 }
-        }, { new: true });
-        if (!atomicUser) {
-            const check = await User_1.User.findOne({ telegramId: userId });
-            if (check?.isProcessingImage === true) {
-                await ctx.answerCallbackQuery({
-                    text: "⏳ جاري معالجة صورة بالفعل، انتظر حتى تنتهي",
-                    show_alert: true
-                });
-                return;
-            }
-            else {
-                await ctx.answerCallbackQuery({
-                    text: "❌ رصيدك غير كافٍ. هذا التحسين يتطلب نقطتين",
-                    show_alert: true
-                });
-                return;
-            }
-        }
-        await ctx.answerCallbackQuery();
-        let tempPath = '';
         try {
-            // STEP 2 — PROCESSING MESSAGE
-            await ctx.editMessageText("⏳ جاري المعالجة بتقنية الذكاء الاصطناعي المتقدمة...");
-            // STEP 3 — DOWNLOAD ORIGINAL IMAGE
-            const pendingFile = ctx.session.pendingFile;
-            if (!pendingFile?.fileId)
-                throw new Error('download_failed');
-            const tgFile = await ctx.api.getFile(pendingFile.fileId);
-            if (!tgFile.file_path)
-                throw new Error('download_failed');
-            const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
-            tempPath = path_1.default.join(os_1.default.tmpdir(), `${userId}_${Date.now()}.jpg`);
-            const fetchResponse = await fetch(fileUrl);
-            if (!fetchResponse.ok)
-                throw new Error('download_failed');
-            const buffer = Buffer.from(await fetchResponse.arrayBuffer());
-            fs_1.default.writeFileSync(tempPath, buffer);
-            const base64string = buffer.toString('base64');
-            const aiPrompt = await (0, geminiService_1.generateNanoBananaPrompt)(base64string);
-            const finalBuffer = await imageService.enhanceWithNanoBanana(base64string, aiPrompt);
-            // STEP 5 — DELIVER RESULT
-            await ctx.replyWithDocument(new grammy_1.InputFile(finalBuffer, `NizoAI_4K_Ai_${Date.now()}.jpg`), {
-                caption: "✨ تم التحسين بتقنية الذكاء الاصطناعي | NizoAI Bot"
-            });
+            // 1. Get file ID first
+            const msg = ctx.callbackQuery?.message;
+            let fileId;
+            let fileName = '4K_Ai_Enhanced.jpg';
+            if (msg?.photo && msg.photo.length > 0) {
+                fileId = msg.photo[msg.photo.length - 1].file_id;
+            }
+            else if (msg?.reply_to_message?.photo?.length > 0) {
+                fileId = msg.reply_to_message.photo[msg.reply_to_message.photo.length - 1].file_id;
+            }
+            else if (msg?.document?.mime_type?.startsWith('image/')) {
+                fileId = msg.document.file_id;
+                fileName = (msg.document.file_name?.replace(/\.[^/.]+$/, "") || "4K_Ai_Enhanced") + ".jpg";
+            }
+            else if (msg?.reply_to_message?.document?.mime_type?.startsWith('image/')) {
+                fileId = msg.reply_to_message.document.file_id;
+                fileName = (msg.reply_to_message.document.file_name?.replace(/\.[^/.]+$/, "") || "4K_Ai_Enhanced") + ".jpg";
+            }
+            if (!fileId) {
+                await ctx.answerCallbackQuery({ text: 'عذراً، لم أتمكن من العثور على الصورة ❌', show_alert: true }).catch(() => { });
+                return;
+            }
+            if (!admin && user.dailyQuota < 3) {
+                await ctx.answerCallbackQuery({ text: 'رصيدك غير كافٍ! تحتاج 3 محاولات لاستخدام 4K-Ai 💎', show_alert: true }).catch(() => { });
+                return;
+            }
             try {
-                if (process.env.CHANNEL_ID) {
-                    await ctx.api.sendDocument(process.env.CHANNEL_ID, new grammy_1.InputFile(finalBuffer, 'NizoAI_Result.jpg'), {
-                        disable_notification: true, // SILENT FORWARDING
-                        caption: `✨ تمت المعالجة بنجاح`
-                    });
+                const msg = ctx.callbackQuery?.message;
+                if (msg?.message_id && msg?.chat?.id) {
+                    await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
                 }
             }
-            catch (fwdErr) {
-                console.error('[Forwarding Error]', fwdErr);
+            catch (e) { /* ignore */ }
+            if (!admin) {
+                user.dailyQuota -= 3;
+                await user.save();
+            }
+            // 2. Acknowledge button press
+            try {
+                await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' }).catch(() => { });
+            }
+            catch (e) { /* ignore if already deleted */ }
+            // 3. Get image URL
+            const tgFile = await ctx.api.getFile(fileId);
+            const telegramImageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+            // 4. Send processing message
+            const processingMsg = await ctx.reply('⏳ جاري تحسين صورتك بتقنية 4K-Ai...');
+            // 5. Process the image
+            const resultBuffer = await imageService.process4KAi(telegramImageUrl);
+            // 7. Delete the "processing..." message
+            try {
+                await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id);
+            }
+            catch (e) { /* ignore */ }
+            // 8. Send result as document
+            await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, fileName), {
+                caption: '✨ تم تحسين صورتك بنجاح! جودة 4K-Ai 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🖼 PNG', callback_data: 'conv_png' },
+                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
+                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                        ],
+                        [
+                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                        ],
+                    ],
+                },
+            });
+            // 9. Send preview
+            await ctx.replyWithPhoto(new grammy_1.InputFile(resultBuffer, fileName), { caption: '🖼 معاينة سريعة' });
+            // 10. Backup to channel
+            const actionUser = ctx.from;
+            const userLink = actionUser?.username
+                ? `@${actionUser.username}`
+                : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+            const caption = `📦 نسخة أرشيفية\n\n` +
+                `🆔 User ID: ${actionUser?.id}\n` +
+                `👤 Username: ${userLink}\n` +
+                `💎 Resolution: 4K-Ai\n` +
+                `🕐 Time: ${new Date().toLocaleString('ar-SA')}`;
+            await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(resultBuffer, fileName), { caption, parse_mode: 'HTML' });
+            if (CHANNEL_ID && CHANNEL_ID !== BACKUP_CHANNEL_ID) {
+                try {
+                    await ctx.api.sendDocument(CHANNEL_ID, new grammy_1.InputFile(resultBuffer, fileName), { caption: '✨ تمت المعالجة بنجاح', disable_notification: true });
+                }
+                catch (e) {
+                    console.error('[4K-Ai Channel Forward]', e);
+                }
             }
         }
         catch (error) {
-            // STEP 6 — ERROR HANDLER
-            console.error('[4K-Ai] Replicate error details:', {
-                message: error instanceof Error ? error.message : String(error),
-                model: process.env.REPLICATE_AI_MODEL_ID,
-                timestamp: new Date().toISOString()
-            });
-            await User_1.User.findOneAndUpdate({ telegramId: userId }, { $inc: { dailyQuota: 2 } });
-            if (error.message === 'download_failed') {
-                await ctx.editMessageText("❌ فشل تحميل الصورة. تم إرجاع نقطتيك");
-            }
-            else {
-                await ctx.editMessageText("❌ حدث خطأ في المعالجة. تم إرجاع نقطتيك");
-            }
-        }
-        finally {
-            // STEP 7 — FINALLY BLOCK
-            if (tempPath && fs_1.default.existsSync(tempPath)) {
-                try {
-                    fs_1.default.unlinkSync(tempPath);
-                }
-                catch { }
-            }
-            await User_1.User.findOneAndUpdate({ telegramId: userId }, { $set: { isProcessingImage: false } });
+            await (0, adminAlert_1.sendAdminAlert)(ctx, error.message || 'Unknown Error in 4K-Ai');
+            console.error('4K-Ai Error:', error);
+            await ctx.reply('عذراً، حدث خطأ أثناء المعالجة. حاول مجدداً ❌');
         }
         return;
     }
     // ── enhance_again ─────────────────────────────────────────────────────────────
     if (data === 'enhance_again') {
-        await ctx.answerCallbackQuery();
+        await ctx.answerCallbackQuery().catch(() => { });
         await ctx.editMessageText('📸 أرسل الصورة الجديدة التي تريد تحسينها.');
+        return;
+    }
+    // ══════════════════════════════════════
+    // 🎁 الهدية اليومية
+    // ══════════════════════════════════════
+    if (data === 'claim_daily_reward') {
+        try {
+            const telegramId = ctx.from?.id.toString();
+            if (!telegramId)
+                return;
+            const user = await User_1.User.findOne({ telegramId });
+            if (!user)
+                return;
+            const now = new Date();
+            const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+            if (user.lastRewardDate) {
+                const timePassed = now.getTime() - new Date(user.lastRewardDate).getTime();
+                if (timePassed < TWENTY_FOUR_HOURS) {
+                    const timeLeft = TWENTY_FOUR_HOURS - timePassed;
+                    const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
+                    const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                    const claimTime = new Date(user.lastRewardDate).toLocaleTimeString('ar-SA', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true,
+                    });
+                    await ctx.answerCallbackQuery({
+                        text: `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
+                        show_alert: true
+                    }).catch(() => { });
+                    return;
+                }
+            }
+            // Atomic update — prevents race conditions from double clicks
+            await User_1.User.findOneAndUpdate({ telegramId }, {
+                $inc: { dailyQuota: 5 },
+                $set: { lastRewardDate: now },
+            });
+            await ctx.answerCallbackQuery({
+                text: '🎉 مبروك! تمت إضافة 5 محاولات مجانية لحسابك.\nعُد غداً لاستلام هديتك الجديدة 🎁',
+                show_alert: true
+            }).catch(() => { });
+        }
+        catch (error) {
+            console.error('[DailyReward] Error:', error);
+            await (0, adminAlert_1.sendAdminAlert)(ctx, `Daily Reward Error: ${error.message}`);
+        }
+        return;
+    }
+    // ══════════════════════════════════════
+    // 🛡️ أزرار الأدمن — حظر وتقييد
+    // ══════════════════════════════════════
+    if (data.startsWith('admin_ban_')) {
+        if (!isAdminUser)
+            return;
+        const targetId = data.replace('admin_ban_', '');
+        await User_1.User.findOneAndUpdate({ telegramId: targetId }, { isBanned: true });
+        await ctx.answerCallbackQuery({ text: '✅ تم حظر العميل بنجاح!', show_alert: true }).catch(() => { });
+        await ctx.editMessageReplyMarkup(undefined);
+        return;
+    }
+    if (data.startsWith('admin_restrict_')) {
+        if (!isAdminUser)
+            return;
+        const targetId = data.replace('admin_restrict_', '');
+        await User_1.User.findOneAndUpdate({ telegramId: targetId }, { $set: { dailyQuota: 0, isRestricted: true } });
+        await ctx.answerCallbackQuery({ text: '✅ تم تقييد العميل وتصفير محاولاته بنجاح!', show_alert: true }).catch(() => { });
+        await ctx.editMessageReplyMarkup(undefined);
+        return;
+    }
+    if (data === 'show_welcome') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const { startCommand } = await Promise.resolve().then(() => __importStar(require('../commands/start')));
+        await startCommand(ctx);
+        return;
+    }
+    if (data === 'report_to_dev') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const telegramId = ctx.from?.id.toString();
+        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: true } });
+        await ctx.reply('🌹 فضلاً أرسل لنا بلاغك (رسالة أو صورة)\nوسيتم الرد عليك في أسرع وقت ممكن 💬', {
+            reply_markup: {
+                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_report' }]],
+            },
+        });
+        return;
+    }
+    if (data === 'cancel_report') {
+        await ctx.answerCallbackQuery({ text: 'تم الإلغاء' }).catch(() => { });
+        const telegramId = ctx.from?.id.toString();
+        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
+        return;
+    }
+    // ══════════════════════════════════════
+    // 💬 فتح جلسة دعم مع العميل
+    // ══════════════════════════════════════
+    if (data.startsWith('admin_support_')) {
+        if (!isAdminUser)
+            return;
+        const targetUserId = data.replace('admin_support_', '');
+        // Activate support session in DB
+        await User_1.User.findOneAndUpdate({ telegramId: targetUserId }, { $set: { supportSessionActive: true, supportSessionAdminId: ctx.from?.id.toString() } });
+        // Notify admin
+        await ctx.answerCallbackQuery({ text: '✅ تم فتح المحادثة المباشرة' }).catch(() => { });
+        await ctx.editMessageReplyMarkup(undefined);
+        await ctx.api.sendMessage(ctx.from.id, `✅ <b>تم فتح المحادثة المباشرة مع العميل.</b>\n` +
+            `أي رسالة أو صورة أو ملف ترسله الآن سيصل إليه مباشرة.\n` +
+            `لإغلاق المحادثة، أرسل <code>/endchat</code> أو <b>اغلق المحادثة</b>`, { parse_mode: 'HTML' });
+        // Notify user
+        await ctx.api.sendMessage(targetUserId, `🛠 <b>تنبيه من فريق الدعم</b>\n\nلقد وصلنا تنبيهاً بأنك تواجه مشكلة.\nأحد مطوري البوت معك الآن وسيتم حل مشكلتك في أسرع وقت 💙`, { parse_mode: 'HTML' });
+        return;
+    }
+    // ══════════════════════════════════════
+    // 🛠 ADMIN PANEL HANDLERS
+    // ══════════════════════════════════════
+    // ── Stats ──
+    if (data === 'admin_stats' && isAdminUser) {
+        const totalUsers = await User_1.User.countDocuments();
+        const bannedUsers = await User_1.User.countDocuments({ isBanned: true });
+        const activeToday = await User_1.User.countDocuments({
+            lastRewardDate: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        });
+        await ctx.answerCallbackQuery().catch(() => { });
+        await ctx.reply(`📊 <b>إحصائيات البوت</b>\n\n` +
+            `👥 إجمالي المستخدمين: <b>${totalUsers}</b>\n` +
+            `🚫 المحظورون: <b>${bannedUsers}</b>\n` +
+            `🟢 نشطون اليوم: <b>${activeToday}</b>`, { parse_mode: 'HTML' });
+        return;
+    }
+    // ── Edit Welcome Message ──
+    if (data === 'admin_edit_welcome' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingReport: false, adminAwaitingInput: 'welcome_message' } });
+        await ctx.reply('✏️ أرسل الآن النص الجديد لرسالة الترحيب:');
+        return;
+    }
+    // ── Edit Daily Reward Amount ──
+    if (data === 'admin_edit_daily' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'daily_reward_amount' } });
+        await ctx.reply('🎁 أرسل العدد الجديد للمحاولات اليومية (مثال: 5):');
+        return;
+    }
+    // ── Edit Low Attempts Warning ──
+    if (data === 'admin_edit_low' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'low_attempts_warning' } });
+        await ctx.reply('⚠️ أرسل الآن نص رسالة انتهاء المحاولات:');
+        return;
+    }
+    // ── Broadcast ──
+    if (data === 'admin_broadcast' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'broadcast' } });
+        await ctx.reply('📢 أرسل الآن الرسالة التي تريد إرسالها لجميع المستخدمين:');
+        return;
+    }
+    // ── Search User ──
+    if (data === 'admin_search_user' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'search_user' } });
+        await ctx.reply('🔍 أرسل الـ ID أو username للمستخدم:');
+        return;
+    }
+    // ── Maintenance Mode ──
+    if (data === 'admin_maintenance' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const current = await BotSettings_1.BotSettings.findOne({ key: 'maintenance_mode' });
+        const currentVal = current?.value === 'true';
+        await BotSettings_1.BotSettings.findOneAndUpdate({ key: 'maintenance_mode' }, { value: currentVal ? 'false' : 'true' }, { upsert: true });
+        await ctx.reply(currentVal
+            ? '✅ تم إيقاف وضع الصيانة — البوت يعمل الآن'
+            : '🔧 تم تفعيل وضع الصيانة — البوت متوقف مؤقتاً');
+        return;
+    }
+    // ── Unban user ──
+    if (data.startsWith('admin_unban_') && isAdminUser) {
+        const targetId = data.replace('admin_unban_', '');
+        await User_1.User.findOneAndUpdate({ telegramId: targetId }, { isBanned: false });
+        await ctx.answerCallbackQuery({ text: '✅ تم رفع الحظر' }).catch(() => { });
+        await ctx.editMessageReplyMarkup(undefined);
+        return;
+    }
+    // ── Add attempts to user ──
+    if (data.startsWith('admin_addattempts_') && isAdminUser) {
+        const targetId = data.replace('admin_addattempts_', '');
+        await User_1.User.findOneAndUpdate({ telegramId: targetId }, { $inc: { dailyQuota: 5 } });
+        await ctx.answerCallbackQuery({ text: '✅ تمت إضافة 5 محاولات' }).catch(() => { });
+        return;
+    }
+    // ══════════════════════════════════════
+    // 📢 تمويل أعضاء — بدء الحملة
+    // ══════════════════════════════════════
+    if (data === 'start_fund_campaign' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        (0, channelFundService_1.startFundCampaignSetup)(ctx.from.id);
+        await ctx.reply('📢 <b>إنشاء حملة تمويل أعضاء</b>\n\nأرسل رابط القناة أو المجموعة المراد تمويلها:', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]],
+            },
+        });
+        return;
+    }
+    if (data === 'cancel_fund_campaign' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        (0, channelFundService_1.clearFundCampaignState)(ctx.from.id);
+        await ctx.reply('❌ تم إلغاء إنشاء الحملة.');
+        return;
+    }
+    // ══════════════════════════════════════
+    // 🎁 claim_reward_{channelId}
+    // ══════════════════════════════════════
+    if (data.startsWith('claim_reward_')) {
+        const channelId = data.replace('claim_reward_', '');
+        const userId = ctx.from.id;
+        const result = await (0, channelFundService_1.claimChannelReward)(userId, channelId, ctx.api);
+        if (result === 'REWARDED') {
+            await ctx.answerCallbackQuery().catch(() => { });
+            await ctx.reply('✅ تم التحقق! تم إضافة 5 محاولات لرصيدك 🎉\nاستمتع بتحسين صورك بجودة احترافية 🌟');
+        }
+        else if (result === 'ALREADY_CLAIMED') {
+            await ctx.answerCallbackQuery({ text: 'لقد حصلت على مكافأة هذه القناة من قبل ✅', show_alert: true }).catch(() => { });
+        }
+        else if (result === 'PROCESSING') {
+            await ctx.answerCallbackQuery({ text: 'جاري المعالجة، انتظر لحظة... ⏳', show_alert: false }).catch(() => { });
+        }
+        else if (result === 'NOT_MEMBER') {
+            await ctx.answerCallbackQuery({
+                text: 'عذراً! لم يتم التحقق من اشتراكك بعد ❌\nالرجاء الاشتراك في القناة أولاً عبر الرابط، ثم اضغط على الزر للحصول على مكافأتك 🎁',
+                show_alert: true
+            }).catch(() => { });
+        }
+        else if (result === 'ADMIN_BLOCKED') {
+            await ctx.answerCallbackQuery({ text: '🚫 المشرف لا يمكنه المطالبة بمكافأة حملته.', show_alert: true }).catch(() => { });
+        }
+        else {
+            await ctx.answerCallbackQuery({ text: '❌ الحملة غير موجودة أو انتهت.', show_alert: true }).catch(() => { });
+        }
+        return;
+    }
+    // ══════════════════════════════════════
+    // 🗑 delete_broadcast_{campaignId}
+    // ══════════════════════════════════════
+    if (data.startsWith('delete_broadcast_') && isAdminUser) {
+        await ctx.answerCallbackQuery({ text: 'جاري حذف الإذاعة... 🗑' }).catch(() => { });
+        const campaignId = data.replace('delete_broadcast_', '');
+        const campaign = await FundCampaign_1.FundCampaign.findById(campaignId);
+        if (!campaign) {
+            await ctx.reply('❌ لم يتم العثور على الحملة.');
+            return;
+        }
+        let deleted = 0;
+        let deleteFailed = 0;
+        for (const { userId: uid, messageId } of campaign.broadcastMessages) {
+            try {
+                await ctx.api.deleteMessage(uid, messageId);
+                deleted++;
+            }
+            catch (e) {
+                deleteFailed++;
+            }
+        }
+        await FundCampaign_1.FundCampaign.findByIdAndUpdate(campaignId, { isActive: false });
+        await ctx.reply(`🗑 تم حذف الإذاعة:\n✅ حُذف: ${deleted}\n❌ فشل: ${deleteFailed}`);
+        try {
+            await ctx.deleteMessage();
+        }
+        catch (e) { }
+        return;
+    }
+    // ══════════════════════════════════════
+    // 🚀 Pro Enhance — Step 1: Quality
+    // ══════════════════════════════════════
+    if (data === 'pro_enhance_start') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await ctx.reply('🚀 <b>Pro Enhance</b>\n\n<b>الخطوة 1/3 — اختر جودة التحسين:</b>', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '⚡ سريع (جودة عالية)', callback_data: 'pro_q_fast' }],
+                    [{ text: '💎 احترافي (جودة فائقة)', callback_data: 'pro_q_pro' }],
+                    [{ text: '🏆 ماكس (أعلى جودة)', callback_data: 'pro_q_max' }],
+                    [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
+                ],
+            },
+        });
+        return;
+    }
+    // Step 1 answers → Step 2: Scale
+    if (['pro_q_fast', 'pro_q_pro', 'pro_q_max'].includes(data)) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const qualityMap = {
+            pro_q_fast: 'fast',
+            pro_q_pro: 'pro',
+            pro_q_max: 'max',
+        };
+        const quality = qualityMap[data];
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { 'proEnhanceSettings.quality': quality, 'proEnhanceSettings.scale': null, 'proEnhanceSettings.imageType': null } });
+        await ctx.reply('🚀 <b>Pro Enhance</b>\n\n<b>الخطوة 2/3 — اختر مقياس التكبير:</b>', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '2x — تكبير مضاعف', callback_data: 'pro_s_2' }],
+                    [{ text: '4x — تكبير رباعي (موصى به)', callback_data: 'pro_s_4' }],
+                    [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
+                ],
+            },
+        });
+        return;
+    }
+    // Step 2 answers → Step 3: Image Type
+    if (['pro_s_2', 'pro_s_4'].includes(data)) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const scale = data === 'pro_s_2' ? '2' : '4';
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { 'proEnhanceSettings.scale': scale } });
+        await ctx.reply('🚀 <b>Pro Enhance</b>\n\n<b>الخطوة 3/3 — نوع الصورة:</b>', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🖼 صورة عادية', callback_data: 'pro_t_photo' }],
+                    [{ text: '👤 وجه / بورتريه', callback_data: 'pro_t_face' }],
+                    [{ text: '🎨 رسم / أنمي / فن', callback_data: 'pro_t_art' }],
+                    [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
+                ],
+            },
+        });
+        return;
+    }
+    // Step 3 answers → Process
+    if (['pro_t_photo', 'pro_t_face', 'pro_t_art'].includes(data)) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const typeMap = {
+            pro_t_photo: 'photo',
+            pro_t_face: 'face',
+            pro_t_art: 'art',
+        };
+        const imageType = typeMap[data];
+        const telegramId = ctx.from.id.toString();
+        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { 'proEnhanceSettings.imageType': imageType } });
+        const freshUser = await User_1.User.findOne({ telegramId });
+        const settings = freshUser?.proEnhanceSettings;
+        // Smart cost calculation based on quality (Max = 3, others = 2)
+        const enhanceCost = settings?.quality === 'max' ? 3 : 2;
+        const costMsg = enhanceCost === 3
+            ? `🏆 اخترت الجودة الفائقة (Max)\n⚠️ سيتم خصم <b>3 محاولات</b> من رصيدك.`
+            : `💎 اخترت الجودة القوية\n⚠️ سيتم خصم <b>2 محاولة</b> من رصيدك.`;
+        await ctx.reply(`🚀 <b>Pro Enhance — تأكيد</b>\n\n${costMsg}\n\nهل أنت موافق؟`, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '✅ نعم، ابدأ التحسين', callback_data: 'pro_confirm_yes' },
+                        { text: '❌ لا، إلغاء', callback_data: 'pro_cancel' },
+                    ],
+                ],
+            },
+        });
+        return;
+    }
+    // ══════════════════════════════════════
+    // ✅ Pro Enhance — Confirmed, start processing
+    // ══════════════════════════════════════
+    if (data === 'pro_confirm_yes') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const userId = ctx.from.id;
+        const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+        const isAdmin = adminIds.includes(userId.toString());
+        const user = await User_1.User.findOne({ telegramId: userId.toString() });
+        if (!user)
+            return;
+        const settings = user.proEnhanceSettings;
+        if (!settings?.quality || !settings?.scale || !settings?.imageType) {
+            await ctx.reply('❌ حدث خطأ في الإعدادات. يرجى البدء من جديد بالضغط على زر Pro Enhance.');
+            return;
+        }
+        // Calculate cost
+        const enhanceCost = settings.quality === 'max' ? 3 : 2;
+        // Check quota (BUT DO NOT DEDUCT YET - wait for image)
+        if (!isAdmin && user.dailyQuota < enhanceCost) {
+            await ctx.reply(`⚠️ رصيدك غير كافٍ لهذا الخيار 🥺\n` +
+                `تحتاج ${enhanceCost} محاولات، رصيدك الحالي: ${user.dailyQuota}\n\n` +
+                `💎 لشراء محاولات إضافية تواصل مع الإدارة.`);
+            return;
+        }
+        // Set awaiting image flag
+        await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $set: { 'proEnhanceSettings.isAwaitingImage': true } });
+        // Ask user to send image NOW
+        await ctx.reply(`✅ تم حفظ إعداداتك بنجاح!\n\n` +
+            `📸 أرسل <b>الصورة</b> الآن وسيبدأ التحسين فوراً 🚀\n` +
+            `(يمكنك إرسالها كصورة عادية أو كملف للحفاظ على الجودة)\n\n` +
+            `<i>ملاحظة: سيتم خصم ${isAdmin ? '0 (أدمن)' : enhanceCost} محاولات عند استلام الصورة.</i>`, { parse_mode: 'HTML' });
+        return;
+    }
+    // Cancel Pro Enhance
+    if (data === 'pro_cancel') {
+        await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
+        return;
+    }
+    // ════════════════════════════════
+    // Admin Panel
+    // ════════════════════════════════
+    if (data === 'admin_panel') {
+        if (!isAdminUser)
+            return;
+        await ctx.answerCallbackQuery().catch(() => { });
+        const buildAdminKeyboard = (l) => ({
+            inline_keyboard: [
+                [{ text: `${l.btn_2k ? '🔴 مقفل' : '🟢 مفتوح'} — 2K`, callback_data: 'atoggle_btn_2k' }],
+                [{ text: `${l.btn_4k ? '🔴 مقفل' : '🟢 مفتوح'} — 4K`, callback_data: 'atoggle_btn_4k' }],
+                [{ text: `${l.btn_8k ? '🔴 مقفل' : '🟢 مفتوح'} — 8K`, callback_data: 'atoggle_btn_8k' }],
+                [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
+                [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
+                [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
+                [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+                [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
+                [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
+            ]
+        });
+        await ctx.reply('<b>⚙️ لوحة تحكم الأدمن</b>\n🟢 = مفتوح للجميع | 🔴 = مقفل', { parse_mode: 'HTML', reply_markup: buildAdminKeyboard(locks) });
+        return;
+    }
+    if (data.startsWith('atoggle_') && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const field = data.replace('atoggle_', '');
+        const newSettings = await (0, settingsService_1.toggleLock)(field);
+        const newLocks = newSettings.locks;
+        const buildAdminKeyboard = (l) => ({
+            inline_keyboard: [
+                [{ text: `${l.btn_2k ? '🔴 مقفل' : '🟢 مفتوح'} — 2K`, callback_data: 'atoggle_btn_2k' }],
+                [{ text: `${l.btn_4k ? '🔴 مقفل' : '🟢 مفتوح'} — 4K`, callback_data: 'atoggle_btn_4k' }],
+                [{ text: `${l.btn_8k ? '🔴 مقفل' : '🟢 مفتوح'} — 8K`, callback_data: 'atoggle_btn_8k' }],
+                [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
+                [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
+                [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
+                [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+                [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
+                [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
+            ]
+        });
+        await ctx.api.editMessageReplyMarkup(ctx.chat.id, ctx.msgId, { reply_markup: buildAdminKeyboard(newLocks) });
+        return;
+    }
+    if (data === 'admin_vip_size') {
+        await ctx.answerCallbackQuery();
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'vip_size_bypass' } });
+        await ctx.reply('🌟 <b>تفعيل الأحجام الكبيرة (VIP)</b>\n\nأرسل الآن <b>ID</b> الخاص بالمستخدم لفتح الحد له إلى 15 ميجابايت:', { parse_mode: 'HTML' });
+        return;
+    }
+    // ── Support Send Confirmation ─────────────────────────────────
+    if (data.startsWith('confirm_support_send_') && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const targetUserId = data.replace('confirm_support_send_', '');
+        // The original message is the one this confirmation was replied to
+        const originalMessage = ctx.callbackQuery?.message?.reply_to_message;
+        if (!originalMessage) {
+            await ctx.reply('❌ لم أتمكن من العثور على الرسالة الأصلية.');
+            return;
+        }
+        try {
+            // Copy the exact original message (text/photo/file) to the target user
+            await ctx.api.copyMessage(targetUserId, originalMessage.chat.id, originalMessage.message_id);
+            await ctx.editMessageReplyMarkup(undefined);
+            await ctx.reply('✅ تم إرسال الرسالة للعميل بنجاح 💙');
+        }
+        catch (e) {
+            await ctx.reply('❌ فشل إرسال الرسالة. ربما حظر العميل البوت.');
+        }
+        return;
+    }
+    if (data === 'cancel_support_send' && isAdminUser) {
+        await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
+        await ctx.editMessageReplyMarkup(undefined);
+        return;
+    }
+    if (data === 'admin_close' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await ctx.deleteMessage();
+        return;
+    }
+    if (data === 'nano_banana_start') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        // Fetch fresh user and check admin
+        const nanoUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+        if (!nanoUser)
+            return;
+        const nanoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+        const isNanoAdmin = nanoAdminIds.includes(ctx.from.id.toString());
+        if (!isNanoAdmin && nanoUser.dailyQuota < 5) {
+            await ctx.reply(`⚠️ رصيدك غير كافٍ!\n` +
+                `تحتاج <b>5 محاولات</b> لاستخدام هذه الميزة ✨\n` +
+                `رصيدك الحالي: <b>${nanoUser.dailyQuota}</b> محاولة`, { parse_mode: 'HTML' });
+            return;
+        }
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingNanoBananaImage: true } });
+        await ctx.reply('✨ <b>تحسين الصورة بالذكاء الاصطناعي</b>\n\n' +
+            '📸 أرسل لي الصورة الآن وسأقوم بتحسينها احترافياً مع الحفاظ على هويتها الأصلية 100% 🚀\n\n' +
+            '💎 <b>السعر: 5 محاولات</b>\n' +
+            '<i>يمكنك إرسالها كصورة عادية أو كملف للحفاظ على الجودة</i>', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_nano_banana' }]]
+            }
+        });
+        return;
+    }
+    if (data === 'cancel_nano_banana') {
+        await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingNanoBananaImage: false } });
+        await ctx.deleteMessage().catch(() => { });
+        return;
+    }
+    // ══════════════════════════════════════
+    // 🖼 تحويل صيغة الملف
+    // ══════════════════════════════════════
+    if (['conv_png', 'conv_jpg', 'conv_webp', 'conv_avif', 'conv_tiff', 'conv_pdf', 'conv_svg'].includes(data)) {
+        await ctx.answerCallbackQuery({ text: 'جاري تحويل الصيغة... ⏳' });
+        const format = data.replace('conv_', '');
+        const document = ctx.callbackQuery?.message?.document;
+        if (!document) {
+            await ctx.reply('❌ لم أتمكن من العثور على الملف الأصلي. أرسل الصورة مجدداً.');
+            return;
+        }
+        // Telegram Bot API hard limit: cannot download files > 20MB
+        if (document.file_size && document.file_size > 20 * 1024 * 1024) {
+            await ctx.reply('❌ عذراً، حجم الملف يتجاوز 20 ميجابايت.\n' +
+                'قيود تيليجرام تمنع تحويل الملفات الكبيرة جداً.');
+            return;
+        }
+        const loadingMsg = await ctx.reply(`🔄 جاري التحويل إلى ${format.toUpperCase()}...`);
+        try {
+            // Download file from Telegram
+            const tgFile = await ctx.api.getFile(document.file_id);
+            if (!tgFile.file_path)
+                throw new Error('لم يتم الحصول على مسار الملف من Telegram');
+            const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+            const response = await fetch(fileUrl);
+            if (!response.ok)
+                throw new Error(`فشل تحميل الملف: ${response.status}`);
+            const inputBuffer = Buffer.from(await response.arrayBuffer());
+            // Get original file size in MB
+            const originalSizeMB = (document.file_size || 0) / (1024 * 1024);
+            // Calculate max output size cap (max 2x original, never above 10MB)
+            const maxOutputMB = Math.min(originalSizeMB * 2, 10);
+            const maxOutputBytes = maxOutputMB * 1024 * 1024;
+            let convertedBuffer;
+            switch (format) {
+                case 'png':
+                    // PNG: compress to stay reasonable
+                    convertedBuffer = await (0, sharp_1.default)(inputBuffer)
+                        .png({ compressionLevel: 6, effort: 7 })
+                        .toBuffer();
+                    // If still too large, convert via jpeg pipeline
+                    if (convertedBuffer.length > maxOutputBytes) {
+                        convertedBuffer = await (0, sharp_1.default)(inputBuffer)
+                            .png({ compressionLevel: 9 })
+                            .toBuffer();
+                    }
+                    break;
+                case 'jpg':
+                    convertedBuffer = await (0, sharp_1.default)(inputBuffer)
+                        .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true })
+                        .toBuffer();
+                    break;
+                case 'webp':
+                    convertedBuffer = await (0, sharp_1.default)(inputBuffer)
+                        .webp({ quality: 95, lossless: false, force: true })
+                        .toBuffer();
+                    break;
+                case 'avif':
+                    convertedBuffer = await (0, sharp_1.default)(inputBuffer)
+                        .avif({ quality: 80, effort: 4, force: true })
+                        .toBuffer();
+                    break;
+                case 'tiff':
+                    convertedBuffer = await (0, sharp_1.default)(inputBuffer)
+                        .tiff({ quality: 90, compression: 'lzw', force: true })
+                        .toBuffer();
+                    break;
+                default:
+                    throw new Error('صيغة غير مدعومة');
+            }
+            const ext = format === 'jpg' ? 'jpeg' : format;
+            const newFileName = `NizoAI_${format.toUpperCase()}_${Date.now()}.${ext}`;
+            // Delete loading message
+            try {
+                await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id);
+            }
+            catch { }
+            // Send converted file to user
+            await ctx.replyWithDocument(new grammy_1.InputFile(convertedBuffer, newFileName), {
+                caption: `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح 🎉\n` +
+                    `📐 الجودة والأبعاد الأصلية محفوظة 100%`,
+                parse_mode: 'HTML',
+            });
+            // Silent archive to channel
+            if (BACKUP_CHANNEL_ID) {
+                const actionUser = ctx.from;
+                const userLink = actionUser?.username
+                    ? `@${actionUser.username}`
+                    : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+                const archiveCaption = `📦 <b>أرشيف تحويل صيغة</b>\n` +
+                    `━━━━━━━━━━━━━━\n` +
+                    `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
+                    `👤 <b>Username:</b> ${userLink}\n` +
+                    `🔄 <b>التحويل:</b> → ${format.toUpperCase()}\n` +
+                    `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+                    `━━━━━━━━━━━━━━`;
+                ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(convertedBuffer, newFileName), {
+                    caption: archiveCaption,
+                    parse_mode: 'HTML',
+                    disable_notification: true,
+                }).catch((e) => console.error('[Conv Archive Error]:', e));
+            }
+        }
+        catch (error) {
+            console.error('[Conversion Error]:', error);
+            // Delete loading message on error
+            try {
+                await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id);
+            }
+            catch { }
+            // Alert admin with full user info
+            await (0, adminAlert_1.sendAdminAlert)(ctx, `Format Conversion Error (${format.toUpperCase()}): ${error.message}`);
+            await ctx.reply('❌ حدث خطأ أثناء تحويل الملف.\n' +
+                'تم إشعار المطور تلقائياً وسيتم حل المشكلة 💙');
+        }
+        return;
+    }
+    // ══════════════════════════════════════
+    // 🔄 تحويل صيغة الصورة — بدء العملية
+    // ══════════════════════════════════════
+    if (data === 'convert_format_start') {
+        await ctx.answerCallbackQuery();
+        const telegramId = ctx.from.id.toString();
+        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingFormatConversion: true, pendingConversionFiles: [] } });
+        await ctx.reply('🔄 <b>تحويل صيغة الصورة</b>\n\n' +
+            '📎 أرسل الصورة الأولى كـ <b>مستند (ملف)</b> وليس كصورة عادية.\n\n' +
+            '💡 <b>يمكنك إرسال أكثر من صورة!</b>\n' +
+            'البوت سيسألك بعد كل صورة إن كنت تريد إضافة المزيد.\n\n' +
+            '⚡ التحويل مجاني بدون خصم محاولات', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+                ],
+            },
+        });
+        return;
+    }
+    if (data === 'convert_format_cancel') {
+        await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' });
+        const telegramId = ctx.from.id.toString();
+        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingFormatConversion: false, pendingConversionFiles: [] } });
+        return;
+    }
+    // ── More images: YES
+    if (data === 'conv_batch_add') {
+        const telegramId = ctx.from.id.toString();
+        const currentUser = await User_1.User.findOne({ telegramId });
+        const currentCount = currentUser?.pendingConversionFiles?.length || 0;
+        if (currentCount >= 5) {
+            await ctx.answerCallbackQuery({ text: '⚠️ وصلت للحد الأقصى (5 صور)', show_alert: true });
+            return;
+        }
+        await ctx.answerCallbackQuery();
+        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingFormatConversion: true } });
+        await ctx.reply('📎 أرسل الصورة التالية كـ <b>مستند (ملف)</b>:', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+                ],
+            },
+        });
+        return;
+    }
+    // ── More images: NO → show format selection
+    if (data === 'conv_batch_finish') {
+        await ctx.answerCallbackQuery();
+        const telegramId = ctx.from.id.toString();
+        const currentUser = await User_1.User.findOne({ telegramId });
+        const count = currentUser?.pendingConversionFiles?.length || 0;
+        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingFormatConversion: false } });
+        await ctx.reply(`✅ تم استلام <b>${count}</b> صورة\n\n` +
+            `📐 <b>هل تريد رفع دقة الصور أم تحويل الصيغة فقط؟</b>`, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '✨ نعم، ارفع الدقة أيضاً', callback_data: 'conv_quality_upscale' }],
+                    [{ text: '🔄 لا، تحويل الصيغة فقط (كما هي)', callback_data: 'conv_quality_original' }],
+                    [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+                ],
+            },
+        });
+        return;
+    }
+    if (data === 'conv_quality_upscale') {
+        await ctx.answerCallbackQuery();
+        const telegramId = ctx.from.id.toString();
+        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { conversionUpscale: true } });
+        // Show format selection
+        const currentUser = await User_1.User.findOne({ telegramId });
+        const count = currentUser?.pendingConversionFiles?.length || 0;
+        await showFormatSelection(ctx, count, true);
+        return;
+    }
+    if (data === 'conv_quality_original') {
+        await ctx.answerCallbackQuery();
+        const telegramId = ctx.from.id.toString();
+        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { conversionUpscale: false } });
+        const currentUser = await User_1.User.findOne({ telegramId });
+        const count = currentUser?.pendingConversionFiles?.length || 0;
+        await showFormatSelection(ctx, count, false);
+        return;
+    }
+    if (['fconv_png', 'fconv_jpg', 'fconv_webp', 'fconv_avif', 'fconv_tiff', 'fconv_pdf', 'fconv_svg'].includes(data)) {
+        await ctx.answerCallbackQuery({ text: 'جاري المعالجة... ⏳' });
+        const format = data.replace('fconv_', '');
+        const telegramId = ctx.from.id.toString();
+        const currentUser = await User_1.User.findOne({ telegramId });
+        const fileIds = currentUser?.pendingConversionFiles || [];
+        if (!fileIds.length) {
+            await ctx.reply('❌ لا توجد صور. ابدأ من جديد.');
+            return;
+        }
+        const loadingMsg = await ctx.reply(`⏳ جاري تحويل ${fileIds.length} صورة إلى ${format.toUpperCase()}...`);
+        try {
+            const ext = format === 'jpg' ? 'jpeg' : format;
+            // Helper: convert single buffer to chosen format
+            const convertBuffer = async (inputBuffer) => {
+                switch (format) {
+                    case 'png':
+                        return (0, sharp_1.default)(inputBuffer).png({ compressionLevel: 6 }).toBuffer();
+                    case 'jpg':
+                        return (0, sharp_1.default)(inputBuffer)
+                            .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true }).toBuffer();
+                    case 'webp':
+                        return (0, sharp_1.default)(inputBuffer)
+                            .webp({ quality: 95, lossless: false, force: true }).toBuffer();
+                    case 'avif':
+                        return (0, sharp_1.default)(inputBuffer)
+                            .avif({ quality: 80, effort: 4, force: true }).toBuffer();
+                    case 'tiff':
+                        return (0, sharp_1.default)(inputBuffer)
+                            .tiff({ quality: 90, compression: 'lzw', force: true }).toBuffer();
+                    case 'pdf': {
+                        // Convert image to PDF using pdfkit
+                        const metadata = await (0, sharp_1.default)(inputBuffer).metadata();
+                        const imgWidth = metadata.width || 800;
+                        const imgHeight = metadata.height || 600;
+                        const pdfBuffer = await new Promise((resolve, reject) => {
+                            const doc = new pdfkit_1.default({
+                                size: [imgWidth, imgHeight],
+                                margin: 0,
+                                autoFirstPage: true,
+                            });
+                            const chunks = [];
+                            doc.on('data', (chunk) => chunks.push(chunk));
+                            doc.on('end', () => resolve(Buffer.concat(chunks)));
+                            doc.on('error', reject);
+                            // Convert image to PNG first for PDF embedding
+                            (0, sharp_1.default)(inputBuffer).png().toBuffer().then((pngBuffer) => {
+                                doc.image(pngBuffer, 0, 0, { width: imgWidth, height: imgHeight });
+                                doc.end();
+                            }).catch(reject);
+                        });
+                        return pdfBuffer;
+                    }
+                    case 'svg': {
+                        // Wrap image in SVG (embed as base64)
+                        const metadata = await (0, sharp_1.default)(inputBuffer).metadata();
+                        const imgWidth = metadata.width || 800;
+                        const imgHeight = metadata.height || 600;
+                        // Convert to PNG first for embedding
+                        const pngBuffer = await (0, sharp_1.default)(inputBuffer).png().toBuffer();
+                        const base64 = pngBuffer.toString('base64');
+                        const svgContent = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+                            `<svg xmlns="http://www.w3.org/2000/svg" ` +
+                            `xmlns:xlink="http://www.w3.org/1999/xlink" ` +
+                            `width="${imgWidth}" height="${imgHeight}" ` +
+                            `viewBox="0 0 ${imgWidth} ${imgHeight}">\n` +
+                            `  <image xlink:href="data:image/png;base64,${base64}" ` +
+                            `x="0" y="0" width="${imgWidth}" height="${imgHeight}"/>\n` +
+                            `</svg>`;
+                        return Buffer.from(svgContent, 'utf-8');
+                    }
+                    default:
+                        throw new Error('صيغة غير مدعومة');
+                }
+            };
+            // Download and convert all files
+            const convertedFiles = [];
+            for (let i = 0; i < fileIds.length; i++) {
+                try {
+                    const tgFile = await ctx.api.getFile(fileIds[i]);
+                    if (!tgFile.file_path)
+                        continue;
+                    const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+                    const response = await fetch(fileUrl);
+                    if (!response.ok)
+                        continue;
+                    const inputBuffer = Buffer.from(await response.arrayBuffer());
+                    const shouldUpscale = currentUser?.conversionUpscale === true;
+                    let processBuffer = inputBuffer;
+                    if (shouldUpscale && !['pdf', 'svg'].includes(format)) {
+                        const meta = await (0, sharp_1.default)(inputBuffer).metadata();
+                        const w = meta.width || 800;
+                        const h = meta.height || 600;
+                        processBuffer = await (0, sharp_1.default)(inputBuffer)
+                            .resize({
+                            width: Math.round(w * 2),
+                            height: Math.round(h * 2),
+                            fit: 'fill',
+                            kernel: sharp_1.default.kernel.lanczos3,
+                        })
+                            .toBuffer();
+                    }
+                    const converted = await convertBuffer(processBuffer);
+                    // const _mimeOk = !['pdf', 'svg'].includes(format);
+                    convertedFiles.push({ buffer: converted, name: `image_${i + 1}.${ext}` });
+                }
+                catch (e) {
+                    console.error(`[fconv] Error file ${i + 1}:`, e);
+                }
+            }
+            if (!convertedFiles.length)
+                throw new Error('فشل تحويل جميع الصور');
+            try {
+                await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id);
+            }
+            catch { }
+            const actionUser = ctx.from;
+            const userLink = actionUser?.username
+                ? `@${actionUser.username}`
+                : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+            if (convertedFiles.length === 1) {
+                // Single file → send as document
+                const { buffer, name } = convertedFiles[0];
+                const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
+                await ctx.replyWithDocument(new grammy_1.InputFile(buffer, name), {
+                    caption: `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح! 🎉\n` +
+                        `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
+                        `⚡ مجاني — لم يتم خصم أي محاولات`,
+                    parse_mode: 'HTML',
+                });
+                // Silent archive
+                if (BACKUP_CHANNEL_ID) {
+                    ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(buffer, name), {
+                        caption: `📦 <b>أرشيف تحويل صيغة</b>\n━━━━━━━━━━━━━━\n` +
+                            `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
+                            `👤 <b>Username:</b> ${userLink}\n` +
+                            `🔄 <b>التحويل:</b> → ${format.toUpperCase()}\n` +
+                            `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
+                            `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+                            `━━━━━━━━━━━━━━`,
+                        parse_mode: 'HTML',
+                        disable_notification: true,
+                    }).catch((e) => console.error('[fconv Archive]:', e));
+                }
+            }
+            else {
+                // Multiple files → ZIP using AdmZip
+                const zip = new adm_zip_1.default();
+                for (const { buffer, name } of convertedFiles) {
+                    zip.addFile(name, buffer);
+                }
+                const zipBuffer = zip.toBuffer();
+                const zipFileName = `NizoAI_Batch_${format.toUpperCase()}_${Date.now()}.zip`;
+                const zipSizeMB = (zipBuffer.length / (1024 * 1024)).toFixed(2);
+                await ctx.replyWithDocument(new grammy_1.InputFile(zipBuffer, zipFileName), {
+                    caption: `✅ <b>تم التحويل بنجاح!</b> 🎉\n` +
+                        `📸 <b>عدد الصور:</b> ${convertedFiles.length}\n` +
+                        `🔄 <b>الصيغة:</b> ${format.toUpperCase()}\n` +
+                        `📦 <b>حجم الملف المضغوط:</b> ${zipSizeMB} MB\n` +
+                        `⚡ مجاني — لم يتم خصم أي محاولات`,
+                    parse_mode: 'HTML',
+                });
+                // Silent archive
+                if (BACKUP_CHANNEL_ID) {
+                    ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(zipBuffer, zipFileName), {
+                        caption: `📦 <b>أرشيف تحويل دُفعي</b>\n━━━━━━━━━━━━━━\n` +
+                            `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
+                            `👤 <b>Username:</b> ${userLink}\n` +
+                            `📸 <b>عدد الصور:</b> ${convertedFiles.length}\n` +
+                            `🔄 <b>الصيغة:</b> ${format.toUpperCase()}\n` +
+                            `📦 <b>الحجم:</b> ${zipSizeMB} MB\n` +
+                            `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+                            `━━━━━━━━━━━━━━`,
+                        parse_mode: 'HTML',
+                        disable_notification: true,
+                    }).catch((e) => console.error('[fconv Batch Archive]:', e));
+                }
+            }
+            // Reset state
+            await User_1.User.findOneAndUpdate({ telegramId }, { $set: {
+                    awaitingFormatConversion: false,
+                    pendingConversionFiles: [],
+                    conversionUpscale: false,
+                } });
+        }
+        catch (error) {
+            console.error('[fconv Error]:', error);
+            try {
+                await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id);
+            }
+            catch { }
+            await (0, adminAlert_1.sendAdminAlert)(ctx, `fconv Error (${format}): ${error.message}`);
+            await ctx.reply('❌ حدث خطأ أثناء التحويل. تم إشعار المطور 💙');
+            await User_1.User.findOneAndUpdate({ telegramId }, { $set: {
+                    awaitingFormatConversion: false,
+                    pendingConversionFiles: [],
+                    conversionUpscale: false,
+                } });
+        }
+        return;
+    }
+    if (data === 'admin_edit_convert_msg' && isAdminUser) {
+        await ctx.answerCallbackQuery();
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'convert_button_message' } });
+        await ctx.reply('🔄 أرسل النص الجديد لرسالة زر تحويل الصيغة:\n\n' +
+            '(يدعم HTML: <b>عريض</b> و <i>مائل</i>)');
+        return;
+    }
+    if (data === 'eraser_start') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const eraserUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+        if (!eraserUser)
+            return;
+        const eraserAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+        const isEraserAdmin = eraserAdminIds.includes(ctx.from.id.toString());
+        if (!isEraserAdmin && eraserUser.dailyQuota < 1) {
+            await ctx.reply(`⚠️ أوه لا! رصيدك خلص 🥺\n` +
+                `تحتاج <b>محاولة واحدة</b> فقط للممحاة السحرية 🪄\n` +
+                `رصيدك الحالي: <b>${eraserUser.dailyQuota}</b>\n\n` +
+                `💡 احصل على محاولات مجانية من زر الهدية اليومية 🎁`, { parse_mode: 'HTML' });
+            return;
+        }
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingEraserImage: true } });
+        await ctx.reply('✨ <b>مُزيل العلامات المائية</b>\n\n' +
+            'أرسل لي الصورة كـ <b>ملف (Document)</b> 📎\n' +
+            'وسأقوم بإزالة العلامة المائية تلقائياً بدقة عالية 🎯\n\n' +
+            '📏 <b>الحد الأقصى:</b> 5 ميجابايت\n' +
+            '💎 <b>السعر:</b> محاولة واحدة فقط', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_eraser' }]]
+            }
+        });
+        return;
+    }
+    if (data === 'cancel_eraser') {
+        await ctx.answerCallbackQuery({ text: 'تم إلغاء مُزيل العلامات المائية ❌' }).catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingEraserImage: false } });
+        await ctx.deleteMessage().catch(() => { });
+        return;
+    }
+    if (data.startsWith('convert_')) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        // Extract format from callback_data (e.g., convert_jpg_1234567890 → jpg)
+        const parts = data.split('_');
+        const format = parts[1];
+        const validFormats = ['jpg', 'png', 'webp', 'gif', 'tiff'];
+        if (!validFormats.includes(format))
+            return;
+        // Get user's last processed image URL
+        const convertUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+        if (!convertUser?.lastEraserResultUrl) {
+            await ctx.reply('⚠️ انتهت صلاحية الصورة. يرجى إعادة المعالجة من جديد.');
+            return;
+        }
+        const processingMsg = await ctx.reply(`⏳ جاري تحويل الصورة إلى ${format.toUpperCase()}...`);
+        try {
+            // Re-process the original image to get clean result
+            const { processWatermarkEraser, convertImageFormat } = await Promise.resolve().then(() => __importStar(require('../../services/imageService')));
+            const erasedBuffer = await processWatermarkEraser(convertUser.lastEraserResultUrl);
+            const { buffer: convertedBuffer, ext } = await convertImageFormat(erasedBuffer, format);
+            const fileName = `NizoAI_Clean_${Date.now()}.${ext}`;
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
+            await ctx.replyWithDocument(new InputFile(convertedBuffer, fileName), { caption: `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح! 🎉`, parse_mode: 'HTML' });
+            // Delete the format selection message to keep chat clean
+            await ctx.deleteMessage().catch(() => { });
+        }
+        catch (error) {
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            console.error('[Convert] Error:', error?.message);
+            await ctx.reply('❌ حدث خطأ أثناء التحويل. يرجى المحاولة مجدداً.');
+        }
         return;
     }
 }
