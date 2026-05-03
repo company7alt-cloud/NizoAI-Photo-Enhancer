@@ -33,6 +33,13 @@ export interface IUser extends Document {
   lastSeenAt: Date | null;
   awaitingNanoBananaImage: boolean;
   awaitingEraserImage?: boolean;
+  awaitingEraserOriginal?: boolean;
+  eraserCoords?: {
+    minX: number | null;
+    minY: number | null;
+    width: number | null;
+    height: number | null;
+  };
   awaitingFormatConversion?: boolean;
   pendingConversionFiles?: string[];
   conversionUpscale?: boolean;
@@ -156,6 +163,16 @@ const UserSchema = new Schema<IUser>(
     lastSeenAt: { type: Date, default: null },
     awaitingNanoBananaImage: { type: Boolean, default: false },
     awaitingEraserImage: { type: Boolean, default: false },
+    awaitingEraserOriginal: { type: Boolean, default: false },
+    eraserCoords: {
+      type: {
+        minX:   { type: Number, default: null },
+        minY:   { type: Number, default: null },
+        width:  { type: Number, default: null },
+        height: { type: Number, default: null },
+      },
+      default: () => ({ minX: null, minY: null, width: null, height: null }),
+    },
     awaitingFormatConversion: { type: Boolean, default: false },
     pendingConversionFiles: { type: [String], default: [] },
     conversionUpscale: { type: Boolean, default: false },

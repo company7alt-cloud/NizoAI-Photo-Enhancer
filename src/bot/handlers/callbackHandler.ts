@@ -1728,17 +1728,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    await User.findOneAndUpdate(
-      { telegramId: ctx.from!.id.toString() },
-      { $set: { awaitingEraserImage: true } }
-    );
-
     await ctx.reply(
-      '✨ <b>مُزيل العلامات المائية</b>\n\n' +
-      'أرسل لي الصورة كـ <b>ملف (Document)</b> 📎\n' +
-      'وسأقوم بإزالة العلامة المائية تلقائياً بدقة عالية 🎯\n\n' +
-      '📏 <b>الحد الأقصى:</b> 5 ميجابايت\n' +
-      '💎 <b>السعر:</b> محاولة واحدة فقط',
+      '✨ <b>مُزيل العلامات المائية — النظام الاحترافي</b>\n\n' +
+      '📝 <b>الخطوة 1 من 2:</b>\n\n' +
+      '1️⃣ افتح الصورة في أي تطبيق رسم\n' +
+      '2️⃣ ارسم مربعاً أو خطاً <b>باللون الأحمر</b> 🔴 فوق العلامة المائية أو الشيء المراد حذفه\n' +
+      '3️⃣ أرسل هذه الصورة المُعدَّلة هنا (صورة عادية أو ملف) 📎\n\n' +
+      '💡 <b>ملاحظة:</b> البوت سيحفظ الموقع فقط، ثم يطلب منك الصورة الأصلية النظيفة\n\n' +
+      '💎 <b>السعر: نقطتان (2)</b>',
       {
         parse_mode: 'HTML',
         reply_markup: {
@@ -1746,14 +1743,29 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         }
       }
     );
+
+    // Set state: waiting for reference image (marked)
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingEraserImage: true, awaitingEraserOriginal: false } }
+    );
     return;
   }
 
   if (data === 'cancel_eraser') {
-    await ctx.answerCallbackQuery({ text: 'تم إلغاء مُزيل العلامات المائية ❌' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
-      { $set: { awaitingEraserImage: false } }
+      {
+        $set: {
+          awaitingEraserImage: false,
+          awaitingEraserOriginal: false,
+          'eraserCoords.minX': null,
+          'eraserCoords.minY': null,
+          'eraserCoords.width': null,
+          'eraserCoords.height': null
+        }
+      }
     );
     await ctx.deleteMessage().catch(() => {});
     return;
@@ -1779,8 +1791,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     try {
       // Re-process the original image to get clean result
-      const { processWatermarkEraser, convertImageFormat } = await import('../../services/imageService');
-      const erasedBuffer = await processWatermarkEraser(convertUser.lastEraserResultUrl);
+      const { convertImageFormat } = await import('../../services/imageService');
+      const res = await fetch(convertUser.lastEraserResultUrl);
+      const erasedBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
       const { buffer: convertedBuffer, ext } = await convertImageFormat(erasedBuffer, format);
 
       const fileName = `NizoAI_Clean_${Date.now()}.${ext}`;

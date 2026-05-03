@@ -395,155 +395,107 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
   }
 }
 
-export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
-  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
-
-  // Download original image
+// FUNCTION 1: Extract red-marked region coordinates from reference image
+export async function extractMaskCoordinates(
+  imageUrl: string
+): Promise<{ minX: number; minY: number; width: number; height: number } | null> {
   const imageResponse = await fetch(imageUrl);
   const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
   const metadata = await sharp(rawBuffer).metadata();
-  const width  = metadata.width!;
-  const height = metadata.height!;
+  const imgWidth  = metadata.width!;
+  const imgHeight = metadata.height!;
 
-  // Gemini watermark: bottom-right corner, ~5.5% of each dimension
-  const wmW    = Math.ceil(width  * 0.055);
-  const wmH    = Math.ceil(height * 0.055);
-  const wmLeft = width  - wmW;
-  const wmTop  = height - wmH;
-
-  // Step 1: Crop just the watermark region + surrounding context
-  // We crop a larger area (3x watermark size) for Gemini to understand context
-  const contextW    = Math.min(width,  wmW * 3);
-  const contextH    = Math.min(height, wmH * 3);
-  const contextLeft = Math.max(0, width  - contextW);
-  const contextTop  = Math.max(0, height - contextH);
-
-  const contextPatch = await sharp(rawBuffer)
-    .extract({ left: contextLeft, top: contextTop, width: contextW, height: contextH })
-    .png()
-    .toBuffer();
-
-  const contextBase64 = contextPatch.toString('base64');
-
-  // Step 2: Ask Gemini to describe the background under the watermark
-  const geminiResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            {
-              text: `This image shows a bottom-right corner of a photo. There is a small white 4-pointed star watermark in the very bottom-right corner. 
-              
-              Describe ONLY the background texture/color/pattern that exists directly behind and around this watermark star, in precise detail. 
-              What are the exact RGB color values or color description of the pixels surrounding the star? Is it dark, light, gradient? What texture?
-              
-              Respond in this exact JSON format only, no other text:
-              {"bg_color": "description", "is_dark": true/false, "dominant_color": "hex color like #1a1a1a", "texture": "solid/gradient/detailed"}`
-            },
-            {
-              inline_data: {
-                mime_type: 'image/png',
-                data: contextBase64
-              }
-            }
-          ]
-        }],
-        generationConfig: { temperature: 0.1 }
-      })
-    }
-  );
-
-  let bgInfo = { is_dark: true, dominant_color: '#000000', texture: 'solid' };
-
-  if (geminiResponse.ok) {
-    try {
-      const geminiData = await geminiResponse.json();
-      const text = (geminiData as any)?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const jsonMatch = text.match(/\{.*\}/s);
-      if (jsonMatch) {
-        bgInfo = JSON.parse(jsonMatch[0]);
-      }
-    } catch (e) {
-      console.log('[Eraser] Could not parse Gemini response, using fallback');
-    }
-  }
-
-  // Step 3: Sample actual pixels from the area just ABOVE the watermark
-  const sampleH    = Math.max(4, Math.ceil(wmH * 0.8));
-  const sampleTop  = Math.max(0, wmTop - sampleH - 2);
-  const sampleLeft = Math.max(0, wmLeft - Math.ceil(wmW * 0.5));
-  const sampleW    = Math.min(width - sampleLeft, wmW + Math.ceil(wmW * 0.5));
-
-  const samplePatch = await sharp(rawBuffer)
-    .extract({ left: sampleLeft, top: sampleTop, width: sampleW, height: sampleH })
-    .toBuffer();
-
-  // Get average color from the sample patch
-  const { data: dominantData } = await sharp(samplePatch)
-    .resize(1, 1, { fit: 'cover' })
+  const { data, info } = await sharp(rawBuffer)
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  const avgR = dominantData[0] ?? 0;
-  const avgG = dominantData[1] ?? 0;
-  const avgB = dominantData[2] ?? 0;
-  void avgR; void avgG; void avgB; // suppress unused variable warnings
+  let minX = imgWidth, minY = imgHeight, maxX = 0, maxY = 0;
+  let hasMarker = false;
 
-  // Step 4: Build fill patch matching the exact background
-  const sampleAbove = await sharp(rawBuffer)
-    .extract({
-      left: wmLeft,
-      top: Math.max(0, wmTop - wmH * 2),
-      width: wmW,
-      height: Math.min(wmH * 2, wmTop)
-    })
+  for (let i = 0; i < imgWidth * imgHeight; i++) {
+    const r = data[i * info.channels];
+    const g = data[i * info.channels + 1];
+    const b = data[i * info.channels + 2];
+
+    // Detect red marker: high red, low green+blue
+    if (r > 140 && g < 110 && b < 110) {
+      hasMarker = true;
+      const x = i % imgWidth;
+      const y = Math.floor(i / imgWidth);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  if (!hasMarker) return null;
+
+  // Add 15px padding for seamless blending
+  minX = Math.max(0, minX - 15);
+  minY = Math.max(0, minY - 15);
+  maxX = Math.min(imgWidth  - 1, maxX + 15);
+  maxY = Math.min(imgHeight - 1, maxY + 15);
+
+  return {
+    minX,
+    minY,
+    width:  maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+// FUNCTION 2: Generate mask and send to Replicate inpainting
+export async function processTwoStepInpainting(
+  cleanImageUrl: string,
+  coords: { minX: number; minY: number; width: number; height: number }
+): Promise<Buffer> {
+  const imageResponse = await fetch(cleanImageUrl);
+  const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
+
+  const metadata = await sharp(rawBuffer).metadata();
+  const imgW = metadata.width!;
+  const imgH = metadata.height!;
+
+  // Generate black mask with white rectangle over the target area
+  const baseMask = await sharp({
+    create: { width: imgW, height: imgH, channels: 3, background: { r: 0, g: 0, b: 0 } }
+  }).png().toBuffer();
+
+  const whiteBox = await sharp({
+    create: { width: coords.width, height: coords.height, channels: 3, background: { r: 255, g: 255, b: 255 } }
+  }).png().toBuffer();
+
+  const finalMaskBuffer = await sharp(baseMask)
+    .composite([{ input: whiteBox, left: coords.minX, top: coords.minY }])
+    .blur(4)
+    .png()
     .toBuffer();
 
-  const fillPatch = await sharp(sampleAbove)
-    .resize(wmW, wmH, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
-    .blur(0.8)
-    .modulate({
-      brightness: bgInfo.is_dark ? 0.98 : 1.02,
-      saturation: 0.95
-    })
-    .toBuffer();
+  const imageBase64 = `data:image/jpeg;base64,${(await sharp(rawBuffer).jpeg({ quality: 95 }).toBuffer()).toString('base64')}`;
+  const maskBase64  = `data:image/png;base64,${finalMaskBuffer.toString('base64')}`;
 
-  // Step 5: Apply fill with feathered edges for seamless blending
-  const maskSvg = Buffer.from(`
-    <svg width="${wmW}" height="${wmH}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <radialGradient id="fade" cx="30%" cy="30%" r="80%">
-          <stop offset="0%" stop-color="white" stop-opacity="1"/>
-          <stop offset="70%" stop-color="white" stop-opacity="1"/>
-          <stop offset="100%" stop-color="white" stop-opacity="0.6"/>
-        </radialGradient>
-      </defs>
-      <rect width="${wmW}" height="${wmH}" fill="url(#fade)"/>
-    </svg>
-  `);
+  const output = await replicate.run(
+    "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
+    {
+      input: {
+        image:  imageBase64,
+        mask:   maskBase64,
+        prompt: "remove the element in the masked area completely, fill seamlessly with the surrounding background texture and lighting, preserve all original product features, branding, shape, and design details exactly as they are",
+        negative_prompt: "watermark, text, logo, blur, distortion, artifacts, changing original design, redesigning product",
+        disable_safety_checker: true,
+        num_inference_steps: 30,
+        guidance_scale: 7.5
+      }
+    }
+  );
 
-  const maskedFill = await sharp(fillPatch)
-    .composite([{ input: maskSvg, blend: 'dest-in' }])
-    .toBuffer();
+  const resultUrl = Array.isArray(output) ? output[0] : output;
+  if (!resultUrl) throw new Error('Inpainting API returned no image.');
 
-  // Step 6: Composite onto original image
-  const result = await sharp(rawBuffer)
-    .composite([{
-      input: maskedFill,
-      left: wmLeft,
-      top: wmTop,
-      blend: 'over'
-    }])
-    .png({ compressionLevel: 6 })
-    .toBuffer();
-
-  console.log(`[Eraser] ✅ Watermark removed. BG: ${bgInfo.dominant_color}, Dark: ${bgInfo.is_dark}`);
-  return result as Buffer;
+  const res = await fetch(resultUrl.toString());
+  return Buffer.from(new Uint8Array(await res.arrayBuffer())) as Buffer;
 }
 
 export async function convertImageFormat(
