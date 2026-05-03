@@ -420,89 +420,59 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
 }
 
 export async function processWatermarkEraser(imageUrl: string): Promise<Buffer> {
+  sharp.cache(false);
   const imageResponse = await fetch(imageUrl);
-  const rawArray = await imageResponse.arrayBuffer();
-  const rawBuffer = Buffer.from(new Uint8Array(rawArray)) as Buffer;
+  const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
 
+  // Cap dimensions to 1500px to prevent OOM but maintain high quality
+  const MAX_DIM = 1500;
+  let workingBuffer = rawBuffer;
   const metadata = await sharp(rawBuffer).metadata();
-  const width = metadata.width!;
-  const height = metadata.height!;
+  let width = metadata.width!;
+  let height = metadata.height!;
 
-  // Watermark region (bottom-right 8%)
-  const wmWidth = Math.ceil(width * 0.08);
-  const wmHeight = Math.ceil(height * 0.08);
-  const wmLeft = width - wmWidth;
-  const wmTop = height - wmHeight;
-
-  let resultBuffer: Buffer | null = null;
-
-  try {
-    // 1. Try AI Inpainting
-    const maskData = Buffer.alloc(width * height, 0);
-    for (let y = wmTop; y < height; y++) {
-      for (let x = wmLeft; x < width; x++) {
-        maskData[y * width + x] = 255;
-      }
-    }
-    const maskBuffer = await sharp(maskData, { raw: { width, height, channels: 1 } }).png().toBuffer();
-
-    const imageBase64 = `data:image/jpeg;base64,${(await sharp(rawBuffer).jpeg().toBuffer()).toString('base64')}`;
-    const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
-
-    const output = await replicate.run(
-      "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
-      {
-        input: {
-          image: imageBase64,
-          mask: maskBase64,
-          prompt: "seamless background, clean space, perfect texture matching",
-          disable_safety_checker: true,
-          num_inference_steps: 20
-        }
-      }
-    );
-
-    const resultUrl = Array.isArray(output) ? output[0] : output;
-    if (resultUrl) {
-      const res = await fetch(resultUrl.toString());
-      resultBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
-    }
-  } catch (error) {
-    console.error('[Eraser] Replicate API failed, falling back to local processing.');
+  if (width > MAX_DIM || height > MAX_DIM) {
+    workingBuffer = await sharp(rawBuffer).resize(MAX_DIM, MAX_DIM, { fit: 'inside' }).toBuffer();
+    const newMeta = await sharp(workingBuffer).metadata();
+    width = newMeta.width!;
+    height = newMeta.height!;
   }
 
-  // 2. ULTIMATE SAFETY VALVE: If AI failed OR returned a black image (< 10KB)
-  if (!resultBuffer || resultBuffer.length < 10000) {
-    console.log('[Eraser] AI returned black image or failed. Applying local blur-blend fallback.');
+  // 1. Smart Red Color Extraction (handles soft brush edges)
+  const { data, info } = await sharp(workingBuffer).raw().toBuffer({ resolveWithObject: true });
+  const maskData = Buffer.alloc(width * height, 0);
 
-    const sampleLeft = Math.max(0, wmLeft - wmWidth - 10);
-    const sampleWidth = Math.min(wmWidth, wmLeft - 10);
-
-    if (sampleWidth > 10) {
-      const leftPatch = await sharp(rawBuffer)
-        .extract({ left: sampleLeft, top: wmTop, width: sampleWidth, height: wmHeight })
-        .resize(wmWidth, wmHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
-        .blur(1.5)
-        .toBuffer();
-
-      resultBuffer = await sharp(rawBuffer)
-        .composite([{ input: leftPatch, left: wmLeft, top: wmTop, blend: 'over' }])
-        .jpeg({ quality: 96, chromaSubsampling: '4:4:4', force: true })
-        .toBuffer();
-    } else {
-      const wmRegion = await sharp(rawBuffer)
-        .extract({ left: wmLeft, top: wmTop, width: wmWidth, height: wmHeight })
-        .blur(15)
-        .toBuffer();
-
-      resultBuffer = await sharp(rawBuffer)
-        .composite([{ input: wmRegion, left: wmLeft, top: wmTop, blend: 'over' }])
-        .jpeg({ quality: 96, chromaSubsampling: '4:4:4', force: true })
-        .toBuffer();
+  for (let i = 0; i < width * height; i++) {
+    const r = data[i * info.channels];
+    const g = data[i * info.channels + 1];
+    const b = data[i * info.channels + 2];
+    
+    // Smart threshold: R must be dominant over G and B
+    if (r > 100 && r > g + 40 && r > b + 40) {
+      maskData[i] = 255; // Mark as area to remove
     }
   }
 
-  return resultBuffer;
+  // 2. Apply Feather Effect (Gaussian Blur on the mask) for seamless Photoshop-like blending
+  const maskBuffer = await sharp(maskData, { raw: { width, height, channels: 1 } })
+    .blur(5) // Equivalent to 5px feather in Photoshop
+    .png()
+    .toBuffer();
+
+  const imageBase64 = `data:image/jpeg;base64,${(await sharp(workingBuffer).jpeg().toBuffer()).toString('base64')}`;
+  const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
+
+  // 3. Send to pure LaMa model (Content-Aware Fill)
+  const output = await replicate.run(
+    "cjwbw/lama:1a7737078263158fbce9d0a68d87a416a20d75586ae797dd08ac774597b416bb",
+    { input: { image: imageBase64, mask: maskBase64 } }
+  );
+
+  const resultUrl = Array.isArray(output) ? output[0] : output;
+  if (!resultUrl) throw new Error('LaMa API failed to return output.');
+
+  const res = await fetch(resultUrl.toString());
+  return Buffer.from(new Uint8Array(await res.arrayBuffer()));
 }
 
 export async function convertImageFormat(

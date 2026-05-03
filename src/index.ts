@@ -118,6 +118,32 @@ bot.on('message:text', async (ctx, next) => {
   const isAdm = adminIds.includes(telegramId || '');
   const messageText = ctx.message?.text || '';
 
+  // 0. VIP Size Bypass Command (Admin Only)
+  if (isAdm && messageText.startsWith('/vip')) {
+    const parts = messageText.split(' ');
+    const targetId = parts[1];
+    
+    if (!targetId) {
+      await ctx.reply('❌ <b>خطأ في الصيغة</b>\nالاستخدام الصحيح: <code>/vip 123456789</code>', { parse_mode: 'HTML' });
+      return;
+    }
+
+    const targetUser = await User.findOne({ telegramId: targetId });
+    if (!targetUser) {
+      await ctx.reply('❌ لم يتم العثور على مستخدم بهذا الـ ID.');
+      return;
+    }
+
+    await User.findOneAndUpdate({ telegramId: targetId }, { $set: { vipSizeBypass: true } });
+    await ctx.reply(`✅ <b>تم تفعيل VIP!</b>\nالمستخدم (<code>${targetId}</code>) يمكنه الآن رفع صور بحجم 15 ميجابايت.`, { parse_mode: 'HTML' });
+    
+    try {
+      await ctx.api.sendMessage(targetId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nبناءً على طلبك، تم فتح الحد الأقصى للممحاة السحرية. يمكنك الآن إرسال صور بحجم يصل إلى <b>15 ميجابايت</b>! 😎', { parse_mode: 'HTML' });
+    } catch (e) {}
+    
+    return;
+  }
+
   // 1. Admin Commands (Priority 1)
   if (isAdm && (messageText === '/endchat' || messageText === 'قفل المحادثة' || messageText === 'اغلق المحادثة')) {
     const activeUser = await User.findOne({
