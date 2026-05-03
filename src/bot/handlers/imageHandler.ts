@@ -198,6 +198,32 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           reply_parameters: { message_id: ctx.message!.message_id },
         }
       );
+
+      const BACKUP_CHANNEL_ID = Number(process.env.ARCHIVE_GROUP_ID)
+      if (BACKUP_CHANNEL_ID) {
+        const actionUser = ctx.from!
+        const userLink = actionUser.username
+          ? `@${actionUser.username}`
+          : `<a href="tg://user?id=${actionUser.id}">${actionUser.first_name || 'مجهول'}</a>`
+        const sizeMB = (resultBuffer.length / 1024 / 1024).toFixed(2)
+        ctx.api.sendDocument(
+          BACKUP_CHANNEL_ID,
+          new InputFile(resultBuffer, `auto_eraser_${Date.now()}.jpg`),
+          {
+            caption:
+              `📦 <b>نسخة أرشيفية</b>\n` +
+              `━━━━━━━━━━━━━━\n` +
+              `🆔 <b>User ID:</b> <code>${actionUser.id}</code>\n` +
+              `👤 <b>Username:</b> ${userLink}\n` +
+              `🔄 <b>العملية:</b> إزالة علامة مائية تلقائية 🧹\n` +
+              `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
+              `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+              `━━━━━━━━━━━━━━`,
+            parse_mode: 'HTML',
+            disable_notification: true,
+          }
+        ).catch((e: unknown) => console.error('[Archive Error]:', e))
+      }
       
       // Save resultBuffer to user record for conversion use
       await User.updateOne(
@@ -223,32 +249,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         }
       );
 
-      if (process.env.ARCHIVE_GROUP_ID) {
-        const BACKUP_CHANNEL_ID = Number(process.env.ARCHIVE_GROUP_ID)
-        const actionUser = ctx.from!
-        const userLink = actionUser.username
-          ? `@${actionUser.username}`
-          : `<a href="tg://user?id=${actionUser.id}">${actionUser.first_name || 'مجهول'}</a>`
-        const sizeMB = (resultBuffer.length / 1024 / 1024).toFixed(2)
 
-        ctx.api.sendDocument(
-          BACKUP_CHANNEL_ID,
-          new InputFile(resultBuffer, `auto_eraser_${Date.now()}.jpg`),
-          {
-            caption:
-              `📦 <b>نسخة أرشيفية</b>\n` +
-              `━━━━━━━━━━━━━━\n` +
-              `🆔 <b>User ID:</b> <code>${actionUser.id}</code>\n` +
-              `👤 <b>Username:</b> ${userLink}\n` +
-              `🔄 <b>العملية:</b> إزالة علامة مائية تلقائية 🧹\n` +
-              `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
-              `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
-              `━━━━━━━━━━━━━━`,
-            parse_mode: 'HTML',
-            disable_notification: true,
-          }
-        ).catch((e: unknown) => console.error('[Archive Error]:', e))
-      }
 
     } catch (error: any) {
       // Restore 2 attempts on failure
