@@ -41,7 +41,9 @@ exports.enhanceWithNanoBanana = enhanceWithNanoBanana;
 exports.process4KAi = process4KAi;
 exports.processProEnhance = processProEnhance;
 exports.processNanoBanana = processNanoBanana;
-exports.processWatermarkEraser = processWatermarkEraser;
+exports.extractMaskCoordinates = extractMaskCoordinates;
+exports.processTwoStepInpainting = processTwoStepInpainting;
+exports.removeBottomRightWatermarkAI = removeBottomRightWatermarkAI;
 exports.convertImageFormat = convertImageFormat;
 const replicate_1 = __importDefault(require("replicate"));
 const sharp_1 = __importDefault(require("sharp"));
@@ -384,99 +386,194 @@ async function processNanoBanana(imageUrl) {
         throw error;
     }
 }
-async function processWatermarkEraser(imageUrl) {
+// FUNCTION 1: Extract red-marked region coordinates from reference image
+async function extractMaskCoordinates(imageUrl) {
+    const imageResponse = await fetch(imageUrl);
+    const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
+    const metadata = await (0, sharp_1.default)(rawBuffer).metadata();
+    const imgWidth = metadata.width;
+    const imgHeight = metadata.height;
+    const { data, info } = await (0, sharp_1.default)(rawBuffer)
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+    let minX = imgWidth, minY = imgHeight, maxX = 0, maxY = 0;
+    let hasMarker = false;
+    for (let i = 0; i < imgWidth * imgHeight; i++) {
+        const r = data[i * info.channels];
+        const g = data[i * info.channels + 1];
+        const b = data[i * info.channels + 2];
+        // Detect red marker: high red, low green+blue
+        if (r > 140 && g < 110 && b < 110) {
+            hasMarker = true;
+            const x = i % imgWidth;
+            const y = Math.floor(i / imgWidth);
+            if (x < minX)
+                minX = x;
+            if (x > maxX)
+                maxX = x;
+            if (y < minY)
+                minY = y;
+            if (y > maxY)
+                maxY = y;
+        }
+    }
+    if (!hasMarker)
+        return null;
+    // Add 15px padding for seamless blending
+    minX = Math.max(0, minX - 15);
+    minY = Math.max(0, minY - 15);
+    maxX = Math.min(imgWidth - 1, maxX + 15);
+    maxY = Math.min(imgHeight - 1, maxY + 15);
+    return {
+        minX,
+        minY,
+        width: maxX - minX,
+        height: maxY - minY,
+    };
+}
+// FUNCTION 2: Generate mask and send to Replicate inpainting
+async function processTwoStepInpainting(cleanImageUrl, coords) {
+    const imageResponse = await fetch(cleanImageUrl);
+    const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
+    const metadata = await (0, sharp_1.default)(rawBuffer).metadata();
+    const imgW = metadata.width;
+    const imgH = metadata.height;
+    // Generate black mask with white rectangle over the target area
+    const baseMask = await (0, sharp_1.default)({
+        create: { width: imgW, height: imgH, channels: 3, background: { r: 0, g: 0, b: 0 } }
+    }).png().toBuffer();
+    const whiteBox = await (0, sharp_1.default)({
+        create: { width: coords.width, height: coords.height, channels: 3, background: { r: 255, g: 255, b: 255 } }
+    }).png().toBuffer();
+    const finalMaskBuffer = await (0, sharp_1.default)(baseMask)
+        .composite([{ input: whiteBox, left: coords.minX, top: coords.minY }])
+        .blur(4)
+        .png()
+        .toBuffer();
+    const imageBase64 = `data:image/jpeg;base64,${(await (0, sharp_1.default)(rawBuffer).jpeg({ quality: 95 }).toBuffer()).toString('base64')}`;
+    const maskBase64 = `data:image/png;base64,${finalMaskBuffer.toString('base64')}`;
+    const output = await replicate.run("stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3", {
+        input: {
+            image: imageBase64,
+            mask: maskBase64,
+            prompt: "remove the element in the masked area completely, fill seamlessly with the surrounding background texture and lighting, preserve all original product features, branding, shape, and design details exactly as they are",
+            negative_prompt: "watermark, text, logo, blur, distortion, artifacts, changing original design, redesigning product",
+            disable_safety_checker: true,
+            num_inference_steps: 30,
+            guidance_scale: 7.5
+        }
+    });
+    const resultUrl = Array.isArray(output) ? output[0] : output;
+    if (!resultUrl)
+        throw new Error('Inpainting API returned no image.');
+    const res = await fetch(resultUrl.toString());
+    return Buffer.from(new Uint8Array(await res.arrayBuffer()));
+}
+// ── AUTO WATERMARK REMOVAL (bottom-right corner, SDXL inpainting + sharp fallback) ──
+async function removeBottomRightWatermarkAI(imageUrl) {
+    // STEP 1 — Download original image
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok)
+        throw new Error(`Download failed: ${imageResponse.status}`);
+    const inputBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
+    // STEP 2 — Read metadata
+    const meta = await (0, sharp_1.default)(inputBuffer).metadata();
+    const W = meta.width;
+    const H = meta.height;
+    const fmt = (meta.format ?? 'jpeg');
+    console.log(`[AutoEraser] Dimensions: ${W}x${H}`);
+    // STEP 3 — Define watermark zone (bottom-right corner)
+    const zoneX = Math.round(W * 0.70);
+    const zoneY = Math.round(H * 0.83);
+    const zoneW = W - zoneX;
+    const zoneH = H - zoneY;
+    console.log(`[AutoEraser] Zone: x=${zoneX} y=${zoneY} w=${zoneW} h=${zoneH}`);
+    // STEP 4 — Build black mask with white rectangle over the watermark zone (sharp only)
+    const maskBuffer = await (0, sharp_1.default)({
+        create: { width: W, height: H, channels: 3, background: { r: 0, g: 0, b: 0 } }
+    })
+        .composite([{
+            input: await (0, sharp_1.default)({
+                create: { width: zoneW, height: zoneH, channels: 3, background: { r: 255, g: 255, b: 255 } }
+            }).png().toBuffer(),
+            left: zoneX,
+            top: zoneY
+        }])
+        .png()
+        .toBuffer();
+    // STEP 5 — Base64 data URIs
+    const imageB64 = `data:image/jpeg;base64,${(await (0, sharp_1.default)(inputBuffer).jpeg({ quality: 95 }).toBuffer()).toString('base64')}`;
+    const maskB64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
+    // STEP 6 — Replicate SDXL inpainting with 120 s timeout
+    console.log(`[AutoEraser] Calling Replicate...`);
+    let resultBuffer;
     try {
-        console.log('[Eraser] Starting via Replicate LaMa inpainting...');
-        const imageResponse = await fetch(imageUrl);
-        if (!imageResponse.ok)
-            throw new Error(`Download failed: ${imageResponse.status}`);
-        const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
-        // Resize to max 1024px to prevent OOM on Render 512MB RAM
-        const metadata = await (0, sharp_1.default)(rawBuffer).metadata();
-        const width = metadata.width ?? 0;
-        const height = metadata.height ?? 0;
-        console.log(`[Eraser] Input: ${width}x${height}`);
-        const MAX_DIM = 1024;
-        let workingBuffer;
-        let finalWidth;
-        let finalHeight;
-        if (width > MAX_DIM || height > MAX_DIM) {
-            workingBuffer = Buffer.from(await (0, sharp_1.default)(rawBuffer)
-                .resize(MAX_DIM, MAX_DIM, { fit: 'inside', withoutEnlargement: true })
-                .jpeg({ quality: 95 })
-                .toBuffer());
-            const newMeta = await (0, sharp_1.default)(workingBuffer).metadata();
-            finalWidth = newMeta.width ?? MAX_DIM;
-            finalHeight = newMeta.height ?? MAX_DIM;
-        }
-        else {
-            workingBuffer = Buffer.from(await (0, sharp_1.default)(rawBuffer).jpeg({ quality: 95 }).toBuffer());
-            finalWidth = width;
-            finalHeight = height;
-        }
-        // Auto-detect watermark region: bottom-right corner 10% x 8%
-        const wmWidth = Math.ceil(finalWidth * 0.10);
-        const wmHeight = Math.ceil(finalHeight * 0.08);
-        const wmLeft = finalWidth - wmWidth;
-        const wmTop = finalHeight - wmHeight;
-        console.log(`[Eraser] Mask region: left=${wmLeft} top=${wmTop} w=${wmWidth} h=${wmHeight}`);
-        // Generate white mask on black background using SVG
-        const svgMask = `<svg xmlns="http://www.w3.org/2000/svg" width="${finalWidth}" height="${finalHeight}">
-      <rect width="${finalWidth}" height="${finalHeight}" fill="black"/>
-      <rect x="${wmLeft}" y="${wmTop}" width="${wmWidth}" height="${wmHeight}" fill="white" rx="4"/>
-    </svg>`;
-        const maskBuffer = Buffer.from(await (0, sharp_1.default)(Buffer.from(svgMask))
-            .resize(finalWidth, finalHeight)
-            .png()
-            .toBuffer());
-        // Convert to base64 data URIs
-        const imageBase64 = `data:image/jpeg;base64,${workingBuffer.toString('base64')}`;
-        const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
-        // Send to Replicate LaMa — best free inpainting model
-        console.log('[Eraser] Sending to Replicate LaMa...');
-        let prediction = await replicate.predictions.create({
-            version: "cjwbw/lama:1a7737078263158fbce9d0a68d87a416a20d75586ae797dd08ac774597b416bb",
-            input: {
-                image: imageBase64,
-                mask: maskBase64
-            }
-        });
-        console.log(`[Eraser] Prediction: ${prediction.id}`);
-        const startTime = Date.now();
-        while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
-            if (Date.now() - startTime > 90000)
-                throw new Error('Eraser timeout after 90 seconds');
-            await new Promise(r => setTimeout(r, 2000));
-            prediction = await replicate.predictions.get(prediction.id);
-            console.log(`[Eraser] Status: ${prediction.status}`);
-        }
-        if (prediction.status === 'failed') {
-            throw new Error(`Eraser prediction failed: ${prediction.error}`);
-        }
-        const output = prediction.output;
-        let resultUrl;
-        if (typeof output === 'string')
-            resultUrl = output;
-        else if (Array.isArray(output) && output.length > 0)
-            resultUrl = String(output[0]);
-        else
-            throw new Error(`Unexpected eraser output: ${JSON.stringify(output)}`);
-        const resultResponse = await fetch(resultUrl);
-        if (!resultResponse.ok)
-            throw new Error(`Eraser result download failed: ${resultResponse.status}`);
-        const resultBuffer = Buffer.from(new Uint8Array(await resultResponse.arrayBuffer()));
-        // Light sharpening to restore detail after inpainting
-        const finalBuffer = Buffer.from(await (0, sharp_1.default)(resultBuffer)
-            .sharpen({ sigma: 0.8 })
-            .jpeg({ quality: 92 })
-            .toBuffer());
-        console.log(`[Eraser] ✅ Done: ${(finalBuffer.length / 1024).toFixed(1)} KB`);
-        return finalBuffer;
+        const replicateOutput = await Promise.race([
+            replicate.run("lucataco/sdxl-inpainting:a5b13068cc81a89a4fbeefeccc774869fcb34df4dbc92c1555e0f2771d49dde7", {
+                input: {
+                    image: imageB64,
+                    mask: maskB64,
+                    prompt: "seamless background continuation, matching texture and lighting, photorealistic, no watermark, no logo, no text, 8k quality",
+                    negative_prompt: "watermark, logo, text, star, mark, signature, blur, distortion, artifact, smear, low quality",
+                    num_inference_steps: 40,
+                    guidance_scale: 8,
+                    strength: 0.99,
+                }
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Replicate timeout after 120 s')), 120_000))
+        ]);
+        // STEP 7 — Fetch and decode the output URL
+        const outputUrl = Array.isArray(replicateOutput)
+            ? String(replicateOutput[0])
+            : String(replicateOutput);
+        const replicateResponse = await fetch(outputUrl);
+        const resultArrayBuffer = await replicateResponse.arrayBuffer();
+        resultBuffer = Buffer.from(resultArrayBuffer);
+        // STEP 8 — Resize to exact original dimensions and format
+        resultBuffer = fmt === 'png'
+            ? await (0, sharp_1.default)(resultBuffer)
+                .resize(W, H, { fit: 'fill', kernel: sharp_1.default.kernel.lanczos3, withoutEnlargement: false })
+                .png({ compressionLevel: 0 })
+                .toBuffer()
+            : fmt === 'webp'
+                ? await (0, sharp_1.default)(resultBuffer)
+                    .resize(W, H, { fit: 'fill', kernel: sharp_1.default.kernel.lanczos3, withoutEnlargement: false })
+                    .webp({ quality: 100, lossless: true })
+                    .toBuffer()
+                : await (0, sharp_1.default)(resultBuffer)
+                    .resize(W, H, { fit: 'fill', kernel: sharp_1.default.kernel.lanczos3, withoutEnlargement: false })
+                    .jpeg({ quality: 100 })
+                    .toBuffer();
+        console.log(`[AutoEraser] Done. Output size: ${resultBuffer.length} bytes`);
     }
-    catch (error) {
-        console.error(`[Eraser] ❌ Error: ${error?.message || error}`);
-        throw error;
+    catch (err) {
+        // ── FALLBACK: sharp patch clone from the region directly LEFT of the zone ──
+        console.log(`[AutoEraser] Replicate failed, using fallback: ${err?.message}`);
+        const patchBuffer = await (0, sharp_1.default)(inputBuffer)
+            .extract({ left: zoneX - zoneW, top: zoneY, width: zoneW, height: zoneH })
+            .resize(zoneW, zoneH, { fit: 'fill' })
+            .sharpen({ sigma: 1.2 })
+            .toBuffer();
+        resultBuffer = fmt === 'png'
+            ? await (0, sharp_1.default)(inputBuffer)
+                .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
+                .resize(W, H, { fit: 'fill', kernel: sharp_1.default.kernel.lanczos3, withoutEnlargement: false })
+                .png({ compressionLevel: 0 })
+                .toBuffer()
+            : fmt === 'webp'
+                ? await (0, sharp_1.default)(inputBuffer)
+                    .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
+                    .resize(W, H, { fit: 'fill', kernel: sharp_1.default.kernel.lanczos3, withoutEnlargement: false })
+                    .webp({ quality: 100, lossless: true })
+                    .toBuffer()
+                : await (0, sharp_1.default)(inputBuffer)
+                    .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
+                    .resize(W, H, { fit: 'fill', kernel: sharp_1.default.kernel.lanczos3, withoutEnlargement: false })
+                    .jpeg({ quality: 100 })
+                    .toBuffer();
+        console.log(`[AutoEraser] Fallback done. Output size: ${resultBuffer.length} bytes`);
     }
+    return resultBuffer;
 }
 async function convertImageFormat(buffer, format) {
     let result;

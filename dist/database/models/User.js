@@ -104,6 +104,16 @@ const UserSchema = new mongoose_1.Schema({
     lastSeenAt: { type: Date, default: null },
     awaitingNanoBananaImage: { type: Boolean, default: false },
     awaitingEraserImage: { type: Boolean, default: false },
+    awaitingEraserOriginal: { type: Boolean, default: false },
+    eraserCoords: {
+        type: {
+            minX: { type: Number, default: null },
+            minY: { type: Number, default: null },
+            width: { type: Number, default: null },
+            height: { type: Number, default: null },
+        },
+        default: () => ({ minX: null, minY: null, width: null, height: null }),
+    },
     awaitingFormatConversion: { type: Boolean, default: false },
     pendingConversionFiles: { type: [String], default: [] },
     conversionUpscale: { type: Boolean, default: false },
@@ -120,6 +130,9 @@ const UserSchema = new mongoose_1.Schema({
     forceSubMessageId: { type: Number, default: null },
     forceSubChatId: { type: Number, default: null },
     lastEraserResultUrl: { type: String, default: null },
+    lastEraserResultBuffer: { type: String, default: null },
+    lastEraserResultMsgId: { type: Number, default: null },
+    awaitingAutoEraserImage: { type: Boolean, default: false },
     vipSizeBypass: { type: Boolean, default: false },
 }, {
     timestamps: false,

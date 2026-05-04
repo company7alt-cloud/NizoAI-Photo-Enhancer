@@ -12,6 +12,9 @@ async function forceSubscribeMiddleware(ctx, next) {
     const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
     if (adminIds.includes(ctx.from.id.toString()))
         return next();
+    // Only enforce in private chats — never in groups or channels
+    if (ctx.chat?.type !== 'private')
+        return next();
     const channelId = process.env.FORCE_SUB_CHANNEL_ID?.trim();
     const channelLink = process.env.FORCE_SUB_CHANNEL_LINK?.trim() || 'https://t.me/';
     if (!channelId)

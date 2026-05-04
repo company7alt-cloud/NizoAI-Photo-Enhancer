@@ -122,6 +122,46 @@ async function callbackHandler(ctx) {
         }
         return;
     }
+    if (data.startsWith("eraser_fmt_")) {
+        await ctx.answerCallbackQuery();
+        const user = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+        if (!user?.lastEraserResultBuffer) {
+            await ctx.reply("❌ انتهت صلاحية الملف. أرسل الصورة مجدداً.");
+            return;
+        }
+        const formatMap = {
+            eraser_fmt_jpg: 'jpeg',
+            eraser_fmt_png: 'png',
+            eraser_fmt_webp: 'webp',
+            eraser_fmt_gif: 'gif',
+            eraser_fmt_tiff: 'tiff',
+        };
+        const targetFormat = formatMap[data];
+        if (!targetFormat)
+            return;
+        const processingMsg = await ctx.reply(`⏳ جاري تحويل الصيغة إلى ${data.split('_')[2].toUpperCase()}...`);
+        try {
+            const inputBuffer = Buffer.from(user.lastEraserResultBuffer, 'base64');
+            // Convert using sharp
+            const convertedBuffer = await (0, sharp_1.default)(inputBuffer)
+                .toFormat(targetFormat, {
+                quality: 100,
+                lossless: targetFormat === 'webp',
+            })
+                .toBuffer();
+            await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id).catch(() => { });
+            const ext = targetFormat === 'jpeg' ? 'jpg' : targetFormat;
+            await ctx.replyWithDocument(new grammy_1.InputFile(convertedBuffer, `converted_${Date.now()}.${ext}`), {
+                caption: `✅ تم التحويل إلى ${ext.toUpperCase()} بنجاح`,
+            });
+        }
+        catch (err) {
+            await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id).catch(() => { });
+            await ctx.reply("❌ فشل التحويل. حاول مرة أخرى.");
+            console.error("[EraserFmt] Error:", err.message);
+        }
+        return;
+    }
     const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
     const isAdminUser = adminIds.includes(ctx.from.id.toString());
     const settings = await (0, settingsService_1.getSettings)();
@@ -134,6 +174,7 @@ async function callbackHandler(ctx) {
         'locked_8k_ai': locks.btn_8kai,
         'nano_banana_start': locks.btn_nano,
         'eraser_start': locks.btn_eraser,
+        'remove_watermark_auto': locks.btn_eraser,
     };
     if (!isAdminUser && lockMap[data] === true) {
         await ctx.answerCallbackQuery({
@@ -538,6 +579,59 @@ async function callbackHandler(ctx) {
         await ctx.answerCallbackQuery({ text: 'تم الإلغاء' }).catch(() => { });
         const telegramId = ctx.from?.id.toString();
         await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
+        return;
+    }
+    if (data.startsWith('confirm_report_')) {
+        await ctx.answerCallbackQuery();
+        // Parse chatId and messageId from callback data
+        const withoutPrefix = data.replace('confirm_report_', '');
+        const underscoreIdx = withoutPrefix.indexOf('_');
+        const sourceChatId = Number(withoutPrefix.substring(0, underscoreIdx));
+        const sourceMessageId = Number(withoutPrefix.substring(underscoreIdx + 1));
+        if (!sourceChatId || !sourceMessageId || isNaN(sourceChatId) || isNaN(sourceMessageId)) {
+            await ctx.editMessageText('❌ انتهت صلاحية البلاغ. يرجى إرسال بلاغ جديد.').catch(() => { });
+            return;
+        }
+        const adminIdsRaw = process.env.ADMIN_IDS || '';
+        const adminIds = adminIdsRaw.split(',').map((id) => id.trim());
+        const userId = ctx.from?.id;
+        const firstName = ctx.from?.first_name || 'مجهول';
+        const username = ctx.from?.username ? `@${ctx.from.username}` : 'لا يوجد معرف';
+        const userLink = `tg://user?id=${userId}`;
+        const reportHeader = `🚨 <b>بلاغ جديد من عميل</b>\n\n` +
+            `👤 <b>العميل:</b> <a href="${userLink}">${firstName}</a>\n` +
+            `🔗 <b>المعرف:</b> ${username}\n` +
+            `🆔 <b>الـ ID:</b> <code>${userId}</code>\n` +
+            `📅 <b>التوقيت:</b> ${new Date().toLocaleString('ar-SA')}`;
+        let forwarded = false;
+        for (const adminId of adminIds) {
+            try {
+                // Send header with user info and action buttons
+                await ctx.api.sendMessage(Number(adminId), reportHeader, {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` }],
+                            [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` }],
+                            [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}` }],
+                        ],
+                    },
+                });
+                // Forward the original message (works for ALL types)
+                await ctx.api.forwardMessage(Number(adminId), sourceChatId, sourceMessageId);
+                forwarded = true;
+            }
+            catch (e) {
+                console.error('[Report Forward] Error for admin', adminId, e);
+            }
+        }
+        // Update confirmation message
+        try {
+            await ctx.editMessageText(forwarded
+                ? '✅ <b>تم إرسال بلاغك للمطور بنجاح!</b>\n\nسيتم الرد عليك في أقرب وقت ممكن 🌹'
+                : '❌ حدث خطأ أثناء إرسال البلاغ. حاول مجدداً.', { parse_mode: 'HTML' });
+        }
+        catch { }
         return;
     }
     // ══════════════════════════════════════
@@ -1385,22 +1479,69 @@ async function callbackHandler(ctx) {
                 `💡 احصل على محاولات مجانية من زر الهدية اليومية 🎁`, { parse_mode: 'HTML' });
             return;
         }
-        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingEraserImage: true } });
-        await ctx.reply('✨ <b>مُزيل العلامات المائية</b>\n\n' +
-            'أرسل لي الصورة كـ <b>ملف (Document)</b> 📎\n' +
-            'وسأقوم بإزالة العلامة المائية تلقائياً بدقة عالية 🎯\n\n' +
-            '📏 <b>الحد الأقصى:</b> 5 ميجابايت\n' +
-            '💎 <b>السعر:</b> محاولة واحدة فقط', {
+        await ctx.reply('✨ <b>مُزيل العلامات المائية — النظام الاحترافي</b>\n\n' +
+            '📝 <b>الخطوة 1 من 2:</b>\n\n' +
+            '1️⃣ افتح الصورة في أي تطبيق رسم\n' +
+            '2️⃣ ارسم مربعاً أو خطاً <b>باللون الأحمر</b> 🔴 فوق العلامة المائية أو الشيء المراد حذفه\n' +
+            '3️⃣ أرسل هذه الصورة المُعدَّلة هنا (صورة عادية أو ملف) 📎\n\n' +
+            '💡 <b>ملاحظة:</b> البوت سيحفظ الموقع فقط، ثم يطلب منك الصورة الأصلية النظيفة\n\n' +
+            '💎 <b>السعر: نقطتان (2)</b>', {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_eraser' }]]
             }
         });
+        // Set state: waiting for reference image (marked)
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingEraserImage: true, awaitingEraserOriginal: false } });
+        return;
+    }
+    // ══════════════════════════════════════
+    // 🧹 مُزيل النجمة التلقائي — one-shot auto watermark removal
+    // ══════════════════════════════════════
+    if (data === 'remove_watermark_auto') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const autoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+        const isAutoAdmin = autoAdminIds.includes(ctx.from.id.toString());
+        const autoUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+        if (!autoUser)
+            return;
+        if (!isAutoAdmin && autoUser.dailyQuota < 1) {
+            await ctx.reply(`⚠️ رصيدك غير كافٍ! 🥺\n` +
+                `تحتاج <b>نقطة واحدة (1)</b> لاستخدام مُزيل النجمة التلقائي 🧹\n` +
+                `رصيدك الحالي: <b>${autoUser.dailyQuota}</b>\n\n` +
+                `💡 احصل على محاولات مجانية من زر الهدية اليومية 🎁`, { parse_mode: 'HTML' });
+            return;
+        }
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingAutoEraserImage: true } });
+        await ctx.reply('🧹 <b>مُزيل النجمة التلقائي</b>\n\n' +
+            'أرسل الصورة التي تريد إزالة النجمة/الشعار منها 📷\n\n' +
+            '✨ سأقوم تلقائياً بإزالة العلامة من <b>الزاوية السفلية اليمنى</b> بالذكاء الاصطناعي\n' +
+            '💎 <b>السعر: نقطة واحدة (1)</b>', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_auto_eraser' }]]
+            }
+        });
+        return;
+    }
+    if (data === 'cancel_auto_eraser') {
+        await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingAutoEraserImage: false } });
+        await ctx.deleteMessage().catch(() => { });
         return;
     }
     if (data === 'cancel_eraser') {
-        await ctx.answerCallbackQuery({ text: 'تم إلغاء مُزيل العلامات المائية ❌' }).catch(() => { });
-        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingEraserImage: false } });
+        await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, {
+            $set: {
+                awaitingEraserImage: false,
+                awaitingEraserOriginal: false,
+                'eraserCoords.minX': null,
+                'eraserCoords.minY': null,
+                'eraserCoords.width': null,
+                'eraserCoords.height': null
+            }
+        });
         await ctx.deleteMessage().catch(() => { });
         return;
     }
@@ -1421,8 +1562,9 @@ async function callbackHandler(ctx) {
         const processingMsg = await ctx.reply(`⏳ جاري تحويل الصورة إلى ${format.toUpperCase()}...`);
         try {
             // Re-process the original image to get clean result
-            const { processWatermarkEraser, convertImageFormat } = await Promise.resolve().then(() => __importStar(require('../../services/imageService')));
-            const erasedBuffer = await processWatermarkEraser(convertUser.lastEraserResultUrl);
+            const { convertImageFormat } = await Promise.resolve().then(() => __importStar(require('../../services/imageService')));
+            const res = await fetch(convertUser.lastEraserResultUrl);
+            const erasedBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
             const { buffer: convertedBuffer, ext } = await convertImageFormat(erasedBuffer, format);
             const fileName = `NizoAI_Clean_${Date.now()}.${ext}`;
             await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });

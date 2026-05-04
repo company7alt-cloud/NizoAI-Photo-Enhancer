@@ -26,6 +26,7 @@ export function registerAdminCommands(bot: any) {
             [{ text: '📢 تمويل أعضاء قناة', callback_data: 'start_fund_campaign' }],
             [{ text: '⚙️ إدارة أزرار البوت (قفل/فتح)', callback_data: 'admin_panel' }],
             [{ text: '🔄 إعدادات زر تحويل الصيغة', callback_data: 'admin_edit_convert_msg' }],
+            [{ text: '✏️ تعديل نصوص البوت', callback_data: 'admin_edit_texts' }],
           ],
         },
       }

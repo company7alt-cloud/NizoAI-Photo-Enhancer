@@ -21,6 +21,7 @@ import { registerAdminCommands } from './bot/commands/admin';
 import { imageHandler } from './bot/handlers/imageHandler';
 import { callbackHandler } from './bot/handlers/callbackHandler';
 import { forceSubscribeMiddleware } from './bot/middlewares/forceSubscribe';
+import { initBotTexts } from './services/botTextsService';
 
 // ─── Bot Instance ──────────────────────────────────────────────────────────────
 
@@ -172,6 +173,37 @@ bot.on('message:text', async (ctx, next) => {
     const inputText = messageText;
 
     await User.findOneAndUpdate({ telegramId: telegramId }, { $set: { adminAwaitingInput: null } });
+
+    if (inputType.startsWith('txtedit:')) {
+      const key = inputType.replace('txtedit:', '');
+      const newValue = inputText.trim();
+
+      if (!newValue || newValue === '/cancel') {
+        await ctx.reply('❌ تم الإلغاء.');
+        return;
+      }
+
+      const { updateText, getText } = await import('./services/botTextsService');
+      const oldValue = await getText(key);
+      const success = await updateText(key, newValue);
+
+      if (success) {
+        await ctx.reply(
+          `✅ <b>تم التحديث بنجاح!</b>\n\n` +
+          `🔑 المفتاح: <code>${key}</code>\n\n` +
+          `📝 <b>النص القديم:</b>\n<code>${oldValue.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>\n\n` +
+          `✨ <b>النص الجديد:</b>\n<code>${newValue.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`,
+          { parse_mode: 'HTML' }
+        );
+      } else {
+        await ctx.reply(
+          '❌ فشل التحديث.\n' +
+          `المفتاح <code>${key}</code> غير موجود في قاعدة البيانات.`,
+          { parse_mode: 'HTML' }
+        );
+      }
+      return;
+    }
 
     if (inputType === 'welcome_message') {
       const { BotSettings } = await import('./database/models/BotSettings');
@@ -496,6 +528,7 @@ async function bootstrap(): Promise<void> {
   try {
     await connectDatabase();
     await Settings.initDefaults();
+    await initBotTexts();
 
     console.log('--- NizoAI Bot is starting ---');
     const botInfo = await bot.api.getMe();

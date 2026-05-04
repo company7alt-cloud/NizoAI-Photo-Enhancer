@@ -31,6 +31,13 @@ export interface IUser extends Document {
     lastSeenAt: Date | null;
     awaitingNanoBananaImage: boolean;
     awaitingEraserImage?: boolean;
+    awaitingEraserOriginal?: boolean;
+    eraserCoords?: {
+        minX: number | null;
+        minY: number | null;
+        width: number | null;
+        height: number | null;
+    };
     awaitingFormatConversion?: boolean;
     pendingConversionFiles?: string[];
     conversionUpscale?: boolean;
@@ -44,6 +51,9 @@ export interface IUser extends Document {
     forceSubMessageId?: number | null;
     forceSubChatId?: number | null;
     lastEraserResultUrl?: string | null;
+    lastEraserResultBuffer?: string;
+    lastEraserResultMsgId?: number;
+    awaitingAutoEraserImage?: boolean;
     vipSizeBypass: boolean;
 }
 export interface IUserModel extends Model<IUser> {

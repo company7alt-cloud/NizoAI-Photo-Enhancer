@@ -128,7 +128,7 @@ async function startCommand(ctx) {
         const eraserSettingsData = await (0, settingsService_1.getSettings)();
         const eraserLocks = eraserSettingsData.locks;
         keyboard.row().text('🔄 تحويل صيغة الصورة', 'convert_format_start');
-        keyboard.row().text(eraserLocks.btn_eraser ? '🔒 مُزيل العلامات المائية — مقفل' : '✨ مُزيل العلامات المائية | 💎 محاولة واحدة', 'eraser_start');
+        keyboard.row().text(eraserLocks.btn_eraser ? '🔒 مُزيل النجمة التلقائي — مقفل' : '🧹 مُزيل النجمة التلقائي', 'remove_watermark_auto');
         keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
         if (chanLink)
             keyboard.row().url('القناة', chanLink);
