@@ -9,9 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to VPS
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: 171.22.135.241
           username: root
           password: ${{ secrets.VPS_PASSWORD }}
+          port: 22
           script: /root/deploy.sh
