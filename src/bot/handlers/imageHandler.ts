@@ -402,16 +402,16 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    // Atomic balance deduction (2 points)
+    // Atomic balance deduction (1 point)
     if (!isEraserAdminUser) {
       const updatedUser = await User.findOneAndUpdate(
         {
           telegramId: userId.toString(),
-          dailyQuota: { $gte: 2 },
+          dailyQuota: { $gte: 1 },
           awaitingEraserOriginal: true
         },
         {
-          $inc: { dailyQuota: -2 },
+          $inc: { dailyQuota: -1 },
           $set: {
             awaitingEraserOriginal: false,
             awaitingEraserImage: false,
@@ -429,7 +429,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           { telegramId: userId.toString() },
           { $set: { awaitingEraserOriginal: false } }
         );
-        await ctx.reply('⚠️ رصيدك غير كافٍ! تحتاج <b>نقطتين (2)</b> لإتمام العملية.', { parse_mode: 'HTML' });
+        await ctx.reply('⚠️ رصيدك غير كافٍ! تحتاج <b>نقطة واحدة (1)</b> لإتمام العملية.', { parse_mode: 'HTML' });
         return;
       }
     } else {
@@ -464,20 +464,51 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const { InputFile } = await import('grammy');
 
+      // Send document to user
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
         {
-          caption: '✨ <b>تم! العنصر اختفى وصورتك نظيفة احترافياً</b> 🪄\n📁 تم الإرسال كملف للحفاظ على أعلى جودة 💎',
+          caption:
+            '✨ <b>تم! العنصر اختفى وصورتك نظيفة احترافياً</b> 🪄\n' +
+            '📁 تم الإرسال كملف للحفاظ على أعلى جودة 💎',
           parse_mode: 'HTML'
         }
       );
 
+      // Send photo preview
       await ctx.replyWithPhoto(
         new InputFile(resultBuffer, fileName),
         { caption: '🖼 معاينة سريعة' }
       );
 
-      // Silent archive
+      // Save result URL for format conversion
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { lastEraserResultUrl: imageUrl } }
+      );
+
+      // Send format conversion buttons
+      await ctx.reply(
+        '🔄 <b>تحويل الصيغة:</b>\n\nاختر صيغة الصورة التي تريدها:',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🖼 JPG',  callback_data: `convert_jpg_${Date.now()}` },
+                { text: '📄 PNG',  callback_data: `convert_png_${Date.now()}` },
+                { text: '🌐 WEBP', callback_data: `convert_webp_${Date.now()}` },
+              ],
+              [
+                { text: '🎞 GIF',  callback_data: `convert_gif_${Date.now()}` },
+                { text: '📐 TIFF', callback_data: `convert_tiff_${Date.now()}` },
+              ]
+            ]
+          }
+        }
+      );
+
+      // Silent archive to channel
       const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
       if (ARCHIVE_CHANNEL) {
         const userLink = ctx.from?.username
@@ -494,6 +525,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
               `🆔 User ID: <code>${ctx.from?.id}</code>\n` +
               `👤 Username: ${userLink}\n` +
               `✨ النوع: إزالة العلامات المائية\n` +
+              `💎 التكلفة: محاولة واحدة\n` +
               `🕐 Time: ${new Date().toLocaleString('ar-SA')}\n` +
               `━━━━━━━━━━━━━`,
             parse_mode: 'HTML',
@@ -507,7 +539,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       if (!isEraserAdminUser) {
         await User.findOneAndUpdate(
           { telegramId: userId.toString() },
-          { $inc: { dailyQuota: 2 } }
+          { $inc: { dailyQuota: 1 } }
         );
       }
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
