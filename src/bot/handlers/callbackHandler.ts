@@ -1880,10 +1880,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const autoUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
     if (!autoUser) return;
 
-    if (!isAutoAdmin && autoUser.dailyQuota < 2) {
+    if (!isAutoAdmin && autoUser.dailyQuota < 1) {
       await ctx.reply(
         `⚠️ رصيدك غير كافٍ! 🥺\n` +
-        `تحتاج <b>نقطتين (2)</b> لاستخدام مُزيل النجمة التلقائي 🧹\n` +
+        `تحتاج <b>نقطة واحدة (1)</b> لاستخدام مُزيل النجمة التلقائي 🧹\n` +
         `رصيدك الحالي: <b>${autoUser.dailyQuota}</b>\n\n` +
         `💡 احصل على محاولات مجانية من زر الهدية اليومية 🎁`,
         { parse_mode: 'HTML' }
@@ -1900,7 +1900,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       '🧹 <b>مُزيل النجمة التلقائي</b>\n\n' +
       'أرسل الصورة التي تريد إزالة النجمة/الشعار منها 📷\n\n' +
       '✨ سأقوم تلقائياً بإزالة العلامة من <b>الزاوية السفلية اليمنى</b> بالذكاء الاصطناعي\n' +
-      '💎 <b>السعر: نقطتان (2)</b>',
+      '💎 <b>السعر: نقطة واحدة (1)</b>',
       {
         parse_mode: 'HTML',
         reply_markup: {

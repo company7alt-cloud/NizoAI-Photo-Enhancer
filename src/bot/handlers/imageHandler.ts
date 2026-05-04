@@ -138,7 +138,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    // Atomic: reset flag + deduct 2 attempts in one DB call
+    // Atomic: reset flag + deduct 1 attempt in one DB call
     if (!isAutoAdmin) {
       const updatedUser = await User.findOneAndUpdate(
         {
@@ -146,7 +146,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           awaitingAutoEraserImage: true
         },
         {
-          $inc: { dailyQuota: -2, totalEnhancements: 1 },
+          $inc: { dailyQuota: -1, totalEnhancements: 1 },
           $set: { awaitingAutoEraserImage: false }
         },
         { new: true }
@@ -199,15 +199,21 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         }
       );
 
-      const BACKUP_CHANNEL_ID = Number(process.env.ARCHIVE_GROUP_ID)
-      if (BACKUP_CHANNEL_ID) {
+      // Send photo preview
+      await ctx.replyWithPhoto(
+        new InputFile(resultBuffer),
+        { caption: '🖼 معاينة سريعة' }
+      );
+
+      const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID
+      if (ARCHIVE_CHANNEL) {
         const actionUser = ctx.from!
         const userLink = actionUser.username
           ? `@${actionUser.username}`
           : `<a href="tg://user?id=${actionUser.id}">${actionUser.first_name || 'مجهول'}</a>`
         const sizeMB = (resultBuffer.length / 1024 / 1024).toFixed(2)
         ctx.api.sendDocument(
-          BACKUP_CHANNEL_ID,
+          ARCHIVE_CHANNEL,
           new InputFile(resultBuffer, `auto_eraser_${Date.now()}.jpg`),
           {
             caption:
@@ -216,6 +222,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
               `🆔 <b>User ID:</b> <code>${actionUser.id}</code>\n` +
               `👤 <b>Username:</b> ${userLink}\n` +
               `🔄 <b>العملية:</b> إزالة علامة مائية تلقائية 🧹\n` +
+              `💎 <b>التكلفة:</b> محاولة واحدة\n` +
               `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
               `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
               `━━━━━━━━━━━━━━`,
@@ -252,11 +259,11 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
 
     } catch (error: any) {
-      // Restore 2 attempts on failure
+      // Restore 1 attempt on failure
       if (!isAutoAdmin) {
         await User.findOneAndUpdate(
           { telegramId: userId.toString() },
-          { $inc: { dailyQuota: 2, totalEnhancements: -1 } }
+          { $inc: { dailyQuota: 1, totalEnhancements: -1 } }
         );
       }
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
