@@ -618,12 +618,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const lockedUser = await User.findOneAndUpdate(
         {
           telegramId:        userId.toString(),
-          dailyQuota:        { $gte: 3 },          // must have 3 points
+          dailyQuota:        { $gte: 2 },          // must have 2 points
           awaitingNanoBananaImage: true,            // still in waiting state
           isProcessingImage: { $ne: true },         // not already processing
         },
         {
-          $inc: { dailyQuota: -3 },
+          $inc: { dailyQuota: -2 },
           $set: {
             awaitingNanoBananaImage: false,
             isProcessingImage: true,
@@ -754,12 +754,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       if (!isNanoAdminUser) {
         await User.findOneAndUpdate(
           { telegramId: userId.toString() },
-          { $inc: { dailyQuota: 3 } }
+          { $inc: { dailyQuota: 2 } }
         );
       }
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
       console.error('[NanoAI] Error:', error instanceof Error ? error.message : error);
-      await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 3 محاولاتك تلقائياً ✨');
+      await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 2 من محاولات  تلقائياً ✨');
 
     } finally {
       // ── Release processing lock — ALWAYS, no exceptions ──────────────────
