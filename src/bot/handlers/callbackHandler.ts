@@ -2148,5 +2148,82 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.reply('❌ تم الإلغاء.');
     return;
   }
+
+  // ════════════════════════════════
+  // 🎯 Attempts Management
+  // ════════════════════════════════
+
+  if (data === 'admin_manage_attempts' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.reply(
+      '🎯 <b>إدارة المحاولات</b>\n\nاختر العملية المطلوبة:',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '➕ إضافة للجميع', callback_data: 'attempts_add_all' }],
+            [{ text: '👤 إضافة لشخص محدد', callback_data: 'attempts_add_one' }],
+            [{ text: '➖ خصم من شخص محدد', callback_data: 'attempts_remove_one' }],
+            [{ text: '🔄 تصفير شخص محدد', callback_data: 'attempts_reset_one' }],
+            [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
+          ]
+        }
+      }
+    );
+    return;
+  }
+
+  if (data === 'attempts_add_all' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'attempts_add_all', adminTargetUserId: null } }
+    );
+    await ctx.reply('➕ <b>إضافة محاولات للجميع</b>\n\nأرسل عدد المحاولات التي تريد إضافتها لجميع المستخدمين:', { parse_mode: 'HTML' });
+    return;
+  }
+
+  if (data === 'attempts_add_one' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'attempts_add_one_id', adminTargetUserId: null } }
+    );
+    await ctx.reply('👤 <b>إضافة لشخص محدد</b>\n\nأرسل الـ ID الخاص بالمستخدم:', { parse_mode: 'HTML' });
+    return;
+  }
+
+  if (data === 'attempts_remove_one' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'attempts_remove_one_id', adminTargetUserId: null } }
+    );
+    await ctx.reply('➖ <b>خصم من شخص محدد</b>\n\nأرسل الـ ID الخاص بالمستخدم:', { parse_mode: 'HTML' });
+    return;
+  }
+
+  if (data === 'attempts_reset_one' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'attempts_reset_one_id', adminTargetUserId: null } }
+    );
+    await ctx.reply('🔄 <b>تصفير شخص محدد</b>\n\nأرسل الـ ID الخاص بالمستخدم:', { parse_mode: 'HTML' });
+    return;
+  }
+
+  if (data === 'admin_create_magic_link' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'magic_link_reward', adminTargetUserId: null } }
+    );
+    await ctx.reply(
+      '🔗 <b>إنشاء رابط مكافأة خاص</b>\n\nأرسل عدد المحاولات التي سيحصل عليها كل شخص يدخل من هذا الرابط:',
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
 }
 

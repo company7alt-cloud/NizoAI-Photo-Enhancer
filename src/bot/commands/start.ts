@@ -18,6 +18,66 @@ export async function startCommand(ctx: BotContext): Promise<void> {
   const rawPayload = (ctx.match as string | undefined)?.trim() ?? '';
 
   try {
+    if (rawPayload.startsWith('magic_')) {
+      const code = rawPayload.replace('magic_', '');
+      const { MagicLink } = await import('../../database/models/MagicLink');
+
+      const link = await MagicLink.findOne({ code, isActive: true });
+
+      if (!link) {
+        await ctx.reply('❌ هذا الرابط غير صالح أو تم إيقافه.');
+        return;
+      }
+
+      if (new Date() > link.expiresAt) {
+        await ctx.reply('⏳ عذراً، لقد انتهت صلاحية هذا الرابط (مرت 24 ساعة).');
+        return;
+      }
+
+      if (link.usedBy.includes(ctx.from!.id.toString())) {
+        await ctx.reply('⚠️ لقد استخدمت هذا الرابط من قبل وحصلت على المكافأة.');
+        return;
+      }
+
+      // Atomic update: claim reward
+      const updated = await MagicLink.findOneAndUpdate(
+        {
+          code,
+          isActive: true,
+          currentUses: { $lt: link.maxUses },
+          usedBy: { $ne: ctx.from!.id.toString() }
+        },
+        {
+          $inc: { currentUses: 1 },
+          $push: { usedBy: ctx.from!.id.toString() }
+        },
+        { new: true }
+      );
+
+      if (!updated) {
+        await ctx.reply('❌ انتهت صلاحية هذا الرابط أو تم الوصول للحد الأقصى للمستخدمين.');
+        return;
+      }
+
+      // Add reward to user
+      await User.findOneAndUpdate(
+        { telegramId: ctx.from!.id.toString() },
+        { $inc: { dailyQuota: link.reward } },
+        { upsert: true }
+      );
+
+      // Auto-deactivate if max uses reached
+      if (updated.currentUses >= updated.maxUses) {
+        await MagicLink.findOneAndUpdate({ code }, { $set: { isActive: false } });
+      }
+
+      await ctx.reply(
+        `🎉 <b>مبروك! رابط المكافأة صالح</b>\n\nتم إضافة <b>${link.reward}</b> محاولات مجانية لرصيدك 🚀\nاستمتع بتجربة البوت الاحترافية ✨`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
     // ── 1. Referrer detection ──────────────────────────────────────────────────
     const referrerId = parseReferralPayload(rawPayload);
 

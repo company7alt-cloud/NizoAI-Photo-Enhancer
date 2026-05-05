@@ -29,6 +29,7 @@ export interface IUser extends Document {
   supportSessionActive: boolean;
   supportSessionAdminId: string | null;
   adminAwaitingInput: string | null;
+  adminTargetUserId: string | null;
   isBlocked: boolean;
   lastSeenAt: Date | null;
   awaitingNanoBananaImage: boolean;
@@ -163,6 +164,7 @@ const UserSchema = new Schema<IUser>(
     supportSessionActive: { type: Boolean, default: false },
     supportSessionAdminId: { type: String, default: null },
     adminAwaitingInput: { type: String, default: null },
+    adminTargetUserId: { type: String, default: null },
     isBlocked: { type: Boolean, default: false },
     lastSeenAt: { type: Date, default: null },
     awaitingNanoBananaImage: { type: Boolean, default: false },

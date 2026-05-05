@@ -167,6 +167,187 @@ bot.on('message:text', async (ctx, next) => {
     return;
   }
 
+  const adminInputUser = await User.findOne({ telegramId: ctx.from?.id.toString() });
+  const adminInput = adminInputUser?.adminAwaitingInput;
+  const text = ctx.message?.text?.trim() || '';
+  const isAdminMsg = isAdm;
+
+  // ── attempts_add_all: waiting for number ──
+  if (adminInput === 'attempts_add_all' && isAdminMsg) {
+    const amount = parseInt(text);
+    if (isNaN(amount) || amount <= 0) {
+      await ctx.reply('❌ أرسل رقماً صحيحاً أكبر من صفر.');
+      return;
+    }
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: null } }
+    );
+    const result = await User.updateMany({}, { $inc: { dailyQuota: amount } });
+    
+    // Notify users safely
+    const allUsers = await User.find({}).select('telegramId').lean();
+    let notified = 0;
+    for (const u of allUsers) {
+      try {
+        await ctx.api.sendMessage(
+          u.telegramId,
+          `🎁 <b>هدية من المطور!</b>\n\nتم إضافة <b>${amount}</b> محاولات مجانية لرصيدك 🚀\nنتمنى لك تجربة ممتعة ومميزة 💎✨`,
+          { parse_mode: 'HTML' }
+        );
+        notified++;
+      } catch (e) {}
+      if (notified % 25 === 0) await new Promise(r => setTimeout(r, 1000));
+    }
+    await ctx.reply(`✅ تمت إضافة ${amount} محاولات لـ ${result.modifiedCount} مستخدم\n📢 تم إشعار ${notified} مستخدم`);
+    return;
+  }
+
+  // ── attempts_add_one_id: waiting for user ID ──
+  if (adminInput === 'attempts_add_one_id' && isAdminMsg) {
+    const targetUser = await User.findOne({ telegramId: text });
+    if (!targetUser) {
+      await ctx.reply('❌ المستخدم غير موجود. تأكد من الـ ID وأعد الإرسال.');
+      return;
+    }
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'attempts_add_one_amount', adminTargetUserId: text } }
+    );
+    await ctx.reply(`✅ تم العثور على المستخدم: <code>${text}</code>\n\nأرسل عدد المحاولات التي تريد إضافتها:`, { parse_mode: 'HTML' });
+    return;
+  }
+
+  // ── attempts_add_one_amount: waiting for amount ──
+  if (adminInput === 'attempts_add_one_amount' && isAdminMsg) {
+    const amount = parseInt(text);
+    if (isNaN(amount) || amount <= 0) {
+      await ctx.reply('❌ أرسل رقماً صحيحاً أكبر من صفر.');
+      return;
+    }
+    const targetId = adminInputUser?.adminTargetUserId;
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: null, adminTargetUserId: null } }
+    );
+    await User.findOneAndUpdate({ telegramId: targetId }, { $inc: { dailyQuota: amount } });
+    try {
+      await ctx.api.sendMessage(
+        targetId!,
+        `🎁 <b>مفاجأة من المطور!</b>\n\nتم إضافة <b>${amount}</b> محاولات مجانية لرصيدك الشخصي 🌟\nهذه مكافأة خاصة لك تقديراً لحسن تعاملك مع البوت 💙`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (e) {}
+    await ctx.reply(`✅ تمت إضافة ${amount} محاولات للمستخدم <code>${targetId}</code> وتم إشعاره`, { parse_mode: 'HTML' });
+    return;
+  }
+
+  // ── attempts_remove_one_id: waiting for user ID ──
+  if (adminInput === 'attempts_remove_one_id' && isAdminMsg) {
+    const targetUser = await User.findOne({ telegramId: text });
+    if (!targetUser) {
+      await ctx.reply('❌ المستخدم غير موجود.');
+      return;
+    }
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'attempts_remove_one_amount', adminTargetUserId: text } }
+    );
+    await ctx.reply(`✅ تم العثور على المستخدم: <code>${text}</code>\n\nأرسل عدد المحاولات التي تريد خصمها:`, { parse_mode: 'HTML' });
+    return;
+  }
+
+  // ── attempts_remove_one_amount: waiting for amount ──
+  if (adminInput === 'attempts_remove_one_amount' && isAdminMsg) {
+    const amount = parseInt(text);
+    if (isNaN(amount) || amount <= 0) {
+      await ctx.reply('❌ أرسل رقماً صحيحاً أكبر من صفر.');
+      return;
+    }
+    const targetId = adminInputUser?.adminTargetUserId;
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: null, adminTargetUserId: null } }
+    );
+    
+    // Smart subtraction pipeline: prevents negative quota
+    await User.findOneAndUpdate(
+      { telegramId: targetId },
+      [{ $set: { dailyQuota: { $max: [0, { $subtract: ["$dailyQuota", amount] }] } } }]
+    );
+    await ctx.reply(`✅ تم خصم ${amount} محاولات من المستخدم <code>${targetId}</code> (الرصيد لا ينزل تحت الصفر)`, { parse_mode: 'HTML' });
+    return;
+  }
+
+  // ── attempts_reset_one_id: waiting for user ID ──
+  if (adminInput === 'attempts_reset_one_id' && isAdminMsg) {
+    const targetUser = await User.findOne({ telegramId: text });
+    if (!targetUser) {
+      await ctx.reply('❌ المستخدم غير موجود.');
+      return;
+    }
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: null, adminTargetUserId: null } }
+    );
+    await User.findOneAndUpdate({ telegramId: text }, { $set: { dailyQuota: 0 } });
+    await ctx.reply(`✅ تم تصفير محاولات المستخدم <code>${text}</code>`, { parse_mode: 'HTML' });
+    return;
+  }
+
+  // ── magic_link_reward: waiting for reward amount ──
+  if (adminInput === 'magic_link_reward' && isAdminMsg) {
+    const reward = parseInt(text);
+    if (isNaN(reward) || reward <= 0) {
+      await ctx.reply('❌ أرسل رقماً صحيحاً أكبر من صفر.');
+      return;
+    }
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'magic_link_maxuses', adminTargetUserId: reward.toString() } }
+    );
+    await ctx.reply(`✅ المكافأة: <b>${reward}</b> محاولات\n\nالآن أرسل الحد الأقصى لعدد الأشخاص المسموح لهم باستخدام الرابط:`, { parse_mode: 'HTML' });
+    return;
+  }
+
+  // ── magic_link_maxuses: waiting for max uses ──
+  if (adminInput === 'magic_link_maxuses' && isAdminMsg) {
+    const maxUses = parseInt(text);
+    if (isNaN(maxUses) || maxUses <= 0) {
+      await ctx.reply('❌ أرسل رقماً صحيحاً أكبر من صفر.');
+      return;
+    }
+    const reward = parseInt(adminInputUser?.adminTargetUserId || '0');
+
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: null, adminTargetUserId: null } }
+    );
+
+    // Generate unique code & Expiration Date (24 Hours)
+    const { v4: uuidv4 } = await import('uuid');
+    const code = uuidv4().substring(0, 8).toUpperCase();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const { MagicLink } = await import('./database/models/MagicLink');
+    await MagicLink.create({ code, reward, maxUses, currentUses: 0, usedBy: [], isActive: true, expiresAt });
+
+    const botUsername = (await ctx.api.getMe()).username;
+    const magicLinkUrl = `https://t.me/${botUsername}?start=magic_${code}`;
+
+    await ctx.reply(
+      `✅ <b>تم إنشاء رابط المكافأة بنجاح!</b>\n\n` +
+      `🔗 <b>الرابط:</b>\n<code>${magicLinkUrl}</code>\n\n` +
+      `🎁 <b>المكافأة:</b> ${reward} محاولات لكل شخص\n` +
+      `👥 <b>الحد الأقصى:</b> ${maxUses} شخص\n` +
+      `⏳ <b>الصلاحية:</b> 24 ساعة فقط\n` +
+      `📊 <b>الكود:</b> <code>${code}</code>\n\n` +
+      `⚠️ الرابط سيتوقف تلقائياً بعد استخدامه ${maxUses} مرة أو بعد مرور 24 ساعة.`,
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
   // 2. Admin Awaiting Input Logic (Priority 2 - Kept exactly as original)
   if (isAdm && user?.adminAwaitingInput) {
     const inputType = user.adminAwaitingInput;
