@@ -16,6 +16,7 @@
     "dotenv": "^16.4.5",
     "grammy": "^1.31.0",
     "mongoose": "^8.5.0",
+    "onnxruntime-node": "^1.25.1",
     "pdfkit": "^0.18.0",
     "replicate": "^1.4.0",
     "sharp": "^0.34.5",

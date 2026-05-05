@@ -16,6 +16,10 @@ import {
 } from '../../services/channelFundService';
 import { FundCampaign } from '../../database/models/FundCampaign';
 import { getSettings, toggleLock } from '../../services/settingsService';
+import {
+  enhanceWithONNX,
+  getQueuePosition,
+} from '../../services/onnxEnhanceService';
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
@@ -423,109 +427,145 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'process_4k_ai') {
+    // ── Resolve file ID, file name, and file size from message ──────────────
+    const msg = (ctx.callbackQuery as any)?.message;
+    let fileId: string | undefined;
+    let fileSize: number = 0;
+    let fileName = 'RealESRGAN_Enhanced.jpg';
+
+    if (msg?.photo && msg.photo.length > 0) {
+      const photo = msg.photo[msg.photo.length - 1];
+      fileId   = photo.file_id;
+      fileSize = photo.file_size ?? 0;
+    } else if (msg?.reply_to_message?.photo?.length > 0) {
+      const photo = msg.reply_to_message.photo[msg.reply_to_message.photo.length - 1];
+      fileId   = photo.file_id;
+      fileSize = photo.file_size ?? 0;
+    } else if (msg?.document?.mime_type?.startsWith('image/')) {
+      fileId   = msg.document.file_id;
+      fileSize = msg.document.file_size ?? 0;
+      fileName = (msg.document.file_name?.replace(/\.[^/.]+$/, '') || 'RealESRGAN_Enhanced') + '.jpg';
+    } else if (msg?.reply_to_message?.document?.mime_type?.startsWith('image/')) {
+      fileId   = msg.reply_to_message.document.file_id;
+      fileSize = msg.reply_to_message.document.file_size ?? 0;
+      fileName = (msg.reply_to_message.document.file_name?.replace(/\.[^/.]+$/, '') || 'RealESRGAN_Enhanced') + '.jpg';
+    }
+
+    // STEP 1 — Pre-checks (before any DB write) ──────────────────────────────
+    if (!fileId) {
+      await ctx.answerCallbackQuery({ text: 'عذراً، لم أتمكن من العثور على الصورة ❌', show_alert: true });
+      return;
+    }
+
+    if (fileSize > 2 * 1024 * 1024) {
+      await ctx.answerCallbackQuery({ text: '❌ حجم الصورة يتجاوز 2 ميجابايت. يرجى إرسال صورة أصغر.', show_alert: true });
+      return;
+    }
+
+    // STEP 2 — Atomic lock + deduction (3 points) ───────────────────────────
+    const lockedUser = await User.findOneAndUpdate(
+      {
+        telegramId:         ctx.from!.id.toString(),
+        isProcessingImage:  { $ne: true },
+        dailyQuota:         { $gte: 3 },
+      },
+      {
+        $set: { isProcessingImage: true },
+        $inc: { dailyQuota: -3 },
+      },
+      { new: true }
+    );
+
+    if (!lockedUser) {
+      // Distinguish between «already processing» and «not enough quota»
+      const check = await User.findOne({ telegramId: ctx.from!.id.toString() });
+      if (check?.isProcessingImage) {
+        await ctx.answerCallbackQuery({ text: '⏳ جاري معالجة طلبك بالفعل. انتظر حتى ينتهي.', show_alert: true });
+        return;
+      }
+      await ctx.answerCallbackQuery({ text: '❌ رصيدك غير كافٍ. هذا التحسين يتطلب 3 محاولات.', show_alert: true });
+      return;
+    }
+
+    // Acknowledge the button press
+    await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' }).catch(() => {});
+
+    // Delete the inline-keyboard message
     try {
-      // 1. Get file ID first
-      const msg = (ctx.callbackQuery as any)?.message;
-      let fileId: string | undefined;
-      let fileName = '4K_Ai_Enhanced.jpg';
+      if (msg?.message_id && msg?.chat?.id) {
+        await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
+      }
+    } catch (_e) { /* ignore */ }
 
-      if (msg?.photo && msg.photo.length > 0) {
-        fileId = msg.photo[msg.photo.length - 1].file_id;
-      } else if (msg?.reply_to_message?.photo?.length > 0) {
-        fileId = msg.reply_to_message.photo[msg.reply_to_message.photo.length - 1].file_id;
-      } else if (msg?.document?.mime_type?.startsWith('image/')) {
-        fileId = msg.document.file_id;
-        fileName = (msg.document.file_name?.replace(/\.[^/.]+$/, "") || "4K_Ai_Enhanced") + ".jpg";
-      } else if (msg?.reply_to_message?.document?.mime_type?.startsWith('image/')) {
-        fileId = msg.reply_to_message.document.file_id;
-        fileName = (msg.reply_to_message.document.file_name?.replace(/\.[^/.]+$/, "") || "4K_Ai_Enhanced") + ".jpg";
+    let processingMsg: { chat: { id: number }; message_id: number } | null = null;
+
+    try {
+      // STEP 3 — Queue status message ────────────────────────────────────────
+      const queuePos = getQueuePosition();
+      if (queuePos > 0) {
+        processingMsg = await ctx.reply(
+          `⏳ تم وضعك في طابور الانتظار (${queuePos} قبلك)...\nسيتم معالجة صورتك قريباً بتقنية RealESRGAN AI`
+        );
+      } else {
+        processingMsg = await ctx.reply(
+          '🔬 جاري تحليل صورتك بنموذج RealESRGAN AI...\nقد يستغرق 30-60 ثانية'
+        );
       }
 
-      if (!fileId) {
-        await ctx.answerCallbackQuery({ text: 'عذراً، لم أتمكن من العثور على الصورة ❌', show_alert: true }).catch(() => { });
-        return;
+      // STEP 4 — Download image as Buffer ────────────────────────────────────
+      const tgFile  = await ctx.api.getFile(fileId);
+      const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+
+      const fetchRes = await fetch(fileUrl);
+      if (!fetchRes.ok) throw new Error('download_failed');
+
+      const inputBuffer = Buffer.from(await fetchRes.arrayBuffer());
+
+      // STEP 5 — Run RealESRGAN ───────────────────────────────────────────────
+      if (processingMsg) {
+        await ctx.api
+          .editMessageText(
+            processingMsg.chat.id,
+            processingMsg.message_id,
+            '⚡ النموذج يعمل الآن...\nجاري رفع الدقة بـ RealESRGAN ×4'
+          )
+          .catch(() => {});
       }
 
-      if (!admin && user.dailyQuota < 3) {
-        await ctx.answerCallbackQuery({ text: 'رصيدك غير كافٍ! تحتاج 3 محاولات لاستخدام 4K-Ai 💎', show_alert: true }).catch(() => { });
-        return;
+      const resultBuffer = await enhanceWithONNX(inputBuffer);
+
+      // Delete processing message
+      if (processingMsg) {
+        try { await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id); } catch (_e) { }
+        processingMsg = null;
       }
 
-      try {
-        const msg = (ctx.callbackQuery as any)?.message;
-        if (msg?.message_id && msg?.chat?.id) {
-          await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
-        }
-      } catch (e) { /* ignore */ }
-
-      if (!admin) {
-        user.dailyQuota -= 3;
-        await user.save();
-      }
-
-      // 2. Acknowledge button press
-      try {
-        await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' }).catch(() => { });
-      } catch (e) { /* ignore if already deleted */ }
-
-      // 3. Get image URL
-      const tgFile = await ctx.api.getFile(fileId);
-      const telegramImageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
-
-      // 4. Send processing message
-      const processingMsg = await ctx.reply('⏳ جاري تحسين صورتك بتقنية 4K-Ai...');
-
-      // 5. Process the image
-      const resultBuffer = await imageService.process4KAi(telegramImageUrl);
-
-      // 7. Delete the "processing..." message
-      try {
-        await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id);
-      } catch (e) { /* ignore */ }
-
-      // 8. Send result as document
+      // STEP 6 — Deliver to user ─────────────────────────────────────────────
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
         {
-          caption: '✨ تم تحسين صورتك بنجاح! جودة 4K-Ai 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '🖼 PNG', callback_data: 'conv_png' },
-                { text: '🖼 JPG', callback_data: 'conv_jpg' },
-                { text: '🖼 WEBP', callback_data: 'conv_webp' },
-              ],
-              [
-                { text: '🖼 AVIF', callback_data: 'conv_avif' },
-                { text: '🖼 TIFF', callback_data: 'conv_tiff' },
-              ],
-            ],
-          },
+          caption: '✨ تم التحسين بنموذج RealESRGAN AI ×4 | NizoAI Bot 🚀',
+          reply_to_message_id: ctx.msg?.message_id,
         }
       );
 
-      // 9. Send preview
-      await ctx.replyWithPhoto(
-        new InputFile(resultBuffer, fileName),
-        { caption: '🖼 معاينة سريعة' }
-      );
-
-      // 10. Backup to channel
+      // STEP 7 — Channel backup (untouched original logic) ───────────────────
       const actionUser = ctx.from;
       const userLink = actionUser?.username
         ? `@${actionUser.username}`
         : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
 
-      const caption = `📦 نسخة أرشيفية\n\n` +
+      const archiveCaption =
+        `📦 نسخة أرشيفية\n\n` +
         `🆔 User ID: ${actionUser?.id}\n` +
         `👤 Username: ${userLink}\n` +
-        `💎 Resolution: 4K-Ai\n` +
+        `💎 Resolution: RealESRGAN ×4\n` +
         `🕐 Time: ${new Date().toLocaleString('ar-SA')}`;
 
       await ctx.api.sendDocument(
         BACKUP_CHANNEL_ID,
         new InputFile(resultBuffer, fileName),
-        { caption, parse_mode: 'HTML' }
+        { caption: archiveCaption, parse_mode: 'HTML' }
       );
 
       if (CHANNEL_ID && CHANNEL_ID !== BACKUP_CHANNEL_ID) {
@@ -536,14 +576,43 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
             { caption: '✨ تمت المعالجة بنجاح', disable_notification: true }
           );
         } catch (e) {
-          console.error('[4K-Ai Channel Forward]', e);
+          console.error('[RealESRGAN Channel Forward]', e);
         }
       }
 
-    } catch (error) {
-      await sendAdminAlert(ctx as any, (error as Error).message || 'Unknown Error in 4K-Ai');
-      console.error('4K-Ai Error:', error);
-      await ctx.reply('عذراً، حدث خطأ أثناء المعالجة. حاول مجدداً ❌');
+    } catch (error: unknown) {
+      // STEP 8 — Error handler + refund ──────────────────────────────────────
+      // Do NOT refund if the error was a pre-download file-size rejection
+      if (!(error instanceof Error && error.message === 'file_too_large')) {
+        const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+        const isAdminCaller = adminIds.includes(ctx.from!.id.toString());
+        if (!isAdminCaller) {
+          await User.findOneAndUpdate(
+            { telegramId: ctx.from!.id.toString() },
+            { $inc: { dailyQuota: 3 } }
+          );
+        }
+      }
+
+      // Clean up any leftover processing message
+      if (processingMsg) {
+        try { await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id); } catch (_e) { }
+      }
+
+      const errMsg =
+        error instanceof Error && error.message === 'download_failed'
+          ? '❌ فشل تحميل الصورة. تم إرجاع محاولاتك.'
+          : '❌ حدث خطأ في المعالجة. تم إرجاع محاولاتك.';
+
+      await ctx.reply(errMsg);
+      console.error('[RealESRGAN Error]', error);
+
+    } finally {
+      // STEP 9 — Release lock (always) ────────────────────────────────────────
+      await User.findOneAndUpdate(
+        { telegramId: ctx.from!.id.toString() },
+        { $set: { isProcessingImage: false } }
+      ).catch(() => {});
     }
     return;
   }
