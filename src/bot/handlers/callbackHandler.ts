@@ -1352,10 +1352,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const nanoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
     const isNanoAdmin = nanoAdminIds.includes(ctx.from!.id.toString());
 
-    if (!isNanoAdmin && nanoUser.dailyQuota < 5) {
+    if (!isNanoAdmin && nanoUser.dailyQuota < 3) {
       await ctx.reply(
         `⚠️ رصيدك غير كافٍ!\n` +
-        `تحتاج <b>5 محاولات</b> لاستخدام هذه الميزة ✨\n` +
+        `تحتاج <b>3 محاولات</b> لاستخدام هذه الميزة ✨\n` +
         `رصيدك الحالي: <b>${nanoUser.dailyQuota}</b> محاولة`,
         { parse_mode: 'HTML' }
       );
@@ -1370,7 +1370,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.reply(
       '✨ <b>تحسين الصورة بالذكاء الاصطناعي</b>\n\n' +
       '📸 أرسل لي الصورة الآن وسأقوم بتحسينها احترافياً مع الحفاظ على هويتها الأصلية 100% 🚀\n\n' +
-      '💎 <b>السعر: 5 محاولات</b>\n' +
+      '💎 <b>السعر: 3 محاولات</b>\n' +
       '<i>يمكنك إرسالها كصورة عادية أو كملف للحفاظ على الجودة</i>',
       {
         parse_mode: 'HTML',

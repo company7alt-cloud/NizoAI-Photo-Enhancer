@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startCommand = startCommand;
 exports.inviteCommand = inviteCommand;
@@ -16,6 +49,45 @@ async function startCommand(ctx) {
     // ctx.match contains everything after /start (the payload)
     const rawPayload = ctx.match?.trim() ?? '';
     try {
+        if (rawPayload.startsWith('magic_')) {
+            const code = rawPayload.replace('magic_', '');
+            const { MagicLink } = await Promise.resolve().then(() => __importStar(require('../../database/models/MagicLink')));
+            const link = await MagicLink.findOne({ code, isActive: true });
+            if (!link) {
+                await ctx.reply('❌ هذا الرابط غير صالح أو تم إيقافه.');
+                return;
+            }
+            if (new Date() > link.expiresAt) {
+                await ctx.reply('⏳ عذراً، لقد انتهت صلاحية هذا الرابط (مرت 24 ساعة).');
+                return;
+            }
+            if (link.usedBy.includes(ctx.from.id.toString())) {
+                await ctx.reply('⚠️ لقد استخدمت هذا الرابط من قبل وحصلت على المكافأة.');
+                return;
+            }
+            // Atomic update: claim reward
+            const updated = await MagicLink.findOneAndUpdate({
+                code,
+                isActive: true,
+                currentUses: { $lt: link.maxUses },
+                usedBy: { $ne: ctx.from.id.toString() }
+            }, {
+                $inc: { currentUses: 1 },
+                $push: { usedBy: ctx.from.id.toString() }
+            }, { new: true });
+            if (!updated) {
+                await ctx.reply('❌ انتهت صلاحية هذا الرابط أو تم الوصول للحد الأقصى للمستخدمين.');
+                return;
+            }
+            // Add reward to user
+            await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $inc: { dailyQuota: link.reward } }, { upsert: true });
+            // Auto-deactivate if max uses reached
+            if (updated.currentUses >= updated.maxUses) {
+                await MagicLink.findOneAndUpdate({ code }, { $set: { isActive: false } });
+            }
+            await ctx.reply(`🎉 <b>مبروك! رابط المكافأة صالح</b>\n\nتم إضافة <b>${link.reward}</b> محاولات مجانية لرصيدك 🚀\nاستمتع بتجربة البوت الاحترافية ✨`, { parse_mode: 'HTML' });
+            return;
+        }
         // ── 1. Referrer detection ──────────────────────────────────────────────────
         const referrerId = parseReferralPayload(rawPayload);
         // ── 2. Check if user is brand-new (not in DB) ──────────────────────────────

@@ -27,6 +27,7 @@ export interface IUser extends Document {
     supportSessionActive: boolean;
     supportSessionAdminId: string | null;
     adminAwaitingInput: string | null;
+    adminTargetUserId: string | null;
     isBlocked: boolean;
     lastSeenAt: Date | null;
     awaitingNanoBananaImage: boolean;
@@ -55,6 +56,7 @@ export interface IUser extends Document {
     lastEraserResultMsgId?: number;
     awaitingAutoEraserImage?: boolean;
     vipSizeBypass: boolean;
+    successfulReferrals: number;
 }
 export interface IUserModel extends Model<IUser> {
     findByTelegramId(telegramId: number): Promise<IUser | null>;

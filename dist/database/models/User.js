@@ -100,6 +100,7 @@ const UserSchema = new mongoose_1.Schema({
     supportSessionActive: { type: Boolean, default: false },
     supportSessionAdminId: { type: String, default: null },
     adminAwaitingInput: { type: String, default: null },
+    adminTargetUserId: { type: String, default: null },
     isBlocked: { type: Boolean, default: false },
     lastSeenAt: { type: Date, default: null },
     awaitingNanoBananaImage: { type: Boolean, default: false },
@@ -134,6 +135,7 @@ const UserSchema = new mongoose_1.Schema({
     lastEraserResultMsgId: { type: Number, default: null },
     awaitingAutoEraserImage: { type: Boolean, default: false },
     vipSizeBypass: { type: Boolean, default: false },
+    successfulReferrals: { type: Number, default: 0 },
 }, {
     timestamps: false,
     versionKey: false,

@@ -610,20 +610,20 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    // ── WALL 2 + Atomic lock + 5-point deduction ──────────────────────────────
-    // findOneAndUpdate atomically: sets isProcessingImage=true, deducts 5 points,
+    // ── WALL 2 + Atomic lock + 3-point deduction ──────────────────────────────
+    // findOneAndUpdate atomically: sets isProcessingImage=true, deducts 3 points,
     // resets awaitingNanoBananaImage — all in ONE DB round-trip.
     // This prevents race conditions from album sends and double-taps.
     if (!isNanoAdminUser) {
       const lockedUser = await User.findOneAndUpdate(
         {
           telegramId:        userId.toString(),
-          dailyQuota:        { $gte: 5 },          // must have 5 points
+          dailyQuota:        { $gte: 3 },          // must have 3 points
           awaitingNanoBananaImage: true,            // still in waiting state
           isProcessingImage: { $ne: true },         // not already processing
         },
         {
-          $inc: { dailyQuota: -5 },
+          $inc: { dailyQuota: -3 },
           $set: {
             awaitingNanoBananaImage: false,
             isProcessingImage: true,
@@ -644,7 +644,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         } else {
           await ctx.reply(
             '⚠️ رصيدك غير كافٍ أو تم معالجة طلب آخر في نفس الوقت.\n' +
-            'تحتاج <b>5 محاولات</b> لاستخدام هذه الميزة.',
+            'تحتاج <b>3 محاولات</b> لاستخدام هذه الميزة.',
             { parse_mode: 'HTML' }
           );
         }
@@ -701,7 +701,22 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       // ── STEP: Deliver to user ─────────────────────────────────────────────
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
-        { caption: '✨ تم تحسين صورتك بتقنية NizoAI الخاصة! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة' }
+        {
+          caption: '✨ تم تحسين صورتك بتقنية NizoAI الخاصة! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🖼 PNG',  callback_data: 'conv_png' },
+                { text: '🖼 JPG',  callback_data: 'conv_jpg' },
+                { text: '🖼 WEBP', callback_data: 'conv_webp' },
+              ],
+              [
+                { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+              ],
+            ],
+          },
+        }
       );
 
       await ctx.replyWithPhoto(
@@ -735,16 +750,16 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       }
 
     } catch (error: unknown) {
-      // ── Refund 5 points on ANY failure (except file_too_large, already caught above)
+      // ── Refund 3 points on ANY failure (except file_too_large, already caught above)
       if (!isNanoAdminUser) {
         await User.findOneAndUpdate(
           { telegramId: userId.toString() },
-          { $inc: { dailyQuota: 5 } }
+          { $inc: { dailyQuota: 3 } }
         );
       }
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
       console.error('[NanoAI] Error:', error instanceof Error ? error.message : error);
-      await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 5 محاولاتك تلقائياً ✨');
+      await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 3 محاولاتك تلقائياً ✨');
 
     } finally {
       // ── Release processing lock — ALWAYS, no exceptions ──────────────────

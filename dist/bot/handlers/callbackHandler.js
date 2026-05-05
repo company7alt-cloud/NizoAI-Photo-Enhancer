@@ -51,6 +51,7 @@ const BotSettings_1 = require("../../database/models/BotSettings");
 const channelFundService_1 = require("../../services/channelFundService");
 const FundCampaign_1 = require("../../database/models/FundCampaign");
 const settingsService_1 = require("../../services/settingsService");
+const onnxEnhanceService_1 = require("../../services/onnxEnhanceService");
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
 const BACKUP_CHANNEL_ID = ARCHIVE_GROUP_ID || CHANNEL_ID;
@@ -383,104 +384,151 @@ async function callbackHandler(ctx) {
         return;
     }
     if (data === 'process_4k_ai') {
+        // ── Resolve file ID, file name, and file size from message ──────────────
+        const msg = ctx.callbackQuery?.message;
+        let fileId;
+        let fileSize = 0;
+        let fileName = 'RealESRGAN_Enhanced.jpg';
+        if (msg?.photo && msg.photo.length > 0) {
+            const photo = msg.photo[msg.photo.length - 1];
+            fileId = photo.file_id;
+            fileSize = photo.file_size ?? 0;
+        }
+        else if (msg?.reply_to_message?.photo?.length > 0) {
+            const photo = msg.reply_to_message.photo[msg.reply_to_message.photo.length - 1];
+            fileId = photo.file_id;
+            fileSize = photo.file_size ?? 0;
+        }
+        else if (msg?.document?.mime_type?.startsWith('image/')) {
+            fileId = msg.document.file_id;
+            fileSize = msg.document.file_size ?? 0;
+            fileName = (msg.document.file_name?.replace(/\.[^/.]+$/, '') || 'RealESRGAN_Enhanced') + '.jpg';
+        }
+        else if (msg?.reply_to_message?.document?.mime_type?.startsWith('image/')) {
+            fileId = msg.reply_to_message.document.file_id;
+            fileSize = msg.reply_to_message.document.file_size ?? 0;
+            fileName = (msg.reply_to_message.document.file_name?.replace(/\.[^/.]+$/, '') || 'RealESRGAN_Enhanced') + '.jpg';
+        }
+        // STEP 1 — Pre-checks (before any DB write) ──────────────────────────────
+        if (!fileId) {
+            await ctx.answerCallbackQuery({ text: 'عذراً، لم أتمكن من العثور على الصورة ❌', show_alert: true });
+            return;
+        }
+        if (fileSize > 2 * 1024 * 1024) {
+            await ctx.answerCallbackQuery({ text: '❌ حجم الصورة يتجاوز 2 ميجابايت. يرجى إرسال صورة أصغر.', show_alert: true });
+            return;
+        }
+        // STEP 2 — Atomic lock + deduction (3 points) ───────────────────────────
+        const lockedUser = await User_1.User.findOneAndUpdate({
+            telegramId: ctx.from.id.toString(),
+            isProcessingImage: { $ne: true },
+            dailyQuota: { $gte: 3 },
+        }, {
+            $set: { isProcessingImage: true },
+            $inc: { dailyQuota: -3 },
+        }, { new: true });
+        if (!lockedUser) {
+            // Distinguish between «already processing» and «not enough quota»
+            const check = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+            if (check?.isProcessingImage) {
+                await ctx.answerCallbackQuery({ text: '⏳ جاري معالجة طلبك بالفعل. انتظر حتى ينتهي.', show_alert: true });
+                return;
+            }
+            await ctx.answerCallbackQuery({ text: '❌ رصيدك غير كافٍ. هذا التحسين يتطلب 3 محاولات.', show_alert: true });
+            return;
+        }
+        // Acknowledge the button press
+        await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' }).catch(() => { });
+        // Delete the inline-keyboard message
         try {
-            // 1. Get file ID first
-            const msg = ctx.callbackQuery?.message;
-            let fileId;
-            let fileName = '4K_Ai_Enhanced.jpg';
-            if (msg?.photo && msg.photo.length > 0) {
-                fileId = msg.photo[msg.photo.length - 1].file_id;
+            if (msg?.message_id && msg?.chat?.id) {
+                await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
             }
-            else if (msg?.reply_to_message?.photo?.length > 0) {
-                fileId = msg.reply_to_message.photo[msg.reply_to_message.photo.length - 1].file_id;
+        }
+        catch (_e) { /* ignore */ }
+        let processingMsg = null;
+        try {
+            // STEP 3 — Queue status message ────────────────────────────────────────
+            const queuePos = (0, onnxEnhanceService_1.getQueuePosition)();
+            if (queuePos > 0) {
+                processingMsg = await ctx.reply(`⏳ تم وضعك في طابور الانتظار (${queuePos} قبلك)...\nسيتم معالجة صورتك قريباً بتقنية RealESRGAN AI`);
             }
-            else if (msg?.document?.mime_type?.startsWith('image/')) {
-                fileId = msg.document.file_id;
-                fileName = (msg.document.file_name?.replace(/\.[^/.]+$/, "") || "4K_Ai_Enhanced") + ".jpg";
+            else {
+                processingMsg = await ctx.reply('🔬 جاري تحليل صورتك بنموذج RealESRGAN AI...\nقد يستغرق 30-60 ثانية');
             }
-            else if (msg?.reply_to_message?.document?.mime_type?.startsWith('image/')) {
-                fileId = msg.reply_to_message.document.file_id;
-                fileName = (msg.reply_to_message.document.file_name?.replace(/\.[^/.]+$/, "") || "4K_Ai_Enhanced") + ".jpg";
-            }
-            if (!fileId) {
-                await ctx.answerCallbackQuery({ text: 'عذراً، لم أتمكن من العثور على الصورة ❌', show_alert: true }).catch(() => { });
-                return;
-            }
-            if (!admin && user.dailyQuota < 3) {
-                await ctx.answerCallbackQuery({ text: 'رصيدك غير كافٍ! تحتاج 3 محاولات لاستخدام 4K-Ai 💎', show_alert: true }).catch(() => { });
-                return;
-            }
-            try {
-                const msg = ctx.callbackQuery?.message;
-                if (msg?.message_id && msg?.chat?.id) {
-                    await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
-                }
-            }
-            catch (e) { /* ignore */ }
-            if (!admin) {
-                user.dailyQuota -= 3;
-                await user.save();
-            }
-            // 2. Acknowledge button press
-            try {
-                await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' }).catch(() => { });
-            }
-            catch (e) { /* ignore if already deleted */ }
-            // 3. Get image URL
+            // STEP 4 — Download image as Buffer ────────────────────────────────────
             const tgFile = await ctx.api.getFile(fileId);
-            const telegramImageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
-            // 4. Send processing message
-            const processingMsg = await ctx.reply('⏳ جاري تحسين صورتك بتقنية 4K-Ai...');
-            // 5. Process the image
-            const resultBuffer = await imageService.process4KAi(telegramImageUrl);
-            // 7. Delete the "processing..." message
-            try {
-                await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id);
+            const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+            const fetchRes = await fetch(fileUrl);
+            if (!fetchRes.ok)
+                throw new Error('download_failed');
+            const inputBuffer = Buffer.from(await fetchRes.arrayBuffer());
+            // STEP 5 — Run RealESRGAN ───────────────────────────────────────────────
+            if (processingMsg) {
+                await ctx.api
+                    .editMessageText(processingMsg.chat.id, processingMsg.message_id, '⚡ النموذج يعمل الآن...\nجاري رفع الدقة بـ RealESRGAN ×4')
+                    .catch(() => { });
             }
-            catch (e) { /* ignore */ }
-            // 8. Send result as document
+            const resultBuffer = await (0, onnxEnhanceService_1.enhanceWithONNX)(inputBuffer);
+            // Delete processing message
+            if (processingMsg) {
+                try {
+                    await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id);
+                }
+                catch (_e) { }
+                processingMsg = null;
+            }
+            // STEP 6 — Deliver to user ─────────────────────────────────────────────
             await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, fileName), {
-                caption: '✨ تم تحسين صورتك بنجاح! جودة 4K-Ai 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة',
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: '🖼 PNG', callback_data: 'conv_png' },
-                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
-                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
-                        ],
-                        [
-                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
-                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
-                        ],
-                    ],
-                },
+                caption: '✨ تم التحسين بنموذج RealESRGAN AI ×4 | NizoAI Bot 🚀',
+                reply_to_message_id: ctx.msg?.message_id,
             });
-            // 9. Send preview
-            await ctx.replyWithPhoto(new grammy_1.InputFile(resultBuffer, fileName), { caption: '🖼 معاينة سريعة' });
-            // 10. Backup to channel
+            // STEP 7 — Channel backup (untouched original logic) ───────────────────
             const actionUser = ctx.from;
             const userLink = actionUser?.username
                 ? `@${actionUser.username}`
                 : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
-            const caption = `📦 نسخة أرشيفية\n\n` +
+            const archiveCaption = `📦 نسخة أرشيفية\n\n` +
                 `🆔 User ID: ${actionUser?.id}\n` +
                 `👤 Username: ${userLink}\n` +
-                `💎 Resolution: 4K-Ai\n` +
+                `💎 Resolution: RealESRGAN ×4\n` +
                 `🕐 Time: ${new Date().toLocaleString('ar-SA')}`;
-            await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(resultBuffer, fileName), { caption, parse_mode: 'HTML' });
+            await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(resultBuffer, fileName), { caption: archiveCaption, parse_mode: 'HTML' });
             if (CHANNEL_ID && CHANNEL_ID !== BACKUP_CHANNEL_ID) {
                 try {
                     await ctx.api.sendDocument(CHANNEL_ID, new grammy_1.InputFile(resultBuffer, fileName), { caption: '✨ تمت المعالجة بنجاح', disable_notification: true });
                 }
                 catch (e) {
-                    console.error('[4K-Ai Channel Forward]', e);
+                    console.error('[RealESRGAN Channel Forward]', e);
                 }
             }
         }
         catch (error) {
-            await (0, adminAlert_1.sendAdminAlert)(ctx, error.message || 'Unknown Error in 4K-Ai');
-            console.error('4K-Ai Error:', error);
-            await ctx.reply('عذراً، حدث خطأ أثناء المعالجة. حاول مجدداً ❌');
+            // STEP 8 — Error handler + refund ──────────────────────────────────────
+            // Do NOT refund if the error was a pre-download file-size rejection
+            if (!(error instanceof Error && error.message === 'file_too_large')) {
+                const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+                const isAdminCaller = adminIds.includes(ctx.from.id.toString());
+                if (!isAdminCaller) {
+                    await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $inc: { dailyQuota: 3 } });
+                }
+            }
+            // Clean up any leftover processing message
+            if (processingMsg) {
+                try {
+                    await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id);
+                }
+                catch (_e) { }
+            }
+            const errMsg = error instanceof Error && error.message === 'download_failed'
+                ? '❌ فشل تحميل الصورة. تم إرجاع محاولاتك.'
+                : '❌ حدث خطأ في المعالجة. تم إرجاع محاولاتك.';
+            await ctx.reply(errMsg);
+            console.error('[RealESRGAN Error]', error);
+        }
+        finally {
+            // STEP 9 — Release lock (always) ────────────────────────────────────────
+            await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { isProcessingImage: false } }).catch(() => { });
         }
         return;
     }
@@ -501,6 +549,26 @@ async function callbackHandler(ctx) {
             const user = await User_1.User.findOne({ telegramId });
             if (!user)
                 return;
+            // ── Referral Gate: must have 2 successful referrals ──────────
+            const referralCount = await User_1.User.countDocuments({
+                referredBy: ctx.from.id.toString(),
+                referralRewardClaimed: true
+            });
+            const REQUIRED_REFERRALS = 2;
+            if (referralCount < REQUIRED_REFERRALS) {
+                const botUsername = (await ctx.api.getMe()).username;
+                const referralLink = `https://t.me/${botUsername}?start=${ctx.from.id}`;
+                await ctx.answerCallbackQuery({
+                    text: `تحتاج دعوة ${REQUIRED_REFERRALS - referralCount} شخص إضافي للحصول على الهدية`,
+                    show_alert: true
+                }).catch(() => { });
+                await ctx.reply(`🎁 <b>الهدية اليومية</b>\n\n` +
+                    `للحصول على هديتك اليومية، يجب أن تكون قد دعوت صديقين عبر رابطك الخاص أولاً.\n\n` +
+                    `📊 <b>تقدمك:</b> ${referralCount} / ${REQUIRED_REFERRALS} دعوات ✅\n\n` +
+                    `🔗 <b>رابط دعوتك:</b>\n<code>${referralLink}</code>\n\n` +
+                    `شارك هذا الرابط مع صديقين، وبمجرد انضمامهم للبوت ستتمكن من استلام هديتك اليومية 🚀`, { parse_mode: 'HTML' });
+                return;
+            }
             const now = new Date();
             const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
             if (user.lastRewardDate) {
@@ -1681,6 +1749,55 @@ async function callbackHandler(ctx) {
         await ctx.answerCallbackQuery();
         await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { adminAwaitingInput: '' });
         await ctx.reply('❌ تم الإلغاء.');
+        return;
+    }
+    // ════════════════════════════════
+    // 🎯 Attempts Management
+    // ════════════════════════════════
+    if (data === 'admin_manage_attempts' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await ctx.reply('🎯 <b>إدارة المحاولات</b>\n\nاختر العملية المطلوبة:', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '➕ إضافة للجميع', callback_data: 'attempts_add_all' }],
+                    [{ text: '👤 إضافة لشخص محدد', callback_data: 'attempts_add_one' }],
+                    [{ text: '➖ خصم من شخص محدد', callback_data: 'attempts_remove_one' }],
+                    [{ text: '🔄 تصفير شخص محدد', callback_data: 'attempts_reset_one' }],
+                    [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
+                ]
+            }
+        });
+        return;
+    }
+    if (data === 'attempts_add_all' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'attempts_add_all', adminTargetUserId: null } });
+        await ctx.reply('➕ <b>إضافة محاولات للجميع</b>\n\nأرسل عدد المحاولات التي تريد إضافتها لجميع المستخدمين:', { parse_mode: 'HTML' });
+        return;
+    }
+    if (data === 'attempts_add_one' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'attempts_add_one_id', adminTargetUserId: null } });
+        await ctx.reply('👤 <b>إضافة لشخص محدد</b>\n\nأرسل الـ ID الخاص بالمستخدم:', { parse_mode: 'HTML' });
+        return;
+    }
+    if (data === 'attempts_remove_one' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'attempts_remove_one_id', adminTargetUserId: null } });
+        await ctx.reply('➖ <b>خصم من شخص محدد</b>\n\nأرسل الـ ID الخاص بالمستخدم:', { parse_mode: 'HTML' });
+        return;
+    }
+    if (data === 'attempts_reset_one' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'attempts_reset_one_id', adminTargetUserId: null } });
+        await ctx.reply('🔄 <b>تصفير شخص محدد</b>\n\nأرسل الـ ID الخاص بالمستخدم:', { parse_mode: 'HTML' });
+        return;
+    }
+    if (data === 'admin_create_magic_link' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'magic_link_reward', adminTargetUserId: null } });
+        await ctx.reply('🔗 <b>إنشاء رابط مكافأة خاص</b>\n\nأرسل عدد المحاولات التي سيحصل عليها كل شخص يدخل من هذا الرابط:', { parse_mode: 'HTML' });
         return;
     }
 }
