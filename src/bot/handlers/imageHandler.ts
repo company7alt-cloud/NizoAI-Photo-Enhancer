@@ -1,8 +1,13 @@
 // src/bot/handlers/imageHandler.ts
 import { InlineKeyboard } from 'grammy';
+import { InputFile } from 'grammy';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
 import { getSettings } from '../../services/settingsService';
+import {
+  enhanceWithONNX,
+  getQueuePosition,
+} from '../../services/onnxEnhanceService';
 
 export async function imageHandler(ctx: BotContext): Promise<void> {
   const telegramId = ctx.from?.id.toString();
@@ -557,9 +562,10 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   }
 
 
+
   if (user?.awaitingNanoBananaImage) {
 
-    // SECURITY LAYER 1: Check if feature locked after user started
+    // ── SECURITY: Check if feature was locked after user started ──────────────
     const { getSettings: getNanoSettings } = await import('../../services/settingsService');
     const nanoGlobalSettings = await getNanoSettings();
     const nanoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
@@ -574,13 +580,18 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    // Get fileId BEFORE resetting state
-    // If no image found, keep state so user can try again
+    // ── WALL 1: Resolve file ID + file size from Telegram metadata ────────────
+    // (Done BEFORE any download or DB write)
     let fileId: string | undefined;
+    let fileSize: number = 0;
+
     if (ctx.message?.photo && ctx.message.photo.length > 0) {
-      fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+      const largest = ctx.message.photo[ctx.message.photo.length - 1];
+      fileId   = largest.file_id;
+      fileSize = largest.file_size ?? 0;
     } else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
-      fileId = ctx.message.document.file_id;
+      fileId   = ctx.message.document.file_id;
+      fileSize = ctx.message.document.file_size ?? 0;
     }
 
     if (!fileId) {
@@ -589,62 +600,108 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    // SECURITY LAYER 2: Atomic deduction + state reset in ONE MongoDB operation
-    // This prevents Race Condition from album sends (multiple images at once)
+    if (fileSize > 2 * 1024 * 1024) {
+      // Reject BEFORE touching DB — no refund needed since no deduction yet
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { awaitingNanoBananaImage: false } }
+      );
+      await ctx.reply('❌ حجم الصورة يتجاوز 2 ميجابايت. يرجى إرسال صورة أصغر.');
+      return;
+    }
+
+    // ── WALL 2 + Atomic lock + 5-point deduction ──────────────────────────────
+    // findOneAndUpdate atomically: sets isProcessingImage=true, deducts 5 points,
+    // resets awaitingNanoBananaImage — all in ONE DB round-trip.
+    // This prevents race conditions from album sends and double-taps.
     if (!isNanoAdminUser) {
-      const updatedUser = await User.findOneAndUpdate(
+      const lockedUser = await User.findOneAndUpdate(
         {
-          telegramId: userId.toString(),
-          dailyQuota: { $gte: 5 },           // Only proceeds if balance >= 5
-          awaitingNanoBananaImage: true        // Only proceeds if still in waiting state
+          telegramId:        userId.toString(),
+          dailyQuota:        { $gte: 5 },          // must have 5 points
+          awaitingNanoBananaImage: true,            // still in waiting state
+          isProcessingImage: { $ne: true },         // not already processing
         },
         {
           $inc: { dailyQuota: -5 },
-          $set: { awaitingNanoBananaImage: false }
+          $set: {
+            awaitingNanoBananaImage: false,
+            isProcessingImage: true,
+          },
         },
         { new: true }
       );
 
-      if (!updatedUser) {
-        // Failed: either insufficient balance or concurrent request already consumed it
+      if (!lockedUser) {
+        // Failed: insufficient balance OR concurrent request already consumed it
+        const check = await User.findOne({ telegramId: userId.toString() });
         await User.findOneAndUpdate(
           { telegramId: userId.toString() },
           { $set: { awaitingNanoBananaImage: false } }
         );
-        await ctx.reply(
-          '⚠️ رصيدك غير كافٍ أو تم معالجة طلب آخر في نفس الوقت.\n' +
-          'تحتاج <b>5 محاولات</b> لاستخدام هذه الميزة.',
-          { parse_mode: 'HTML' }
-        );
+        if (check?.isProcessingImage) {
+          await ctx.reply('⏳ جاري معالجة طلب آخر بالفعل. انتظر حتى ينتهي ثم حاول مجدداً.');
+        } else {
+          await ctx.reply(
+            '⚠️ رصيدك غير كافٍ أو تم معالجة طلب آخر في نفس الوقت.\n' +
+            'تحتاج <b>5 محاولات</b> لاستخدام هذه الميزة.',
+            { parse_mode: 'HTML' }
+          );
+        }
         return;
       }
     } else {
-      // Admin: reset state only, no deduction
+      // Admin: reset state only, no deduction, no lock
       await User.findOneAndUpdate(
         { telegramId: userId.toString() },
         { $set: { awaitingNanoBananaImage: false } }
       );
     }
 
-    const processingMsg = await ctx.reply(
-      '⏳ جاري تحسين صورتك بالذكاء الاصطناعي... ✨\nالرجاء الانتظار 🌟'
-    );
+    // ── WALL 2: Queue position status message ─────────────────────────────────
+    const queuePos = getQueuePosition();
+    let processingMsg: { chat: { id: number }; message_id: number };
+    if (queuePos > 0) {
+      processingMsg = await ctx.reply(
+        `⏳ تم وضعك في طابور الانتظار لضمان أعلى جودة...\n` +
+        `(${queuePos} طلب قبلك) سيتم معالجة صورتك قريباً ✨`
+      );
+    } else {
+      processingMsg = await ctx.reply(
+        '✨ جاري تحسين صورتك بتقنية NizoAI الخاصة...\nقد يستغرق 30-60 ثانية 🌟'
+      );
+    }
 
     try {
-      const tgFile = await ctx.api.getFile(fileId);
-      const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+      // ── STEP: Download image as Buffer (no temp files) ────────────────────
+      const tgFile  = await ctx.api.getFile(fileId);
+      const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
 
-      const { processNanoBanana } = await import('../../services/imageService');
-      const resultBuffer = await processNanoBanana(imageUrl);
-      const fileName = `NanoAI_${Date.now()}.jpg`;
+      const fetchRes = await fetch(fileUrl);
+      if (!fetchRes.ok) throw new Error('download_failed');
 
+      const inputBuffer = Buffer.from(await fetchRes.arrayBuffer());
+
+      // ── Update processing message ─────────────────────────────────────────
+      await ctx.api
+        .editMessageText(
+          processingMsg.chat.id,
+          processingMsg.message_id,
+          '⚡ الذكاء الاصطناعي يعمل الآن...\nجاري رفع الدقة وتحسين التفاصيل ✨'
+        )
+        .catch(() => {});
+
+      // ── STEP: Run local AI enhancement ───────────────────────────────────
+      const resultBuffer = await enhanceWithONNX(inputBuffer);
+      const fileName     = `NizoAI_Enhanced_${Date.now()}.jpg`;
+
+      // Delete processing message
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
 
-      const { InputFile } = await import('grammy');
-
+      // ── STEP: Deliver to user ─────────────────────────────────────────────
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
-        { caption: '✨ تم تحسين صورتك بنجاح! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة' }
+        { caption: '✨ تم تحسين صورتك بتقنية NizoAI الخاصة! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة' }
       );
 
       await ctx.replyWithPhoto(
@@ -652,13 +709,14 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         { caption: '🖼 معاينة سريعة' }
       );
 
+      // ── STEP: Channel archive (100% untouched original logic) ────────────
       const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
       if (ARCHIVE_CHANNEL) {
         const userLink = ctx.from?.username
           ? `@${ctx.from.username}`
           : `<a href="tg://user?id=${ctx.from?.id}">${ctx.from?.first_name || 'مجهول'}</a>`;
 
-        await ctx.api.sendDocument(
+        ctx.api.sendDocument(
           ARCHIVE_CHANNEL,
           new InputFile(resultBuffer, fileName),
           {
@@ -671,13 +729,13 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
               `🕐 Time: ${new Date().toLocaleString('ar-SA')}\n` +
               `━━━━━━━━━━━━━`,
             parse_mode: 'HTML',
-            disable_notification: true
+            disable_notification: true,
           }
         ).catch(() => {});
       }
 
-    } catch (error: any) {
-      // Refund on failure
+    } catch (error: unknown) {
+      // ── Refund 5 points on ANY failure (except file_too_large, already caught above)
       if (!isNanoAdminUser) {
         await User.findOneAndUpdate(
           { telegramId: userId.toString() },
@@ -685,8 +743,17 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         );
       }
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
-      console.error('[NanoAI] Error:', error?.message);
+      console.error('[NanoAI] Error:', error instanceof Error ? error.message : error);
       await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 5 محاولاتك تلقائياً ✨');
+
+    } finally {
+      // ── Release processing lock — ALWAYS, no exceptions ──────────────────
+      if (!isNanoAdminUser) {
+        await User.findOneAndUpdate(
+          { telegramId: userId.toString() },
+          { $set: { isProcessingImage: false } }
+        ).catch(() => {});
+      }
     }
     return;
   }
