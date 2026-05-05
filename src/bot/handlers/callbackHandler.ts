@@ -1367,6 +1367,23 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       { $set: { awaitingNanoBananaImage: true } }
     );
 
+    // 60-second timeout: auto-cancel if no image received
+    setTimeout(async () => {
+      try {
+        const checkUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
+        if (checkUser?.awaitingNanoBananaImage) {
+          await User.findOneAndUpdate(
+            { telegramId: ctx.from!.id.toString() },
+            { $set: { awaitingNanoBananaImage: false } }
+          );
+          await ctx.api.sendMessage(
+            ctx.from!.id,
+            '⏰ انتهى وقت الإرسال (60 ثانية).\nاضغط الزر مجدداً إذا أردت المتابعة ❌'
+          );
+        }
+      } catch (_e) {}
+    }, 60_000);
+
     await ctx.reply(
       '✨ <b>تحسين الصورة بالذكاء الاصطناعي</b>\n\n' +
       '📸 أرسل لي الصورة الآن وسأقوم بتحسينها احترافياً مع الحفاظ على هويتها الأصلية 100% 🚀\n\n' +
