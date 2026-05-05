@@ -566,6 +566,34 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       const user = await User.findOne({ telegramId });
       if (!user) return;
 
+      // ── Referral Gate: must have 2 successful referrals ──────────
+      const referralCount = await User.countDocuments({
+        referredBy: ctx.from!.id.toString(),
+        referralRewardClaimed: true
+      });
+
+      const REQUIRED_REFERRALS = 2;
+
+      if (referralCount < REQUIRED_REFERRALS) {
+        const botUsername = (await ctx.api.getMe()).username;
+        const referralLink = `https://t.me/${botUsername}?start=${ctx.from!.id}`;
+
+        await ctx.answerCallbackQuery({
+          text: `تحتاج دعوة ${REQUIRED_REFERRALS - referralCount} شخص إضافي للحصول على الهدية`,
+          show_alert: true
+        }).catch(() => {});
+
+        await ctx.reply(
+          `🎁 <b>الهدية اليومية</b>\n\n` +
+          `للحصول على هديتك اليومية، يجب أن تكون قد دعوت صديقين عبر رابطك الخاص أولاً.\n\n` +
+          `📊 <b>تقدمك:</b> ${referralCount} / ${REQUIRED_REFERRALS} دعوات ✅\n\n` +
+          `🔗 <b>رابط دعوتك:</b>\n<code>${referralLink}</code>\n\n` +
+          `شارك هذا الرابط مع صديقين، وبمجرد انضمامهم للبوت ستتمكن من استلام هديتك اليومية 🚀`,
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+
       const now = new Date();
       const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 

@@ -57,6 +57,7 @@ export interface IUser extends Document {
   lastEraserResultMsgId?: number;
   awaitingAutoEraserImage?: boolean;
   vipSizeBypass: boolean;
+  successfulReferrals: number;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -196,6 +197,7 @@ const UserSchema = new Schema<IUser>(
     lastEraserResultMsgId: { type: Number, default: null },
     awaitingAutoEraserImage: { type: Boolean, default: false },
     vipSizeBypass: { type: Boolean, default: false },
+    successfulReferrals: { type: Number, default: 0 },
   },
   {
     timestamps: false,
