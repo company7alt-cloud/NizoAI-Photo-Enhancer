@@ -57,6 +57,7 @@ const admin_1 = require("./bot/commands/admin");
 const imageHandler_1 = require("./bot/handlers/imageHandler");
 const callbackHandler_1 = require("./bot/handlers/callbackHandler");
 const forceSubscribe_1 = require("./bot/middlewares/forceSubscribe");
+const botTextsService_1 = require("./services/botTextsService");
 // ─── Bot Instance ──────────────────────────────────────────────────────────────
 const bot = new grammy_1.Bot(process.env.BOT_TOKEN);
 // ─── Middlewares ───────────────────────────────────────────────────────────────
@@ -173,6 +174,28 @@ bot.on('message:text', async (ctx, next) => {
         const inputType = user.adminAwaitingInput;
         const inputText = messageText;
         await User_1.User.findOneAndUpdate({ telegramId: telegramId }, { $set: { adminAwaitingInput: null } });
+        if (inputType.startsWith('txtedit:')) {
+            const key = inputType.replace('txtedit:', '');
+            const newValue = inputText.trim();
+            if (!newValue || newValue === '/cancel') {
+                await ctx.reply('❌ تم الإلغاء.');
+                return;
+            }
+            const { updateText, getText } = await Promise.resolve().then(() => __importStar(require('./services/botTextsService')));
+            const oldValue = await getText(key);
+            const success = await updateText(key, newValue);
+            if (success) {
+                await ctx.reply(`✅ <b>تم التحديث بنجاح!</b>\n\n` +
+                    `🔑 المفتاح: <code>${key}</code>\n\n` +
+                    `📝 <b>النص القديم:</b>\n<code>${oldValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>\n\n` +
+                    `✨ <b>النص الجديد:</b>\n<code>${newValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`, { parse_mode: 'HTML' });
+            }
+            else {
+                await ctx.reply('❌ فشل التحديث.\n' +
+                    `المفتاح <code>${key}</code> غير موجود في قاعدة البيانات.`, { parse_mode: 'HTML' });
+            }
+            return;
+        }
         if (inputType === 'welcome_message') {
             const { BotSettings } = await Promise.resolve().then(() => __importStar(require('./database/models/BotSettings')));
             await BotSettings.findOneAndUpdate({ key: 'welcome_message' }, { value: inputText }, { upsert: true });
@@ -451,6 +474,7 @@ async function bootstrap() {
     try {
         await (0, connection_1.connectDatabase)();
         await Settings_1.Settings.initDefaults();
+        await (0, botTextsService_1.initBotTexts)();
         console.log('--- NizoAI Bot is starting ---');
         const botInfo = await bot.api.getMe();
         console.log(`[Bot] ✅ Authenticated as @${botInfo.username}`);

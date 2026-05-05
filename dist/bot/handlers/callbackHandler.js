@@ -1580,5 +1580,108 @@ async function callbackHandler(ctx) {
         }
         return;
     }
+    // ══════════════════════════════════════
+    // ✏️ LIVE TEXT EDITOR — admin_edit_texts
+    // ══════════════════════════════════════
+    if (data === 'admin_edit_texts') {
+        if (!adminIds.includes(ctx.from.id.toString()))
+            return;
+        await ctx.answerCallbackQuery();
+        await ctx.reply('✏️ <b>تعديل نصوص البوت</b>\n\nاختر الفئة:', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '💬 رسائل البوت', callback_data: 'txtedit_cat_message' }],
+                    [{ text: '🔘 أسماء الأزرار', callback_data: 'txtedit_cat_button' }],
+                    [{ text: '🔔 الإشعارات', callback_data: 'txtedit_cat_notification' }],
+                    [{ text: '🔙 رجوع للوحة', callback_data: 'admin_panel' }],
+                ]
+            }
+        });
+        return;
+    }
+    if (data.startsWith('txtedit_cat_')) {
+        if (!adminIds.includes(ctx.from.id.toString()))
+            return;
+        await ctx.answerCallbackQuery();
+        const catMap = {
+            txtedit_cat_message: 'message',
+            txtedit_cat_button: 'button',
+            txtedit_cat_notification: 'notification',
+        };
+        const category = catMap[data];
+        if (!category)
+            return;
+        const { getByCategory } = await Promise.resolve().then(() => __importStar(require('../../services/botTextsService')));
+        const items = await getByCategory(category);
+        const labelMap = {
+            message: '💬 رسائل البوت',
+            button: '🔘 أسماء الأزرار',
+            notification: '🔔 الإشعارات',
+        };
+        const keyboard = items.map(item => ([{
+                // callback_data max 64 chars — key prefix "txtedit_item_" = 13 chars
+                text: `✏️ ${item.description}`,
+                callback_data: `txtedit_item_${item.key}`.slice(0, 64)
+            }]));
+        keyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_edit_texts' }]);
+        await ctx.reply(`📋 <b>${labelMap[category]}</b>\n\nاختر العنصر:`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } });
+        return;
+    }
+    if (data.startsWith('txtedit_item_')) {
+        if (!adminIds.includes(ctx.from.id.toString()))
+            return;
+        await ctx.answerCallbackQuery();
+        const key = data.replace('txtedit_item_', '');
+        const { getText } = await Promise.resolve().then(() => __importStar(require('../../services/botTextsService')));
+        const currentValue = await getText(key);
+        // Set admin awaiting state
+        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { adminAwaitingInput: `txtedit:${key}` });
+        await ctx.reply(`✏️ <b>تعديل النص</b>\n\n` +
+            `🔑 <b>المفتاح:</b> <code>${key}</code>\n\n` +
+            `📝 <b>النص الحالي:</b>\n` +
+            `<code>${currentValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>\n\n` +
+            `📨 <b>أرسل الآن النص الجديد</b>\n\n` +
+            `📌 المتغيرات المتاحة (إن وجدت):\n` +
+            `• <code>{timeLeft}</code> الوقت المتبقي\n` +
+            `• <code>{required}</code> المحاولات المطلوبة\n` +
+            `• <code>{current}</code> الرصيد الحالي\n` +
+            `• <code>{userId}</code> معرف المستخدم\n` +
+            `• <code>{username}</code> اسم المستخدم\n\n` +
+            `✅ يدعم: *bold* _italic_ \`code\`\n` +
+            `❌ أرسل /cancel للإلغاء`, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔄 استعادة الافتراضي', callback_data: `txtedit_reset_${key}`.slice(0, 64) }],
+                    [{ text: '❌ إلغاء', callback_data: 'txtedit_cancel' }],
+                ]
+            }
+        });
+        return;
+    }
+    if (data.startsWith('txtedit_reset_')) {
+        if (!adminIds.includes(ctx.from.id.toString()))
+            return;
+        await ctx.answerCallbackQuery();
+        const key = data.replace('txtedit_reset_', '');
+        const { resetText } = await Promise.resolve().then(() => __importStar(require('../../services/botTextsService')));
+        const restored = await resetText(key);
+        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { adminAwaitingInput: '' });
+        if (restored) {
+            await ctx.reply(`✅ <b>تم استعادة النص الافتراضي</b>\n\n` +
+                `📝 <b>النص المُستعاد:</b>\n<code>${restored.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`, { parse_mode: 'HTML' });
+        }
+        else {
+            await ctx.reply('❌ لم يتم العثور على هذا المفتاح.');
+        }
+        return;
+    }
+    if (data === 'txtedit_cancel') {
+        await ctx.answerCallbackQuery();
+        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { adminAwaitingInput: '' });
+        await ctx.reply('❌ تم الإلغاء.');
+        return;
+    }
 }
 //# sourceMappingURL=callbackHandler.js.map
