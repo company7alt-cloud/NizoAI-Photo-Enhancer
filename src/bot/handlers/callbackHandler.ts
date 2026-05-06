@@ -543,7 +543,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           .editMessageText(
             processingMsg.chat.id,
             processingMsg.message_id,
-            '⚡ النموذج يعمل الآن...\nجاري رفع الدقة بـ RealESRGAN ×4'
+            '✨ *جاري معالجة الصورة بلمسة سحرية...*\n⏳ يتم الآن رفع الدقة وإبراز التفاصيل المخفية، لحظات من فضلك.',
+            { parse_mode: 'Markdown' }
           )
           .catch(() => {});
       }

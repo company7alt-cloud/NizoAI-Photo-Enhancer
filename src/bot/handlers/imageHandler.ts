@@ -813,10 +813,8 @@ await incrementGlobalCounter();
     );
 
     const processingMsg = await ctx.reply(
-      `⏳ جاري استلام صورتك...\n` +
-      `🚀 بدأ التحسين بتقنية Pro Enhance\n` +
-      `💎 الجودة: ${settings.quality} | التكبير: ${settings.scale}x | النوع: ${settings.imageType}\n` +
-      `🌟 الرجاء الانتظار...`
+      `📥 *تم استلام صورتك بنجاح!*\n🚀 نظام *Pro Enhance* يعمل الآن على استخراج أدق التفاصيل بأقصى جودة.\n💎 _الرجاء الانتظار قليلاً بينما نصنع لك لوحة فنية (بدقة 4x)..._ ⏳`,
+      { parse_mode: 'Markdown' }
     );
 
     try {
