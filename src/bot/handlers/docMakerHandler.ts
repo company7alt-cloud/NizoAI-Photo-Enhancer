@@ -66,6 +66,9 @@ function generateControlPanel() {
       ],
       [
         { text: '🔄 إعادة آخر سطر', callback_data: 'doc_redo' },
+        { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' }
+      ],
+      [
         { text: '📋 عرض الأسطر', callback_data: 'doc_view' }
       ]
     ]
@@ -110,7 +113,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     'doc_type_text', 'doc_type_image',
     'doc_compile', 'doc_continue', 'doc_finish',
     'align_right', 'align_center', 'align_left',
-    'doc_redo', 'doc_edit_line', 'doc_view', 'doc_edit_after'
+    'doc_redo', 'doc_edit_line', 'doc_view', 'doc_edit_after', 'doc_new_page'
   ];
   const isDocCallback = docCallbacks.includes(data) || data.startsWith('doc_tpl_') || data.startsWith('doc_size_');
   if (!isDocCallback) return false;
@@ -359,6 +362,20 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
         { parse_mode: 'HTML', reply_markup: generateControlPanel() }
       ).catch(() => {});
     }
+    return true;
+  }
+
+  // ── New Page (doc_new_page) ───────────────────────────────────────────────
+  if (data === 'doc_new_page') {
+    await ctx.answerCallbackQuery();
+    if (!ctx.session.documentLines) ctx.session.documentLines = [];
+    ctx.session.documentLines.push({ text: "---PAGE_BREAK---", align: "right" });
+    ctx.session.tempLine = null;
+    
+    await ctx.reply(
+      '✅ تم حفظ الصفحة الأولى. ابدأ كتابة الصفحة التالية:',
+      { reply_markup: generateControlPanel() }
+    );
     return true;
   }
 

@@ -269,6 +269,14 @@ async function generateDocumentFromLines(lines, pageSize = 'A4') {
                 doc.font('Arabic');
             doc.fontSize(FONT_SIZE).fillColor('black');
             for (const line of lines) {
+                if (line.text === '---PAGE_BREAK---') {
+                    ({ W, H } = addPage());
+                    currentY = PADDING;
+                    if (hasFont)
+                        doc.font('Arabic');
+                    doc.fontSize(FONT_SIZE).fillColor('black');
+                    continue;
+                }
                 // Auto-paginate
                 if (currentY + LINE_H > maxY) {
                     ({ W, H } = addPage());
