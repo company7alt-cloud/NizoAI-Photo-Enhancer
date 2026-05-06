@@ -556,7 +556,7 @@ if (inputType === 'grant_vip_id') {
       } catch (e) {}
       return;
     }
-  }
+
     if (inputType === 'vip_size_bypass') {
       const targetUser = await User.findOne({ telegramId: inputText.trim() });
       if (!targetUser) {
