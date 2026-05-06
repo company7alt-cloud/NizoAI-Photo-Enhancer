@@ -71,13 +71,15 @@ export interface IUser extends Document {
     lineCapacity: number;
     awaitingCustomSize: boolean;
     awaitingLineText: boolean;
+    awaitingAlignment: boolean;
+    tempLine: string | null;
     awaitingImagePhoto: boolean;
     awaitingOverlayText: boolean;
     awaitingCaptionText: boolean;
     pendingLongText: string | null;
     pages: Array<{
       type: 'text' | 'image';
-      lines?: string[];
+      lines?: { text: string; align: 'right' | 'center' | 'left' }[];
       imageBuffer?: Buffer | string;
       overlayText?: string;
       captionText?: string;
@@ -240,6 +242,8 @@ const UserSchema = new Schema<IUser>(
         lineCapacity:       { type: Number, default: 10 },
         awaitingCustomSize: { type: Boolean, default: false },
         awaitingLineText:   { type: Boolean, default: false },
+        awaitingAlignment:  { type: Boolean, default: false },
+        tempLine:           { type: String, default: null },
         awaitingImagePhoto: { type: Boolean, default: false },
         awaitingOverlayText: { type: Boolean, default: false },
         awaitingCaptionText: { type: Boolean, default: false },
@@ -247,7 +251,13 @@ const UserSchema = new Schema<IUser>(
         pages: {
           type: [{
             type:        { type: String },
-            lines:       { type: [String], default: [] },
+            lines:       {
+              type: [{
+                text:  { type: String },
+                align: { type: String, default: 'right' },
+              }],
+              default: [],
+            },
             imageBuffer: { type: Schema.Types.Mixed, default: null },
             overlayText: { type: String, default: null },
             captionText: { type: String, default: null },
