@@ -153,10 +153,19 @@ export async function startCommand(ctx: BotContext): Promise<void> {
         await User.updateOne({ telegramId: referrerId }, { $inc: { dailyQuota: 5, referralCount: 1 } });
         await User.updateOne({ telegramId: referrerId }, { $push: { referredUsers: telegramId } });
 
-        // Mark on the new user immediately
+        // Track referral for potential clawback — write both fields atomically
+        await User.findOneAndUpdate(
+          { telegramId: telegramId },
+          {
+            $set: {
+              referredBy:            referrerId,
+              referralRewardClaimed: true,
+            },
+          }
+        );
+        // Keep in-memory user in sync
         user.referredBy = referrerId;
         user.referralRewardClaimed = true;
-        await user.save();
 
         // Notify referrer
         ctx.api

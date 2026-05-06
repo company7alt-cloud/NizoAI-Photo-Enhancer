@@ -20,6 +20,7 @@ import {
   enhanceWithONNX,
   getQueuePosition,
 } from '../../services/onnxEnhanceService';
+import { ForceSubChannel } from '../../database/models/ForceSubChannel';
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
@@ -64,45 +65,42 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   if (!data || !ctx.from) return;
 
   if (data === 'check_force_sub') {
-    const channelId = process.env.FORCE_SUB_CHANNEL_ID?.trim();
+    await ctx.answerCallbackQuery().catch(() => {});
 
-    if (!channelId) {
-      await ctx.answerCallbackQuery({
-        text: '✅ يمكنك استخدام البوت الآن!',
-        show_alert: true
-      }).catch(() => {});
+    const userId   = ctx.from!.id;
+    const channels = await ForceSubChannel.find().sort({ order: 1 });
+
+    if (channels.length === 0) {
       await ctx.deleteMessage().catch(() => {});
-      await User.findOneAndUpdate(
-        { telegramId: ctx.from!.id.toString() },
-        { $set: { forceSubMessageId: null, forceSubChatId: null } }
-      );
       return;
     }
 
-    try {
-      const member = await ctx.api.getChatMember(channelId, ctx.from!.id);
-      const validStatuses = ['creator', 'administrator', 'member', 'restricted'];
+    let allSubscribed = true;
 
-      if (validStatuses.includes(member.status)) {
-        await ctx.answerCallbackQuery({
-          text: '✅ تم التحقق! يمكنك استخدام البوت الآن 🎉',
-          show_alert: true
-        }).catch(() => {});
-        await ctx.deleteMessage().catch(() => {});
-        await User.findOneAndUpdate(
-          { telegramId: ctx.from!.id.toString() },
-          { $set: { forceSubMessageId: null, forceSubChatId: null } }
-        );
-      } else {
-        await ctx.answerCallbackQuery({
-          text: '❌ لم تشترك بعد! اشترك في القناة ثم اضغط التحقق مجدداً.',
-          show_alert: true
-        }).catch(() => {});
+    for (const ch of channels) {
+      try {
+        const member = await ctx.api.getChatMember(ch.channelId, userId);
+        if (['left', 'kicked'].includes(member.status)) {
+          allSubscribed = false;
+          break;
+        }
+      } catch {
+        // Cannot verify — allow user through (bot may have lost admin)
+        // This prevents an infinite block loop
+        console.error(`[CheckForceSub] Cannot verify channel ${ch.channelId}`);
       }
-    } catch (error) {
+    }
+
+    if (allSubscribed) {
       await ctx.answerCallbackQuery({
-        text: '⚠️ حدث خطأ في التحقق. يرجى المحاولة مجدداً.',
-        show_alert: true
+        text: '✅ تم التحقق! يمكنك استخدام البوت الآن 🎉',
+        show_alert: true,
+      }).catch(() => {});
+      await ctx.deleteMessage().catch(() => {});
+    } else {
+      await ctx.answerCallbackQuery({
+        text: '❌ لم تشترك في جميع القنوات بعد!',
+        show_alert: true,
       }).catch(() => {});
     }
     return;
@@ -1254,6 +1252,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
         [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
         [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+        [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
@@ -1281,6 +1280,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
         [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
         [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+        [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
@@ -2309,6 +2309,105 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       '🔗 <b>إنشاء رابط مكافأة خاص</b>\n\nأرسل عدد المحاولات التي سيحصل عليها كل شخص يدخل من هذا الرابط:',
       { parse_mode: 'HTML' }
     );
+    return;
+  }
+
+  // ════════════════════════════════
+  // 📢 Force Sub Admin Management
+  // ════════════════════════════════
+
+  if (data === 'admin_force_sub' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const channels = await ForceSubChannel.find().sort({ order: 1 });
+
+    const fsubKeyboard = channels.map((ch) => ([{
+      text: `🗑 حذف: ${ch.channelName}`,
+      callback_data: `del_fsub_${String(ch._id)}`,
+    }]));
+
+    if (channels.length < 10) {
+      fsubKeyboard.push([{
+        text: '➕ إضافة قناة جديدة',
+        callback_data: 'add_fsub',
+      }]);
+    }
+    fsubKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' }]);
+
+    await ctx.reply(
+      `📢 <b>قنوات الاشتراك الإجباري</b>\n\n` +
+      `عدد القنوات: ${channels.length}/10\n\n` +
+      (channels.length === 0
+        ? 'لا توجد قنوات مضافة.'
+        : channels.map((c, i) => `${i + 1}. ${c.channelName}`).join('\n')),
+      {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: fsubKeyboard },
+      }
+    );
+    return;
+  }
+
+  if (data === 'add_fsub' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminAwaitingInput: 'add_fsub_input' } }
+    );
+
+    await ctx.editMessageText(
+      '📢 <b>إضافة قناة اشتراك إجباري</b>\n\n' +
+      '⚠️ تأكد أن البوت <b>مشرف</b> في القناة أولاً.\n\n' +
+      'أرسل بيانات القناة بهذا الشكل:\n' +
+      '<code>CHANNEL_ID | CHANNEL_URL | CHANNEL_NAME</code>\n\n' +
+      'مثال:\n' +
+      '<code>-1001234567890 | https://t.me/mychannel | قناتي</code>',
+      { parse_mode: 'HTML' }
+    ).catch(async () => {
+      await ctx.reply(
+        '📢 <b>إضافة قناة اشتراك إجباري</b>\n\n' +
+        '⚠️ تأكد أن البوت <b>مشرف</b> في القناة أولاً.\n\n' +
+        'أرسل بيانات القناة بهذا الشكل:\n' +
+        '<code>CHANNEL_ID | CHANNEL_URL | CHANNEL_NAME</code>\n\n' +
+        'مثال:\n' +
+        '<code>-1001234567890 | https://t.me/mychannel | قناتي</code>',
+        { parse_mode: 'HTML' }
+      );
+    });
+    return;
+  }
+
+  if (data.startsWith('del_fsub_') && isAdminUser) {
+    const docId = data.replace('del_fsub_', '');
+
+    await ForceSubChannel.findByIdAndDelete(docId);
+
+    await ctx.answerCallbackQuery({
+      text: '✅ تم حذف القناة',
+      show_alert: true,
+    }).catch(() => {});
+
+    // Refresh the force-sub management screen
+    const updatedChannels = await ForceSubChannel.find().sort({ order: 1 });
+    const updatedKeyboard = updatedChannels.map((ch) => ([{
+      text: `🗑 حذف: ${ch.channelName}`,
+      callback_data: `del_fsub_${String(ch._id)}`,
+    }]));
+
+    if (updatedChannels.length < 10) {
+      updatedKeyboard.push([{
+        text: '➕ إضافة قناة جديدة',
+        callback_data: 'add_fsub',
+      }]);
+    }
+    updatedKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' }]);
+
+    await ctx.editMessageText(
+      `📢 <b>قنوات الاشتراك الإجباري</b>\n\nعدد القنوات: ${updatedChannels.length}/10`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: updatedKeyboard },
+      }
+    ).catch(() => {});
     return;
   }
 }

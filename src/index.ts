@@ -20,7 +20,8 @@ import { startCommand, inviteCommand } from './bot/commands/start';
 import { registerAdminCommands } from './bot/commands/admin';
 import { imageHandler } from './bot/handlers/imageHandler';
 import { callbackHandler } from './bot/handlers/callbackHandler';
-import { forceSubscribeMiddleware } from './bot/middlewares/forceSubscribe';
+import { forceSubMiddleware } from './bot/middlewares/forceSubMiddleware';
+import { ForceSubChannel } from './database/models/ForceSubChannel';
 import { initBotTexts } from './services/botTextsService';
 
 // ─── Bot Instance ──────────────────────────────────────────────────────────────
@@ -29,7 +30,7 @@ const bot = new Bot<BotContext>(process.env.BOT_TOKEN);
 
 // ─── Middlewares ───────────────────────────────────────────────────────────────
 
-bot.use(forceSubscribeMiddleware);
+bot.use(forceSubMiddleware);
 bot.use(session({ initial: () => ({}) }));
 
 bot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
@@ -348,6 +349,85 @@ bot.on('message:text', async (ctx, next) => {
     return;
   }
 
+  // ── add_fsub_input: waiting for channel data (CHANNEL_ID | URL | NAME) ──
+  if (adminInput === 'add_fsub_input' && isAdminMsg) {
+    const parts = text.split('|').map((s) => s.trim());
+
+    if (parts.length !== 3) {
+      await ctx.reply(
+        '❌ صيغة خاطئة. أرسل هكذا:\n' +
+        '<code>CHANNEL_ID | CHANNEL_URL | CHANNEL_NAME</code>',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    const [channelId, channelUrl, channelName] = parts;
+
+    // Verify bot is admin in the channel before accepting
+    try {
+      const botInfo   = await ctx.api.getMe();
+      const botMember = await ctx.api.getChatMember(channelId, botInfo.id);
+
+      if (!['administrator', 'creator'].includes(botMember.status)) {
+        await ctx.reply(
+          '❌ البوت ليس مشرفاً في هذه القناة.\n' +
+          'أضفه كمشرف أولاً ثم أرسل البيانات مجدداً.'
+        );
+        return;
+      }
+    } catch {
+      await ctx.reply(
+        '❌ تعذر الوصول للقناة. تأكد من:\n' +
+        '1. صحة الـ ID (يبدأ بـ -100...)\n' +
+        '2. أن البوت مشرف فيها'
+      );
+      return;
+    }
+
+    const { ForceSubChannel } = await import('./database/models/ForceSubChannel');
+    const count = await ForceSubChannel.countDocuments();
+
+    if (count >= 10) {
+      await ctx.reply('❌ وصلت للحد الأقصى (10 قنوات).');
+      await User.findOneAndUpdate(
+        { telegramId: telegramId },
+        { $set: { adminAwaitingInput: null } }
+      );
+      return;
+    }
+
+    const existing = await ForceSubChannel.findOne({ channelId });
+    if (existing) {
+      await ctx.reply('❌ هذه القناة مضافة مسبقاً.');
+      await User.findOneAndUpdate(
+        { telegramId: telegramId },
+        { $set: { adminAwaitingInput: null } }
+      );
+      return;
+    }
+
+    await ForceSubChannel.create({
+      channelId,
+      channelUrl,
+      channelName,
+      order: count,
+    });
+
+    await User.findOneAndUpdate(
+      { telegramId: telegramId },
+      { $set: { adminAwaitingInput: null } }
+    );
+
+    await ctx.reply(
+      `✅ تم إضافة القناة بنجاح!\n\n` +
+      `📢 ${channelName}\n` +
+      `🆔 ${channelId}\n\n` +
+      'ستظهر الآن للعملاء ضمن شرط الاشتراك الإجباري.'
+    );
+    return;
+  }
+
   // 2. Admin Awaiting Input Logic (Priority 2 - Kept exactly as original)
   if (isAdm && user?.adminAwaitingInput) {
     const inputType = user.adminAwaitingInput;
@@ -642,7 +722,7 @@ bot.on([':photo', ':document'], async (ctx, next) => {
 bot.on([':photo', ':document'], imageHandler);
 bot.callbackQuery(/.*/, callbackHandler);
 
-// ─── chat_member: Leave / Kick Penalty ────────────────────────────────────────
+// ─── chat_member: Leave / Kick Penalty + Force-Sub Clawback ───────────────────
 
 bot.on('chat_member', async (ctx) => {
   const update = ctx.update.chat_member;
@@ -650,15 +730,104 @@ bot.on('chat_member', async (ctx) => {
 
   const newStatus = update.new_chat_member.status;
   const oldStatus = update.old_chat_member.status;
-  const userId = update.new_chat_member.user.id;
+  const userId    = update.new_chat_member.user.id;
   const channelId = String(update.chat.id);
 
+  // ── Existing fund-campaign penalty ──────────────────────────────────────────
   const wasActive = ['member', 'administrator', 'creator'].includes(oldStatus);
-  const hasLeft = ['left', 'kicked', 'restricted'].includes(newStatus);
+  const hasLeft   = ['left', 'kicked', 'restricted'].includes(newStatus);
 
   if (wasActive && hasLeft) {
     const { handleMemberLeft } = await import('./services/channelFundService');
     await handleMemberLeft(userId, channelId, ctx.api);
+  }
+
+  // ── Referral Clawback: user leaves a force-sub channel ──────────────────────
+  try {
+    if (newStatus !== 'left' && newStatus !== 'kicked') return;
+
+    const isForceSubChannel = await ForceSubChannel.findOne({ channelId });
+    if (!isForceSubChannel) return;
+
+    const fleeingUser = await User.findOne({ telegramId: userId });
+
+    if (
+      fleeingUser?.referredBy != null &&
+      fleeingUser.referralRewardClaimed === true
+    ) {
+      const REFERRAL_REWARD = 5; // same amount given in start.ts referral block
+      const POINTS_FIELD    = 'dailyQuota'; // exact field from User model
+
+      await User.findOneAndUpdate(
+        { telegramId: fleeingUser.referredBy },
+        { $inc: { [POINTS_FIELD]: -REFERRAL_REWARD } }
+      );
+
+      await User.findOneAndUpdate(
+        { telegramId: userId },
+        { $set: { referralRewardClaimed: false } }
+      );
+
+      console.log(
+        `[Clawback] ${userId} left force-sub channel. ` +
+        `Clawed back ${REFERRAL_REWARD} pts from referrer ${fleeingUser.referredBy}`
+      );
+
+      try {
+        await ctx.api.sendMessage(
+          fleeingUser.referredBy,
+          `⚠️ تم خصم ${REFERRAL_REWARD} نقطة من رصيدك لأن ` +
+          'الشخص الذي دعوته غادر إحدى قنوات البوت الإجبارية.'
+        );
+      } catch { /* referrer may have blocked bot */ }
+    }
+  } catch (err) {
+    console.error('[Clawback chat_member]', err);
+  }
+});
+
+// ─── my_chat_member: User blocks the bot — Referral Clawback ──────────────────
+
+bot.on('my_chat_member', async (ctx) => {
+  try {
+    const newStatus = ctx.myChatMember.new_chat_member.status;
+    if (newStatus !== 'kicked') return;
+
+    const fleeingUserId = ctx.from.id;
+    const fleeingUser   = await User.findOne({ telegramId: fleeingUserId });
+
+    if (
+      fleeingUser?.referredBy != null &&
+      fleeingUser.referralRewardClaimed === true
+    ) {
+      const REFERRAL_REWARD = 5; // same amount given in start.ts referral block
+      const POINTS_FIELD    = 'dailyQuota'; // exact field from User model
+
+      await User.findOneAndUpdate(
+        { telegramId: fleeingUser.referredBy },
+        { $inc: { [POINTS_FIELD]: -REFERRAL_REWARD } }
+      );
+
+      await User.findOneAndUpdate(
+        { telegramId: fleeingUserId },
+        { $set: { referralRewardClaimed: false } }
+      );
+
+      console.log(
+        `[Clawback] ${fleeingUserId} blocked bot. ` +
+        `Clawed back ${REFERRAL_REWARD} pts from referrer ${fleeingUser.referredBy}`
+      );
+
+      try {
+        await ctx.api.sendMessage(
+          fleeingUser.referredBy,
+          `⚠️ تم خصم ${REFERRAL_REWARD} نقطة من رصيدك لأن ` +
+          'الشخص الذي دعوته قام بحظر البوت.'
+        );
+      } catch { /* referrer may have blocked bot */ }
+    }
+  } catch (err) {
+    console.error('[Clawback my_chat_member]', err);
   }
 });
 
@@ -716,7 +885,12 @@ async function bootstrap(): Promise<void> {
     console.log(`[Bot] ✅ Authenticated as @${botInfo.username}`);
 
     bot.start({
-      allowed_updates: ['message', 'callback_query', 'chat_member'],
+      allowed_updates: [
+        'message',
+        'callback_query',
+        'chat_member',
+        'my_chat_member',
+      ],
       drop_pending_updates: true,
       onStart: (info) => {
         console.log(`[Bot] 🚀 Polling started for @${info.username}`);
