@@ -43,13 +43,12 @@ exports.enhanceWithONNX = enhanceWithONNX;
 const ort = __importStar(require("onnxruntime-node"));
 const sharp_1 = __importDefault(require("sharp"));
 const path_1 = __importDefault(require("path"));
-// ── CONSTANTS ────────────────────────────────────────
 const MODEL_PATH = path_1.default.join(process.cwd(), 'RealESRGAN_x4.onnx');
-const MAX_INPUT_EDGE = 512; // px — longest edge before processing
-const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB hard limit
-const MAX_CONCURRENT = 2; // max simultaneous ONNX sessions
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_CONCURRENT = 2;
 const JPEG_QUALITY = 95;
-// ── SESSION CACHE (load once, reuse forever) ─────────
+const TILE_SIZE = 64;
+const SCALE = 4;
 let sessionCache = null;
 async function getSession() {
     if (!sessionCache) {
@@ -58,11 +57,10 @@ async function getSession() {
             executionProviders: ['cpu'],
             graphOptimizationLevel: 'all',
         });
-        console.log('[ONNX] Model loaded and cached ✅');
+        console.log('[ONNX] Model loaded ✅');
     }
     return sessionCache;
 }
-// ── CONCURRENCY QUEUE ─────────────────────────────────
 let activeJobs = 0;
 const waitingQueue = [];
 async function acquireSlot() {
@@ -70,9 +68,7 @@ async function acquireSlot() {
         activeJobs++;
         return;
     }
-    return new Promise((resolve) => {
-        waitingQueue.push(resolve);
-    });
+    return new Promise((resolve) => { waitingQueue.push(resolve); });
 }
 function releaseSlot() {
     if (waitingQueue.length > 0) {
@@ -84,92 +80,119 @@ function releaseSlot() {
         activeJobs = Math.max(0, activeJobs - 1);
     }
 }
-function getQueuePosition() {
-    return waitingQueue.length;
-}
-function isAtCapacity() {
-    return activeJobs >= MAX_CONCURRENT;
-}
-// ── MAIN ENHANCE FUNCTION ────────────────────────────
-async function enhanceWithONNX(inputBuffer) {
-    // SAFETY GATE 1: file size
-    if (inputBuffer.length > MAX_FILE_BYTES) {
-        throw new Error('file_too_large');
+function getQueuePosition() { return waitingQueue.length; }
+function isAtCapacity() { return activeJobs >= MAX_CONCURRENT; }
+async function runTile(session, tileBuffer, tileW, tileH) {
+    const tensorData = new Float32Array(3 * tileH * tileW);
+    const raw = tileBuffer;
+    for (let y = 0; y < tileH; y++) {
+        for (let x = 0; x < tileW; x++) {
+            const src = (y * tileW + x) * 3;
+            tensorData[0 * tileH * tileW + y * tileW + x] = raw[src] / 255.0;
+            tensorData[1 * tileH * tileW + y * tileW + x] = raw[src + 1] / 255.0;
+            tensorData[2 * tileH * tileW + y * tileW + x] = raw[src + 2] / 255.0;
+        }
     }
-    // Wait for an available slot
+    const inputName = session.inputNames[0];
+    const tensor = new ort.Tensor('float32', tensorData, [1, 3, tileH, tileW]);
+    const results = await session.run({ [inputName]: tensor });
+    const outputTensor = results[session.outputNames[0]];
+    const outData = outputTensor.data;
+    const outH = outputTensor.dims[2];
+    const outW = outputTensor.dims[3];
+    const rgb = Buffer.alloc(outH * outW * 3);
+    for (let y = 0; y < outH; y++) {
+        for (let x = 0; x < outW; x++) {
+            const dst = (y * outW + x) * 3;
+            rgb[dst] = Math.min(255, Math.max(0, Math.round(outData[0 * outH * outW + y * outW + x] * 255)));
+            rgb[dst + 1] = Math.min(255, Math.max(0, Math.round(outData[1 * outH * outW + y * outW + x] * 255)));
+            rgb[dst + 2] = Math.min(255, Math.max(0, Math.round(outData[2 * outH * outW + y * outW + x] * 255)));
+        }
+    }
+    return rgb;
+}
+async function enhanceWithONNX(inputBuffer) {
+    if (inputBuffer.length > MAX_FILE_BYTES)
+        throw new Error('file_too_large');
     await acquireSlot();
     try {
-        // STAGE 1: Read metadata
         const metadata = await (0, sharp_1.default)(inputBuffer).metadata();
         const origW = metadata.width ?? 256;
         const origH = metadata.height ?? 256;
-        console.log(`[ONNX] Original: ${origW}x${origH}`);
-        // SAFETY GATE 2: resize longest edge to MAX before processing
-        const scale = Math.min(1, MAX_INPUT_EDGE / Math.max(origW, origH));
+        // Resize to max 512 on longest edge
+        const scale = Math.min(1, 512 / Math.max(origW, origH));
         const procW = Math.round(origW * scale);
         const procH = Math.round(origH * scale);
-        console.log(`[ONNX] Processing at: ${procW}x${procH}`);
-        // STAGE 2: Prepare input — resize + extract raw RGB
+        console.log(`[ONNX] Processing: ${procW}x${procH} in ${TILE_SIZE}px tiles`);
         const { data: rawData } = await (0, sharp_1.default)(inputBuffer)
             .resize({ width: procW, height: procH, fit: 'fill', kernel: sharp_1.default.kernel.lanczos3 })
             .removeAlpha()
             .raw()
             .toBuffer({ resolveWithObject: true });
-        // STAGE 3: Convert to Float32Array tensor [1, 3, H, W]
-        // Normalize pixels from 0-255 → 0.0-1.0
-        const tensorData = new Float32Array(3 * procH * procW);
-        for (let y = 0; y < procH; y++) {
-            for (let x = 0; x < procW; x++) {
-                const srcIdx = (y * procW + x) * 3;
-                const r = rawData[srcIdx] / 255.0;
-                const g = rawData[srcIdx + 1] / 255.0;
-                const b = rawData[srcIdx + 2] / 255.0;
-                // Planar format: R channel, G channel, B channel
-                tensorData[0 * procH * procW + y * procW + x] = r;
-                tensorData[1 * procH * procW + y * procW + x] = g;
-                tensorData[2 * procH * procW + y * procW + x] = b;
-            }
-        }
-        // STAGE 4: Run ONNX inference
         const session = await getSession();
-        const inputName = session.inputNames[0];
-        const tensor = new ort.Tensor('float32', tensorData, [1, 3, procH, procW]);
-        const feeds = { [inputName]: tensor };
-        console.log('[ONNX] Running inference...');
-        const results = await session.run(feeds);
-        console.log('[ONNX] Inference complete ✅');
-        // STAGE 5: Extract output tensor
-        const outputName = session.outputNames[0];
-        const outputTensor = results[outputName];
-        const outputData = outputTensor.data;
-        const outH = outputTensor.dims[2];
-        const outW = outputTensor.dims[3];
-        console.log(`[ONNX] Output: ${outW}x${outH}`);
-        // STAGE 6: Convert tensor back to packed RGB Buffer [H, W, 3]
-        const rgbBuffer = Buffer.alloc(outH * outW * 3);
-        for (let y = 0; y < outH; y++) {
-            for (let x = 0; x < outW; x++) {
-                const dstIdx = (y * outW + x) * 3;
-                const r = outputData[0 * outH * outW + y * outW + x];
-                const g = outputData[1 * outH * outW + y * outW + x];
-                const b = outputData[2 * outH * outW + y * outW + x];
-                // Clamp to 0-255
-                rgbBuffer[dstIdx] = Math.min(255, Math.max(0, Math.round(r * 255)));
-                rgbBuffer[dstIdx + 1] = Math.min(255, Math.max(0, Math.round(g * 255)));
-                rgbBuffer[dstIdx + 2] = Math.min(255, Math.max(0, Math.round(b * 255)));
+        const tilesX = Math.ceil(procW / TILE_SIZE);
+        const tilesY = Math.ceil(procH / TILE_SIZE);
+        const outW = procW * SCALE;
+        const outH = procH * SCALE;
+        const outputCanvas = Buffer.alloc(outH * outW * 3, 0);
+        for (let ty = 0; ty < tilesY; ty++) {
+            for (let tx = 0; tx < tilesX; tx++) {
+                const tileX = tx * TILE_SIZE;
+                const tileY = ty * TILE_SIZE;
+                const tileW = Math.min(TILE_SIZE, procW - tileX);
+                const tileH = Math.min(TILE_SIZE, procH - tileY);
+                // Extract tile pixels
+                const tileRaw = Buffer.alloc(tileH * tileW * 3);
+                for (let y = 0; y < tileH; y++) {
+                    for (let x = 0; x < tileW; x++) {
+                        const src = ((tileY + y) * procW + (tileX + x)) * 3;
+                        const dst = (y * tileW + x) * 3;
+                        tileRaw[dst] = rawData[src];
+                        tileRaw[dst + 1] = rawData[src + 1];
+                        tileRaw[dst + 2] = rawData[src + 2];
+                    }
+                }
+                // Pad to TILE_SIZE x TILE_SIZE if needed
+                let paddedTile = tileRaw;
+                let runW = tileW;
+                let runH = tileH;
+                if (tileW < TILE_SIZE || tileH < TILE_SIZE) {
+                    paddedTile = Buffer.alloc(TILE_SIZE * TILE_SIZE * 3, 0);
+                    for (let y = 0; y < tileH; y++) {
+                        for (let x = 0; x < tileW; x++) {
+                            const src = (y * tileW + x) * 3;
+                            const dst = (y * TILE_SIZE + x) * 3;
+                            paddedTile[dst] = tileRaw[src];
+                            paddedTile[dst + 1] = tileRaw[src + 1];
+                            paddedTile[dst + 2] = tileRaw[src + 2];
+                        }
+                    }
+                    runW = TILE_SIZE;
+                    runH = TILE_SIZE;
+                }
+                const outTileRgb = await runTile(session, paddedTile, runW, runH);
+                const outTileW = runW * SCALE;
+                // const outTileH = runH * SCALE;
+                const cropW = tileW * SCALE;
+                const cropH = tileH * SCALE;
+                const destX = tileX * SCALE;
+                const destY = tileY * SCALE;
+                // Write tile to canvas
+                for (let y = 0; y < cropH; y++) {
+                    for (let x = 0; x < cropW; x++) {
+                        const src = (y * outTileW + x) * 3;
+                        const dst = ((destY + y) * outW + (destX + x)) * 3;
+                        outputCanvas[dst] = outTileRgb[src];
+                        outputCanvas[dst + 1] = outTileRgb[src + 1];
+                        outputCanvas[dst + 2] = outTileRgb[src + 2];
+                    }
+                }
             }
         }
-        // STAGE 7: Encode to JPEG with maximum quality
-        const finalBuffer = await (0, sharp_1.default)(rgbBuffer, {
+        console.log(`[ONNX] Output: ${outW}x${outH}`);
+        const finalBuffer = await (0, sharp_1.default)(outputCanvas, {
             raw: { width: outW, height: outH, channels: 3 },
-        })
-            .jpeg({
-            quality: JPEG_QUALITY,
-            chromaSubsampling: '4:4:4',
-            force: true,
-        })
-            .toBuffer();
-        console.log(`[ONNX] Final output: ${finalBuffer.length} bytes`);
+        }).jpeg({ quality: JPEG_QUALITY, chromaSubsampling: '4:4:4', force: true }).toBuffer();
         return finalBuffer;
     }
     finally {

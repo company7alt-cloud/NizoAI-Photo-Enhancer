@@ -57,6 +57,33 @@ export interface IUser extends Document {
     awaitingAutoEraserImage?: boolean;
     vipSizeBypass: boolean;
     successfulReferrals: number;
+    canBypassLocks: boolean;
+    docWizard: {
+        step: number;
+        docType: 'text' | 'image' | null;
+        pageSize: string | null;
+        customSize: {
+            width: number;
+            height: number;
+        } | null;
+        templateId: 1 | 2 | 3 | 4 | 5 | null;
+        currentPageIndex: number;
+        currentLineIndex: number;
+        lineCapacity: number;
+        awaitingCustomSize: boolean;
+        awaitingLineText: boolean;
+        awaitingImagePhoto: boolean;
+        awaitingOverlayText: boolean;
+        awaitingCaptionText: boolean;
+        pendingLongText: string | null;
+        pages: Array<{
+            type: 'text' | 'image';
+            lines?: string[];
+            imageBuffer?: Buffer | string;
+            overlayText?: string;
+            captionText?: string;
+        }>;
+    } | null;
 }
 export interface IUserModel extends Model<IUser> {
     findByTelegramId(telegramId: number): Promise<IUser | null>;

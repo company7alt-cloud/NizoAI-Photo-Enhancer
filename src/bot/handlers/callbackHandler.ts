@@ -184,9 +184,13 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     'nano_banana_start': locks.btn_nano,
     'eraser_start': locks.btn_eraser,
     'remove_watermark_auto': locks.btn_eraser,
+    'doc_maker_start': locks.btn_doc_maker,
   };
 
-  if (!isAdminUser && lockMap[data] === true) {
+  const bypassUser = await User.findOne({ telegramId: ctx.from.id }).select('canBypassLocks');
+  const canBypass = isAdminUser || bypassUser?.canBypassLocks === true;
+
+  if (!canBypass && lockMap[data] === true) {
     await ctx.answerCallbackQuery({
       text: 'عذراً، هذا الزر مقفل حالياً للصيانة 🔒',
       show_alert: true
@@ -1273,6 +1277,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
         [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
         [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+        [{ text: `${l.btn_doc_maker ? '🔴 مقفل' : '🟢 مفتوح'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
+        [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
+        [{ text: `${l.btn_doc_maker ? '🔴 مقفل' : '🟢 مفتوح'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
+        [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
         [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
@@ -1283,6 +1291,17 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       '<b>⚙️ لوحة تحكم الأدمن</b>\n🟢 = مفتوح للجميع | 🔴 = مقفل',
       { parse_mode: 'HTML', reply_markup: buildAdminKeyboard(locks) }
     );
+    return;
+  }
+
+
+  if (data === 'admin_grant_vip' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from.id.toString() },
+      { $set: { adminAwaitingInput: 'grant_vip_id', adminTargetUserId: null } }
+    );
+    await ctx.reply('🔑 <b>تجاوز أقفال الميزات</b>\n\nأرسل الـ ID الخاص بالمستخدم الذي تريد منحه صلاحية تجاوز الإغلاق:', { parse_mode: 'HTML' });
     return;
   }
 

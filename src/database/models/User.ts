@@ -77,10 +77,10 @@ export interface IUser extends Document {
     pendingLongText: string | null;
     pages: Array<{
       type: 'text' | 'image';
-      lines: string[];
-      imageFileId: string | null;
-      overlayText: string | null;
-      captionText: string | null;
+      lines?: string[];
+      imageBuffer?: Buffer | string;
+      overlayText?: string;
+      captionText?: string;
     }>;
   } | null;
 }
@@ -248,7 +248,7 @@ const UserSchema = new Schema<IUser>(
           type: [{
             type:        { type: String },
             lines:       { type: [String], default: [] },
-            imageFileId: { type: String, default: null },
+            imageBuffer: { type: Schema.Types.Mixed, default: null },
             overlayText: { type: String, default: null },
             captionText: { type: String, default: null },
           }],

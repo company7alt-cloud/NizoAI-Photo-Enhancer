@@ -52,6 +52,7 @@ const channelFundService_1 = require("../../services/channelFundService");
 const FundCampaign_1 = require("../../database/models/FundCampaign");
 const settingsService_1 = require("../../services/settingsService");
 const onnxEnhanceService_1 = require("../../services/onnxEnhanceService");
+const ForceSubChannel_1 = require("../../database/models/ForceSubChannel");
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
 const BACKUP_CHANNEL_ID = ARCHIVE_GROUP_ID || CHANNEL_ID;
@@ -86,39 +87,49 @@ async function callbackHandler(ctx) {
     const data = ctx.callbackQuery?.data;
     if (!data || !ctx.from)
         return;
+    if (data === 'show_global_stats') {
+        const { getGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+        const total = await getGlobalCounter();
+        await ctx.answerCallbackQuery({
+            text: `🚀 إحصائيات البوت:\n\nتمت معالجة وتحسين أكثر من [ ${total} ] صورة وملف بنجاح عبر نظامنا الذكي! 🌟`,
+            show_alert: true
+        }).catch(() => { });
+        return;
+    }
     if (data === 'check_force_sub') {
-        const channelId = process.env.FORCE_SUB_CHANNEL_ID?.trim();
-        if (!channelId) {
-            await ctx.answerCallbackQuery({
-                text: '✅ يمكنك استخدام البوت الآن!',
-                show_alert: true
-            }).catch(() => { });
+        await ctx.answerCallbackQuery().catch(() => { });
+        const userId = ctx.from.id;
+        const channels = await ForceSubChannel_1.ForceSubChannel.find().sort({ order: 1 });
+        if (channels.length === 0) {
             await ctx.deleteMessage().catch(() => { });
-            await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { forceSubMessageId: null, forceSubChatId: null } });
             return;
         }
-        try {
-            const member = await ctx.api.getChatMember(channelId, ctx.from.id);
-            const validStatuses = ['creator', 'administrator', 'member', 'restricted'];
-            if (validStatuses.includes(member.status)) {
-                await ctx.answerCallbackQuery({
-                    text: '✅ تم التحقق! يمكنك استخدام البوت الآن 🎉',
-                    show_alert: true
-                }).catch(() => { });
-                await ctx.deleteMessage().catch(() => { });
-                await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { forceSubMessageId: null, forceSubChatId: null } });
+        let allSubscribed = true;
+        for (const ch of channels) {
+            try {
+                const member = await ctx.api.getChatMember(ch.channelId, userId);
+                if (['left', 'kicked'].includes(member.status)) {
+                    allSubscribed = false;
+                    break;
+                }
             }
-            else {
-                await ctx.answerCallbackQuery({
-                    text: '❌ لم تشترك بعد! اشترك في القناة ثم اضغط التحقق مجدداً.',
-                    show_alert: true
-                }).catch(() => { });
+            catch {
+                // Cannot verify — allow user through (bot may have lost admin)
+                // This prevents an infinite block loop
+                console.error(`[CheckForceSub] Cannot verify channel ${ch.channelId}`);
             }
         }
-        catch (error) {
+        if (allSubscribed) {
             await ctx.answerCallbackQuery({
-                text: '⚠️ حدث خطأ في التحقق. يرجى المحاولة مجدداً.',
-                show_alert: true
+                text: '✅ تم التحقق! يمكنك استخدام البوت الآن 🎉',
+                show_alert: true,
+            }).catch(() => { });
+            await ctx.deleteMessage().catch(() => { });
+        }
+        else {
+            await ctx.answerCallbackQuery({
+                text: '❌ لم تشترك في جميع القنوات بعد!',
+                show_alert: true,
             }).catch(() => { });
         }
         return;
@@ -152,6 +163,8 @@ async function callbackHandler(ctx) {
                 .toBuffer();
             await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id).catch(() => { });
             const ext = targetFormat === 'jpeg' ? 'jpg' : targetFormat;
+            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+            await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_1.InputFile(convertedBuffer, `converted_${Date.now()}.${ext}`), {
                 caption: `✅ تم التحويل إلى ${ext.toUpperCase()} بنجاح`,
             });
@@ -176,8 +189,11 @@ async function callbackHandler(ctx) {
         'nano_banana_start': locks.btn_nano,
         'eraser_start': locks.btn_eraser,
         'remove_watermark_auto': locks.btn_eraser,
+        'doc_maker_start': locks.btn_doc_maker,
     };
-    if (!isAdminUser && lockMap[data] === true) {
+    const bypassUser = await User_1.User.findOne({ telegramId: ctx.from.id }).select('canBypassLocks');
+    const canBypass = isAdminUser || bypassUser?.canBypassLocks === true;
+    if (!canBypass && lockMap[data] === true) {
         await ctx.answerCallbackQuery({
             text: 'عذراً، هذا الزر مقفل حالياً للصيانة 🔒',
             show_alert: true
@@ -289,6 +305,8 @@ async function callbackHandler(ctx) {
             user.totalEnhancements += 1;
             await user.save();
             const outputFileName = `NizoAI_2K_${jobId}.jpg`;
+            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+            await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, outputFileName), {
                 caption: `🎉 صورتك جاهزة بدقة 2K! 🌟\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
                 reply_markup: {
@@ -345,6 +363,8 @@ async function callbackHandler(ctx) {
             user.totalEnhancements += 1;
             await user.save();
             const outputFileName = `NizoAI_4K_${jobId}.jpg`;
+            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+            await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, outputFileName), {
                 caption: `💎 صورتك جاهزة بدقة 4K الفائقة! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
                 reply_markup: {
@@ -466,7 +486,7 @@ async function callbackHandler(ctx) {
             // STEP 5 — Run RealESRGAN ───────────────────────────────────────────────
             if (processingMsg) {
                 await ctx.api
-                    .editMessageText(processingMsg.chat.id, processingMsg.message_id, '⚡ النموذج يعمل الآن...\nجاري رفع الدقة بـ RealESRGAN ×4')
+                    .editMessageText(processingMsg.chat.id, processingMsg.message_id, '✨ *جاري معالجة الصورة بلمسة سحرية...*\n⏳ يتم الآن رفع الدقة وإبراز التفاصيل المخفية، لحظات من فضلك.', { parse_mode: 'Markdown' })
                     .catch(() => { });
             }
             const resultBuffer = await (0, onnxEnhanceService_1.enhanceWithONNX)(inputBuffer);
@@ -479,6 +499,8 @@ async function callbackHandler(ctx) {
                 processingMsg = null;
             }
             // STEP 6 — Deliver to user ─────────────────────────────────────────────
+            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+            await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, fileName), {
                 caption: '✨ تم التحسين بنموذج RealESRGAN AI ×4 | NizoAI Bot 🚀',
                 reply_to_message_id: ctx.msg?.message_id,
@@ -1024,11 +1046,22 @@ async function callbackHandler(ctx) {
                 [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
                 [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
                 [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+                [{ text: `${l.btn_doc_maker ? '🔴 مقفل' : '🟢 مفتوح'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
+                [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
+                [{ text: `${l.btn_doc_maker ? '🔴 مقفل' : '🟢 مفتوح'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
+                [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
+                [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
                 [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
                 [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
             ]
         });
         await ctx.reply('<b>⚙️ لوحة تحكم الأدمن</b>\n🟢 = مفتوح للجميع | 🔴 = مقفل', { parse_mode: 'HTML', reply_markup: buildAdminKeyboard(locks) });
+        return;
+    }
+    if (data === 'admin_grant_vip' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'grant_vip_id', adminTargetUserId: null } });
+        await ctx.reply('🔑 <b>تجاوز أقفال الميزات</b>\n\nأرسل الـ ID الخاص بالمستخدم الذي تريد منحه صلاحية تجاوز الإغلاق:', { parse_mode: 'HTML' });
         return;
     }
     if (data.startsWith('atoggle_') && isAdminUser) {
@@ -1045,6 +1078,7 @@ async function callbackHandler(ctx) {
                 [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
                 [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
                 [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+                [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
                 [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
                 [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
             ]
@@ -1097,16 +1131,27 @@ async function callbackHandler(ctx) {
             return;
         const nanoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
         const isNanoAdmin = nanoAdminIds.includes(ctx.from.id.toString());
-        if (!isNanoAdmin && nanoUser.dailyQuota < 5) {
+        if (!isNanoAdmin && nanoUser.dailyQuota < 2) {
             await ctx.reply(`⚠️ رصيدك غير كافٍ!\n` +
-                `تحتاج <b>5 محاولات</b> لاستخدام هذه الميزة ✨\n` +
+                `تحتاج <b>2 محاولات</b> لاستخدام هذه الميزة ✨\n` +
                 `رصيدك الحالي: <b>${nanoUser.dailyQuota}</b> محاولة`, { parse_mode: 'HTML' });
             return;
         }
         await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingNanoBananaImage: true } });
+        // 60-second timeout: auto-cancel if no image received
+        setTimeout(async () => {
+            try {
+                const checkUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+                if (checkUser?.awaitingNanoBananaImage) {
+                    await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingNanoBananaImage: false } });
+                    await ctx.api.sendMessage(ctx.from.id, '⏰ انتهى وقت الإرسال (60 ثانية).\nاضغط الزر مجدداً إذا أردت المتابعة ❌');
+                }
+            }
+            catch (_e) { }
+        }, 60_000);
         await ctx.reply('✨ <b>تحسين الصورة بالذكاء الاصطناعي</b>\n\n' +
             '📸 أرسل لي الصورة الآن وسأقوم بتحسينها احترافياً مع الحفاظ على هويتها الأصلية 100% 🚀\n\n' +
-            '💎 <b>السعر: 5 محاولات</b>\n' +
+            '💎 <b>السعر: 2 محاولات</b>\n' +
             '<i>يمكنك إرسالها كصورة عادية أو كملف للحفاظ على الجودة</i>', {
             parse_mode: 'HTML',
             reply_markup: {
@@ -1199,6 +1244,8 @@ async function callbackHandler(ctx) {
             }
             catch { }
             // Send converted file to user
+            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+            await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_1.InputFile(convertedBuffer, newFileName), {
                 caption: `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح 🎉\n` +
                     `📐 الجودة والأبعاد الأصلية محفوظة 100%`,
@@ -1449,6 +1496,8 @@ async function callbackHandler(ctx) {
                 // Single file → send as document
                 const { buffer, name } = convertedFiles[0];
                 const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
+                const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+                await incrementGlobalCounter();
                 await ctx.replyWithDocument(new grammy_1.InputFile(buffer, name), {
                     caption: `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح! 🎉\n` +
                         `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
@@ -1479,6 +1528,8 @@ async function callbackHandler(ctx) {
                 const zipBuffer = zip.toBuffer();
                 const zipFileName = `NizoAI_Batch_${format.toUpperCase()}_${Date.now()}.zip`;
                 const zipSizeMB = (zipBuffer.length / (1024 * 1024)).toFixed(2);
+                const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+                await incrementGlobalCounter();
                 await ctx.replyWithDocument(new grammy_1.InputFile(zipBuffer, zipFileName), {
                     caption: `✅ <b>تم التحويل بنجاح!</b> 🎉\n` +
                         `📸 <b>عدد الصور:</b> ${convertedFiles.length}\n` +
@@ -1637,6 +1688,8 @@ async function callbackHandler(ctx) {
             const fileName = `NizoAI_Clean_${Date.now()}.${ext}`;
             await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
             const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
+            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+            await incrementGlobalCounter();
             await ctx.replyWithDocument(new InputFile(convertedBuffer, fileName), { caption: `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح! 🎉`, parse_mode: 'HTML' });
             // Delete the format selection message to keep chat clean
             await ctx.deleteMessage().catch(() => { });
@@ -1798,6 +1851,77 @@ async function callbackHandler(ctx) {
         await ctx.answerCallbackQuery().catch(() => { });
         await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'magic_link_reward', adminTargetUserId: null } });
         await ctx.reply('🔗 <b>إنشاء رابط مكافأة خاص</b>\n\nأرسل عدد المحاولات التي سيحصل عليها كل شخص يدخل من هذا الرابط:', { parse_mode: 'HTML' });
+        return;
+    }
+    // ════════════════════════════════
+    // 📢 Force Sub Admin Management
+    // ════════════════════════════════
+    if (data === 'admin_force_sub' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const channels = await ForceSubChannel_1.ForceSubChannel.find().sort({ order: 1 });
+        const fsubKeyboard = channels.map((ch) => ([{
+                text: `🗑 حذف: ${ch.channelName}`,
+                callback_data: `del_fsub_${String(ch._id)}`,
+            }]));
+        if (channels.length < 10) {
+            fsubKeyboard.push([{
+                    text: '➕ إضافة قناة جديدة',
+                    callback_data: 'add_fsub',
+                }]);
+        }
+        fsubKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' }]);
+        await ctx.reply(`📢 <b>قنوات الاشتراك الإجباري</b>\n\n` +
+            `عدد القنوات: ${channels.length}/10\n\n` +
+            (channels.length === 0
+                ? 'لا توجد قنوات مضافة.'
+                : channels.map((c, i) => `${i + 1}. ${c.channelName}`).join('\n')), {
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: fsubKeyboard },
+        });
+        return;
+    }
+    if (data === 'add_fsub' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { adminAwaitingInput: 'add_fsub_input' } });
+        await ctx.editMessageText('📢 <b>إضافة قناة اشتراك إجباري</b>\n\n' +
+            '⚠️ تأكد أن البوت <b>مشرف</b> في القناة أولاً.\n\n' +
+            'أرسل بيانات القناة بهذا الشكل:\n' +
+            '<code>CHANNEL_ID | CHANNEL_URL | CHANNEL_NAME</code>\n\n' +
+            'مثال:\n' +
+            '<code>-1001234567890 | https://t.me/mychannel | قناتي</code>', { parse_mode: 'HTML' }).catch(async () => {
+            await ctx.reply('📢 <b>إضافة قناة اشتراك إجباري</b>\n\n' +
+                '⚠️ تأكد أن البوت <b>مشرف</b> في القناة أولاً.\n\n' +
+                'أرسل بيانات القناة بهذا الشكل:\n' +
+                '<code>CHANNEL_ID | CHANNEL_URL | CHANNEL_NAME</code>\n\n' +
+                'مثال:\n' +
+                '<code>-1001234567890 | https://t.me/mychannel | قناتي</code>', { parse_mode: 'HTML' });
+        });
+        return;
+    }
+    if (data.startsWith('del_fsub_') && isAdminUser) {
+        const docId = data.replace('del_fsub_', '');
+        await ForceSubChannel_1.ForceSubChannel.findByIdAndDelete(docId);
+        await ctx.answerCallbackQuery({
+            text: '✅ تم حذف القناة',
+            show_alert: true,
+        }).catch(() => { });
+        // Refresh the force-sub management screen
+        const updatedChannels = await ForceSubChannel_1.ForceSubChannel.find().sort({ order: 1 });
+        const updatedKeyboard = updatedChannels.map((ch) => ([{
+                text: `🗑 حذف: ${ch.channelName}`,
+                callback_data: `del_fsub_${String(ch._id)}`,
+            }]));
+        if (updatedChannels.length < 10) {
+            updatedKeyboard.push([{
+                    text: '➕ إضافة قناة جديدة',
+                    callback_data: 'add_fsub',
+                }]);
+        }
+        updatedKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' }]);
+        await ctx.editMessageText(`📢 <b>قنوات الاشتراك الإجباري</b>\n\nعدد القنوات: ${updatedChannels.length}/10`, {
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: updatedKeyboard },
+        }).catch(() => { });
         return;
     }
 }

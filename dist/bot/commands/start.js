@@ -40,6 +40,7 @@ const grammy_1 = require("grammy");
 const User_1 = require("../../database/models/User");
 const Settings_1 = require("../../database/models/Settings");
 const settingsService_1 = require("../../services/settingsService");
+const statsService_1 = require("../../services/statsService");
 // ─── /start ───────────────────────────────────────────────────────────────────
 async function startCommand(ctx) {
     const telegramId = ctx.from.id;
@@ -148,10 +149,16 @@ async function startCommand(ctx) {
                 // Add 5 points to referrer
                 await User_1.User.updateOne({ telegramId: referrerId }, { $inc: { dailyQuota: 5, referralCount: 1 } });
                 await User_1.User.updateOne({ telegramId: referrerId }, { $push: { referredUsers: telegramId } });
-                // Mark on the new user immediately
+                // Track referral for potential clawback — write both fields atomically
+                await User_1.User.findOneAndUpdate({ telegramId: telegramId }, {
+                    $set: {
+                        referredBy: referrerId,
+                        referralRewardClaimed: true,
+                    },
+                });
+                // Keep in-memory user in sync
                 user.referredBy = referrerId;
                 user.referralRewardClaimed = true;
-                await user.save();
                 // Notify referrer
                 ctx.api
                     .sendMessage(referrerId, '🎉 ياهووو! دخل صديق جديد عن طريق رابط دعوتك الخاص! 🚀\n' +
@@ -195,7 +202,7 @@ async function startCommand(ctx) {
         const keyboard = new grammy_1.InlineKeyboard();
         if (devLink)
             keyboard.url('المطور', devLink);
-        keyboard.row().text('🚀 Pro Enhance', 'pro_enhance_start');
+        keyboard.row().text('⚙️ تحسين الصور (Pro)', 'pro_enhance_start');
         keyboard.row().text(nanoLocks.btn_nano ? '🔒 تحسين الصورة بالذكاء — مقفل' : '✨ تحسين الصورة بالذكاء', 'nano_banana_start');
         const eraserSettingsData = await (0, settingsService_1.getSettings)();
         const eraserLocks = eraserSettingsData.locks;
@@ -204,6 +211,9 @@ async function startCommand(ctx) {
         keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
         if (chanLink)
             keyboard.row().url('القناة', chanLink);
+        const totalStats = await (0, statsService_1.getGlobalCounter)();
+        keyboard.row().text(`📈 إحصائيات المعالجة (${totalStats})`, 'show_global_stats');
+        keyboard.row().text('📝 صانع المستندات والكتب', 'doc_maker_start');
         keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
         await ctx.reply(greeting, {
             parse_mode: undefined,

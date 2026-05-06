@@ -239,6 +239,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
 
     const totalStats = await getGlobalCounter();
     keyboard.row().text(`📈 إحصائيات المعالجة (${totalStats})`, 'show_global_stats');
+    keyboard.row().text('📝 صانع المستندات والكتب', 'doc_maker_start');
     keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
 
     await ctx.reply(greeting, {

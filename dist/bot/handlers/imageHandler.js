@@ -175,6 +175,8 @@ async function imageHandler(ctx) {
             await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
             const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
             // Send document first WITHOUT buttons
+            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+            await incrementGlobalCounter();
             const sentDoc = await ctx.replyWithDocument(new InputFile(resultBuffer, `watermark_removed_${Date.now()}.jpg`), {
                 caption: "✅ *تمت إزالة العلامة المائية بنجاح*\n\n" +
                     "📐 الحجم والمقاس الأصلي محفوظ بالكامل\n" +
@@ -377,6 +379,8 @@ async function imageHandler(ctx) {
             await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
             const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
             // Send document to user
+            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+            await incrementGlobalCounter();
             await ctx.replyWithDocument(new InputFile(resultBuffer, fileName), {
                 caption: '✨ <b>تم! العنصر اختفى وصورتك نظيفة احترافياً</b> 🪄\n' +
                     '📁 تم الإرسال كملف للحفاظ على أعلى جودة 💎',
@@ -469,18 +473,18 @@ async function imageHandler(ctx) {
             await ctx.reply('❌ حجم الصورة يتجاوز 2 ميجابايت. يرجى إرسال صورة أصغر.');
             return;
         }
-        // ── WALL 2 + Atomic lock + 5-point deduction ──────────────────────────────
-        // findOneAndUpdate atomically: sets isProcessingImage=true, deducts 5 points,
+        // ── WALL 2 + Atomic lock + 3-point deduction ──────────────────────────────
+        // findOneAndUpdate atomically: sets isProcessingImage=true, deducts 3 points,
         // resets awaitingNanoBananaImage — all in ONE DB round-trip.
         // This prevents race conditions from album sends and double-taps.
         if (!isNanoAdminUser) {
             const lockedUser = await User_1.User.findOneAndUpdate({
                 telegramId: userId.toString(),
-                dailyQuota: { $gte: 5 }, // must have 5 points
+                dailyQuota: { $gte: 2 }, // must have 2 points
                 awaitingNanoBananaImage: true, // still in waiting state
                 isProcessingImage: { $ne: true }, // not already processing
             }, {
-                $inc: { dailyQuota: -5 },
+                $inc: { dailyQuota: -2 },
                 $set: {
                     awaitingNanoBananaImage: false,
                     isProcessingImage: true,
@@ -495,7 +499,7 @@ async function imageHandler(ctx) {
                 }
                 else {
                     await ctx.reply('⚠️ رصيدك غير كافٍ أو تم معالجة طلب آخر في نفس الوقت.\n' +
-                        'تحتاج <b>5 محاولات</b> لاستخدام هذه الميزة.', { parse_mode: 'HTML' });
+                        'تحتاج <b>3 محاولات</b> لاستخدام هذه الميزة.', { parse_mode: 'HTML' });
                 }
                 return;
             }
@@ -532,7 +536,24 @@ async function imageHandler(ctx) {
             // Delete processing message
             await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
             // ── STEP: Deliver to user ─────────────────────────────────────────────
-            await ctx.replyWithDocument(new grammy_2.InputFile(resultBuffer, fileName), { caption: '✨ تم تحسين صورتك بتقنية NizoAI الخاصة! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة' });
+            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+            await incrementGlobalCounter();
+            await ctx.replyWithDocument(new grammy_2.InputFile(resultBuffer, fileName), {
+                caption: '✨ تم تحسين صورتك بتقنية NizoAI الخاصة! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🖼 PNG', callback_data: 'conv_png' },
+                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
+                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                        ],
+                        [
+                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                        ],
+                    ],
+                },
+            });
             await ctx.replyWithPhoto(new grammy_2.InputFile(resultBuffer, fileName), { caption: '🖼 معاينة سريعة' });
             // ── STEP: Channel archive (100% untouched original logic) ────────────
             const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
@@ -554,13 +575,13 @@ async function imageHandler(ctx) {
             }
         }
         catch (error) {
-            // ── Refund 5 points on ANY failure (except file_too_large, already caught above)
+            // ── Refund 3 points on ANY failure (except file_too_large, already caught above)
             if (!isNanoAdminUser) {
-                await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $inc: { dailyQuota: 5 } });
+                await User_1.User.findOneAndUpdate({ telegramId: userId.toString() }, { $inc: { dailyQuota: 2 } });
             }
             await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
             console.error('[NanoAI] Error:', error instanceof Error ? error.message : error);
-            await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 5 محاولاتك تلقائياً ✨');
+            await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 2 من محاولات  تلقائياً ✨');
         }
         finally {
             // ── Release processing lock — ALWAYS, no exceptions ──────────────────
@@ -596,10 +617,7 @@ async function imageHandler(ctx) {
             $set: { 'proEnhanceSettings.isAwaitingImage': false },
             $inc: { dailyQuota: isAdmin ? 0 : -enhanceCost }
         });
-        const processingMsg = await ctx.reply(`⏳ جاري استلام صورتك...\n` +
-            `🚀 بدأ التحسين بتقنية Pro Enhance\n` +
-            `💎 الجودة: ${settings.quality} | التكبير: ${settings.scale}x | النوع: ${settings.imageType}\n` +
-            `🌟 الرجاء الانتظار...`);
+        const processingMsg = await ctx.reply(`📥 *تم استلام صورتك بنجاح!*\n🚀 نظام *Pro Enhance* يعمل الآن على استخراج أدق التفاصيل بأقصى جودة.\n💎 _الرجاء الانتظار قليلاً بينما نصنع لك لوحة فنية (بدقة 4x)..._ ⏳`, { parse_mode: 'Markdown' });
         try {
             const file = await ctx.api.getFile(fileId);
             const telegramFileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
@@ -613,6 +631,8 @@ async function imageHandler(ctx) {
             // Refresh user to get updated quota
             const freshUser = await User_1.User.findOne({ telegramId: userId.toString() });
             const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
+            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
+            await incrementGlobalCounter();
             await ctx.replyWithDocument(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
                 caption: `💎 صورتك جاهزة بتقنية Pro Enhance! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${freshUser?.dailyQuota}`,
                 reply_markup: {

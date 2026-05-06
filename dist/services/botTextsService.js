@@ -106,7 +106,7 @@ exports.DEFAULT_TEXTS = {
     // ── BUTTONS ───────────────────────────────────────
     btn_pro_enhance: {
         category: 'button',
-        value: '🚀 Pro Enhance',
+        value: '⚙️ تحسين الصور (Pro)',
         description: 'نص زر Pro Enhance'
     },
     btn_eraser_auto: {

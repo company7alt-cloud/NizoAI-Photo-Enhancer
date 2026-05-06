@@ -76,6 +76,20 @@ bot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
   }
 });
 
+
+bot.use(async (ctx, next) => {
+  if (ctx.callbackQuery) {
+    const { handleDocMakerCallback } = await import('./bot/handlers/docMakerHandler');
+    const handled = await handleDocMakerCallback(ctx as any);
+    if (handled) return;
+  } else if (ctx.message) {
+    const { handleDocMakerMessage } = await import('./bot/handlers/docMakerHandler');
+    const handled = await handleDocMakerMessage(ctx as any);
+    if (handled) return;
+  }
+  await next();
+});
+
 // ─── Commands ──────────────────────────────────────────────────────────────────
 
 bot.command('start', startCommand);
@@ -529,6 +543,20 @@ bot.on('message:text', async (ctx, next) => {
       );
       return;
     }
+if (inputType === 'grant_vip_id') {
+      const targetUser = await User.findOne({ telegramId: inputText.trim() });
+      if (!targetUser) {
+        await ctx.reply('❌ لم يتم العثور على مستخدم بهذا الـ ID.');
+        return;
+      }
+      await User.findOneAndUpdate({ telegramId: targetUser.telegramId }, { $set: { canBypassLocks: true } });
+      await ctx.reply(`✅ <b>تم التفعيل!</b>\nالمستخدم (<code>${targetUser.telegramId}</code>) يستطيع الآن استخدام صانع المستندات وجميع الميزات المقفلة 🌟`, { parse_mode: 'HTML' });
+      try {
+        await ctx.api.sendMessage(targetUser.telegramId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nتم فتح جميع الميزات المقفلة لك بما فيها صانع المستندات! 😎', { parse_mode: 'HTML' });
+      } catch (e) {}
+      return;
+    }
+  }
     if (inputType === 'vip_size_bypass') {
       const targetUser = await User.findOne({ telegramId: inputText.trim() });
       if (!targetUser) {

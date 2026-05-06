@@ -56,12 +56,13 @@ const start_1 = require("./bot/commands/start");
 const admin_1 = require("./bot/commands/admin");
 const imageHandler_1 = require("./bot/handlers/imageHandler");
 const callbackHandler_1 = require("./bot/handlers/callbackHandler");
-const forceSubscribe_1 = require("./bot/middlewares/forceSubscribe");
+const forceSubMiddleware_1 = require("./bot/middlewares/forceSubMiddleware");
+const ForceSubChannel_1 = require("./database/models/ForceSubChannel");
 const botTextsService_1 = require("./services/botTextsService");
 // ─── Bot Instance ──────────────────────────────────────────────────────────────
 const bot = new grammy_1.Bot(process.env.BOT_TOKEN);
 // ─── Middlewares ───────────────────────────────────────────────────────────────
-bot.use(forceSubscribe_1.forceSubscribeMiddleware);
+bot.use(forceSubMiddleware_1.forceSubMiddleware);
 bot.use((0, grammy_1.session)({ initial: () => ({}) }));
 bot.use(async (ctx, next) => {
     const userId = ctx.from?.id;
@@ -101,6 +102,21 @@ bot.use(async (ctx, next) => {
         console.error('[Auth] Middleware error:', err);
         await next();
     }
+});
+bot.use(async (ctx, next) => {
+    if (ctx.callbackQuery) {
+        const { handleDocMakerCallback } = await Promise.resolve().then(() => __importStar(require('./bot/handlers/docMakerHandler')));
+        const handled = await handleDocMakerCallback(ctx);
+        if (handled)
+            return;
+    }
+    else if (ctx.message) {
+        const { handleDocMakerMessage } = await Promise.resolve().then(() => __importStar(require('./bot/handlers/docMakerHandler')));
+        const handled = await handleDocMakerMessage(ctx);
+        if (handled)
+            return;
+    }
+    await next();
 });
 // ─── Commands ──────────────────────────────────────────────────────────────────
 bot.command('start', start_1.startCommand);
@@ -299,6 +315,57 @@ bot.on('message:text', async (ctx, next) => {
             `⚠️ الرابط سيتوقف تلقائياً بعد استخدامه ${maxUses} مرة أو بعد مرور 24 ساعة.`, { parse_mode: 'HTML' });
         return;
     }
+    // ── add_fsub_input: waiting for channel data (CHANNEL_ID | URL | NAME) ──
+    if (adminInput === 'add_fsub_input' && isAdminMsg) {
+        const parts = text.split('|').map((s) => s.trim());
+        if (parts.length !== 3) {
+            await ctx.reply('❌ صيغة خاطئة. أرسل هكذا:\n' +
+                '<code>CHANNEL_ID | CHANNEL_URL | CHANNEL_NAME</code>', { parse_mode: 'HTML' });
+            return;
+        }
+        const [channelId, channelUrl, channelName] = parts;
+        // Verify bot is admin in the channel before accepting
+        try {
+            const botInfo = await ctx.api.getMe();
+            const botMember = await ctx.api.getChatMember(channelId, botInfo.id);
+            if (!['administrator', 'creator'].includes(botMember.status)) {
+                await ctx.reply('❌ البوت ليس مشرفاً في هذه القناة.\n' +
+                    'أضفه كمشرف أولاً ثم أرسل البيانات مجدداً.');
+                return;
+            }
+        }
+        catch {
+            await ctx.reply('❌ تعذر الوصول للقناة. تأكد من:\n' +
+                '1. صحة الـ ID (يبدأ بـ -100...)\n' +
+                '2. أن البوت مشرف فيها');
+            return;
+        }
+        const { ForceSubChannel } = await Promise.resolve().then(() => __importStar(require('./database/models/ForceSubChannel')));
+        const count = await ForceSubChannel.countDocuments();
+        if (count >= 10) {
+            await ctx.reply('❌ وصلت للحد الأقصى (10 قنوات).');
+            await User_1.User.findOneAndUpdate({ telegramId: telegramId }, { $set: { adminAwaitingInput: null } });
+            return;
+        }
+        const existing = await ForceSubChannel.findOne({ channelId });
+        if (existing) {
+            await ctx.reply('❌ هذه القناة مضافة مسبقاً.');
+            await User_1.User.findOneAndUpdate({ telegramId: telegramId }, { $set: { adminAwaitingInput: null } });
+            return;
+        }
+        await ForceSubChannel.create({
+            channelId,
+            channelUrl,
+            channelName,
+            order: count,
+        });
+        await User_1.User.findOneAndUpdate({ telegramId: telegramId }, { $set: { adminAwaitingInput: null } });
+        await ctx.reply(`✅ تم إضافة القناة بنجاح!\n\n` +
+            `📢 ${channelName}\n` +
+            `🆔 ${channelId}\n\n` +
+            'ستظهر الآن للعملاء ضمن شرط الاشتراك الإجباري.');
+        return;
+    }
     // 2. Admin Awaiting Input Logic (Priority 2 - Kept exactly as original)
     if (isAdm && user?.adminAwaitingInput) {
         const inputType = user.adminAwaitingInput;
@@ -390,95 +457,110 @@ bot.on('message:text', async (ctx, next) => {
             });
             return;
         }
-        if (inputType === 'vip_size_bypass') {
+        if (inputType === 'grant_vip_id') {
             const targetUser = await User_1.User.findOne({ telegramId: inputText.trim() });
             if (!targetUser) {
                 await ctx.reply('❌ لم يتم العثور على مستخدم بهذا الـ ID.');
                 return;
             }
-            await User_1.User.findOneAndUpdate({ telegramId: targetUser.telegramId }, { $set: { vipSizeBypass: true } });
-            await ctx.reply(`✅ <b>تم التفعيل!</b>\nالمستخدم (<code>${targetUser.telegramId}</code>) يستطيع الآن إرسال صور بحجم يصل إلى 15 ميجابايت 🌟`, { parse_mode: 'HTML' });
+            await User_1.User.findOneAndUpdate({ telegramId: targetUser.telegramId }, { $set: { canBypassLocks: true } });
+            await ctx.reply(`✅ <b>تم التفعيل!</b>\nالمستخدم (<code>${targetUser.telegramId}</code>) يستطيع الآن استخدام صانع المستندات وجميع الميزات المقفلة 🌟`, { parse_mode: 'HTML' });
             try {
-                await ctx.api.sendMessage(targetUser.telegramId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nبناءً على طلبك، تم فتح الحد الأقصى للممحاة السحرية. يمكنك الآن إرسال صور بحجم يصل إلى <b>15 ميجابايت</b>! 😎', { parse_mode: 'HTML' });
+                await ctx.api.sendMessage(targetUser.telegramId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nتم فتح جميع الميزات المقفلة لك بما فيها صانع المستندات! 😎', { parse_mode: 'HTML' });
             }
             catch (e) { }
             return;
         }
     }
-    // 3. Fund Campaign Logic (Priority 3 - Kept exactly as original)
-    const { isFundCampaignPending, handleFundCampaignInput, broadcastFundCampaign } = await Promise.resolve().then(() => __importStar(require('./services/channelFundService')));
-    if (isAdm && isFundCampaignPending(ctx.from.id)) {
-        const result = await handleFundCampaignInput(ctx.from.id, ctx.message.text || '', ctx.api);
-        if (result.status === 'ask_target') {
-            await ctx.reply(`✅ تم التحقق من صلاحيات البوت.\n\nكم عدد الأعضاء المطلوب؟`, { reply_markup: { inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]] } });
+    if (inputType === 'vip_size_bypass') {
+        const targetUser = await User_1.User.findOne({ telegramId: inputText.trim() });
+        if (!targetUser) {
+            await ctx.reply('❌ لم يتم العثور على مستخدم بهذا الـ ID.');
+            return;
         }
-        else if (result.status === 'not_admin_in_channel') {
-            await ctx.reply('❌ البوت ليس مشرفاً في هذه القناة. أضفه كمشرف أولاً ثم أعد المحاولة.');
+        await User_1.User.findOneAndUpdate({ telegramId: targetUser.telegramId }, { $set: { vipSizeBypass: true } });
+        await ctx.reply(`✅ <b>تم التفعيل!</b>\nالمستخدم (<code>${targetUser.telegramId}</code>) يستطيع الآن إرسال صور بحجم يصل إلى 15 ميجابايت 🌟`, { parse_mode: 'HTML' });
+        try {
+            await ctx.api.sendMessage(targetUser.telegramId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nبناءً على طلبك، تم فتح الحد الأقصى للممحاة السحرية. يمكنك الآن إرسال صور بحجم يصل إلى <b>15 ميجابايت</b>! 😎', { parse_mode: 'HTML' });
         }
-        else if (result.status === 'done' && 'campaign' in result) {
-            const campaign = result.campaign;
-            await ctx.reply(`✅ تم إنشاء الحملة بنجاح!\n\n📢 القناة: ${campaign.channelLink}\n🎯 الهدف: ${campaign.targetMembers} عضو\n\n⏳ جاري الإذاعة...`);
-            const { sent, failed } = await broadcastFundCampaign(ctx.api, campaign);
-            const { InlineKeyboard } = await Promise.resolve().then(() => __importStar(require('grammy')));
-            const deleteBroadcastKeyboard = new InlineKeyboard().text('🗑 حذف الإذاعة', `delete_broadcast_${campaign._id}`);
-            await ctx.reply(`📢 اكتملت الإذاعة!\n✅ نجح: ${sent}\n❌ فشل: ${failed}`, { reply_markup: deleteBroadcastKeyboard });
-        }
-        else if (result.status === 'invalid_target') {
-            await ctx.reply('❌ عدد غير صحيح.');
-        }
+        catch (e) { }
         return;
     }
-    // 4. Strict Admin -> User Support Routing (Admin is sending a message during an active session)
-    if (isAdm) {
-        const activeUser = await User_1.User.findOne({
-            supportSessionActive: true,
-            supportSessionAdminId: telegramId
-        });
-        if (activeUser) {
-            // Admin is in a session, intercept this message and ask for confirmation.
-            await ctx.reply(`📤 <b>هل أنت متأكد من إرسال هذا الرد للعميل؟</b>\n\n` +
-                `👤 <b>معرف العميل:</b> <code>${activeUser.telegramId}</code>\n` +
-                `⚠️ <i>إذا لم تقصد الرد عليه، قم بقفل المحادثة أولاً (أرسل: قفل المحادثة)</i>`, {
-                parse_mode: 'HTML',
-                reply_parameters: { message_id: ctx.message.message_id },
-                reply_markup: {
-                    inline_keyboard: [[
-                            { text: '✅ نعم، أرسل للعميل', callback_data: `confirm_support_send_${activeUser.telegramId}` },
-                            { text: '❌ لا، إلغاء الإرسال', callback_data: 'cancel_support_send' }
-                        ]]
-                }
-            });
-            return; // Do not process further
-        }
-    }
-    // 5. Strict User -> Admin Support Routing (User is sending a message during an active session)
-    if (user?.supportSessionActive && user.supportSessionAdminId) {
-        await ctx.api.sendMessage(user.supportSessionAdminId, `💬 <b>رد من العميل (${ctx.from?.first_name || 'مجهول'} | <code>${telegramId}</code>):</b>\n\n${messageText}`, { parse_mode: 'HTML' });
-        return; // Stop — don't process as standard message
-    }
-    // ── Report interceptor for text messages ──
-    if (user?.awaitingReport) {
-        await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
-        const messageId = ctx.message?.message_id;
-        const chatId = ctx.chat?.id;
-        if (messageId && chatId) {
-            await ctx.reply('📤 <b>هل تريد مشاركة هذا البلاغ مع مطور البوت؟</b>\n\n' +
-                'سيتم إرسال رسالتك للمطور مباشرة وسيتم الرد عليك في أقرب وقت 💙', {
-                parse_mode: 'HTML',
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}` },
-                            { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm' },
-                        ],
-                    ],
-                },
-            });
-        }
-        return;
-    }
-    await next();
 });
+// 3. Fund Campaign Logic (Priority 3 - Kept exactly as original)
+const { isFundCampaignPending, handleFundCampaignInput, broadcastFundCampaign } = await Promise.resolve().then(() => __importStar(require('./services/channelFundService')));
+if (isAdm && isFundCampaignPending(ctx.from.id)) {
+    const result = await handleFundCampaignInput(ctx.from.id, ctx.message.text || '', ctx.api);
+    if (result.status === 'ask_target') {
+        await ctx.reply(`✅ تم التحقق من صلاحيات البوت.\n\nكم عدد الأعضاء المطلوب؟`, { reply_markup: { inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]] } });
+    }
+    else if (result.status === 'not_admin_in_channel') {
+        await ctx.reply('❌ البوت ليس مشرفاً في هذه القناة. أضفه كمشرف أولاً ثم أعد المحاولة.');
+    }
+    else if (result.status === 'done' && 'campaign' in result) {
+        const campaign = result.campaign;
+        await ctx.reply(`✅ تم إنشاء الحملة بنجاح!\n\n📢 القناة: ${campaign.channelLink}\n🎯 الهدف: ${campaign.targetMembers} عضو\n\n⏳ جاري الإذاعة...`);
+        const { sent, failed } = await broadcastFundCampaign(ctx.api, campaign);
+        const { InlineKeyboard } = await Promise.resolve().then(() => __importStar(require('grammy')));
+        const deleteBroadcastKeyboard = new InlineKeyboard().text('🗑 حذف الإذاعة', `delete_broadcast_${campaign._id}`);
+        await ctx.reply(`📢 اكتملت الإذاعة!\n✅ نجح: ${sent}\n❌ فشل: ${failed}`, { reply_markup: deleteBroadcastKeyboard });
+    }
+    else if (result.status === 'invalid_target') {
+        await ctx.reply('❌ عدد غير صحيح.');
+    }
+    return;
+}
+// 4. Strict Admin -> User Support Routing (Admin is sending a message during an active session)
+if (isAdm) {
+    const activeUser = await User_1.User.findOne({
+        supportSessionActive: true,
+        supportSessionAdminId: telegramId
+    });
+    if (activeUser) {
+        // Admin is in a session, intercept this message and ask for confirmation.
+        await ctx.reply(`📤 <b>هل أنت متأكد من إرسال هذا الرد للعميل؟</b>\n\n` +
+            `👤 <b>معرف العميل:</b> <code>${activeUser.telegramId}</code>\n` +
+            `⚠️ <i>إذا لم تقصد الرد عليه، قم بقفل المحادثة أولاً (أرسل: قفل المحادثة)</i>`, {
+            parse_mode: 'HTML',
+            reply_parameters: { message_id: ctx.message.message_id },
+            reply_markup: {
+                inline_keyboard: [[
+                        { text: '✅ نعم، أرسل للعميل', callback_data: `confirm_support_send_${activeUser.telegramId}` },
+                        { text: '❌ لا، إلغاء الإرسال', callback_data: 'cancel_support_send' }
+                    ]]
+            }
+        });
+        return; // Do not process further
+    }
+}
+// 5. Strict User -> Admin Support Routing (User is sending a message during an active session)
+if (user?.supportSessionActive && user.supportSessionAdminId) {
+    await ctx.api.sendMessage(user.supportSessionAdminId, `💬 <b>رد من العميل (${ctx.from?.first_name || 'مجهول'} | <code>${telegramId}</code>):</b>\n\n${messageText}`, { parse_mode: 'HTML' });
+    return; // Stop — don't process as standard message
+}
+// ── Report interceptor for text messages ──
+if (user?.awaitingReport) {
+    await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });
+    const messageId = ctx.message?.message_id;
+    const chatId = ctx.chat?.id;
+    if (messageId && chatId) {
+        await ctx.reply('📤 <b>هل تريد مشاركة هذا البلاغ مع مطور البوت؟</b>\n\n' +
+            'سيتم إرسال رسالتك للمطور مباشرة وسيتم الرد عليك في أقرب وقت 💙', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}` },
+                        { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm' },
+                    ],
+                ],
+            },
+        });
+    }
+    return;
+}
+await next();
+;
 // ─── Support Session Media Tunnel ─────────────────────────────────────────────
 // Intercepts photos & documents when either side is in an active support
 // session — must be registered BEFORE the imageHandler so these messages
@@ -548,7 +630,7 @@ bot.on([':photo', ':document'], async (ctx, next) => {
 // ─── Image & Callback Handlers ─────────────────────────────────────────────────
 bot.on([':photo', ':document'], imageHandler_1.imageHandler);
 bot.callbackQuery(/.*/, callbackHandler_1.callbackHandler);
-// ─── chat_member: Leave / Kick Penalty ────────────────────────────────────────
+// ─── chat_member: Leave / Kick Penalty + Force-Sub Clawback ───────────────────
 bot.on('chat_member', async (ctx) => {
     const update = ctx.update.chat_member;
     if (!update)
@@ -557,11 +639,65 @@ bot.on('chat_member', async (ctx) => {
     const oldStatus = update.old_chat_member.status;
     const userId = update.new_chat_member.user.id;
     const channelId = String(update.chat.id);
+    // ── Existing fund-campaign penalty ──────────────────────────────────────────
     const wasActive = ['member', 'administrator', 'creator'].includes(oldStatus);
     const hasLeft = ['left', 'kicked', 'restricted'].includes(newStatus);
     if (wasActive && hasLeft) {
         const { handleMemberLeft } = await Promise.resolve().then(() => __importStar(require('./services/channelFundService')));
         await handleMemberLeft(userId, channelId, ctx.api);
+    }
+    // ── Referral Clawback: user leaves a force-sub channel ──────────────────────
+    try {
+        if (newStatus !== 'left' && newStatus !== 'kicked')
+            return;
+        const isForceSubChannel = await ForceSubChannel_1.ForceSubChannel.findOne({ channelId });
+        if (!isForceSubChannel)
+            return;
+        const fleeingUser = await User_1.User.findOne({ telegramId: userId });
+        if (fleeingUser?.referredBy != null &&
+            fleeingUser.referralRewardClaimed === true) {
+            const REFERRAL_REWARD = 5; // same amount given in start.ts referral block
+            const POINTS_FIELD = 'dailyQuota'; // exact field from User model
+            await User_1.User.findOneAndUpdate({ telegramId: fleeingUser.referredBy }, { $inc: { [POINTS_FIELD]: -REFERRAL_REWARD } });
+            await User_1.User.findOneAndUpdate({ telegramId: userId }, { $set: { referralRewardClaimed: false } });
+            console.log(`[Clawback] ${userId} left force-sub channel. ` +
+                `Clawed back ${REFERRAL_REWARD} pts from referrer ${fleeingUser.referredBy}`);
+            try {
+                await ctx.api.sendMessage(fleeingUser.referredBy, `⚠️ تم خصم ${REFERRAL_REWARD} نقطة من رصيدك لأن ` +
+                    'الشخص الذي دعوته غادر إحدى قنوات البوت الإجبارية.');
+            }
+            catch { /* referrer may have blocked bot */ }
+        }
+    }
+    catch (err) {
+        console.error('[Clawback chat_member]', err);
+    }
+});
+// ─── my_chat_member: User blocks the bot — Referral Clawback ──────────────────
+bot.on('my_chat_member', async (ctx) => {
+    try {
+        const newStatus = ctx.myChatMember.new_chat_member.status;
+        if (newStatus !== 'kicked')
+            return;
+        const fleeingUserId = ctx.from.id;
+        const fleeingUser = await User_1.User.findOne({ telegramId: fleeingUserId });
+        if (fleeingUser?.referredBy != null &&
+            fleeingUser.referralRewardClaimed === true) {
+            const REFERRAL_REWARD = 5; // same amount given in start.ts referral block
+            const POINTS_FIELD = 'dailyQuota'; // exact field from User model
+            await User_1.User.findOneAndUpdate({ telegramId: fleeingUser.referredBy }, { $inc: { [POINTS_FIELD]: -REFERRAL_REWARD } });
+            await User_1.User.findOneAndUpdate({ telegramId: fleeingUserId }, { $set: { referralRewardClaimed: false } });
+            console.log(`[Clawback] ${fleeingUserId} blocked bot. ` +
+                `Clawed back ${REFERRAL_REWARD} pts from referrer ${fleeingUser.referredBy}`);
+            try {
+                await ctx.api.sendMessage(fleeingUser.referredBy, `⚠️ تم خصم ${REFERRAL_REWARD} نقطة من رصيدك لأن ` +
+                    'الشخص الذي دعوته قام بحظر البوت.');
+            }
+            catch { /* referrer may have blocked bot */ }
+        }
+    }
+    catch (err) {
+        console.error('[Clawback my_chat_member]', err);
     }
 });
 // ─── Error Handling ────────────────────────────────────────────────────────────
@@ -609,7 +745,12 @@ async function bootstrap() {
         const botInfo = await bot.api.getMe();
         console.log(`[Bot] ✅ Authenticated as @${botInfo.username}`);
         bot.start({
-            allowed_updates: ['message', 'callback_query', 'chat_member'],
+            allowed_updates: [
+                'message',
+                'callback_query',
+                'chat_member',
+                'my_chat_member',
+            ],
             drop_pending_updates: true,
             onStart: (info) => {
                 console.log(`[Bot] 🚀 Polling started for @${info.username}`);

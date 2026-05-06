@@ -33,19 +33,15 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LockSettings = void 0;
+exports.ForceSubChannel = void 0;
+// src/database/models/ForceSubChannel.ts
 const mongoose_1 = __importStar(require("mongoose"));
-const LockSettingsSchema = new mongoose_1.Schema({
-    locks: {
-        btn_2k: { type: Boolean, default: false },
-        btn_4k: { type: Boolean, default: false },
-        btn_8k: { type: Boolean, default: true },
-        btn_4kai: { type: Boolean, default: false },
-        btn_8kai: { type: Boolean, default: true },
-        btn_nano: { type: Boolean, default: false },
-        btn_eraser: { type: Boolean, default: false },
-        btn_doc_maker: { type: Boolean, default: false },
-    }
-}, { collection: 'lock_settings' });
-exports.LockSettings = mongoose_1.default.model('LockSettings', LockSettingsSchema);
-//# sourceMappingURL=LockSettings.js.map
+const ForceSubChannelSchema = new mongoose_1.Schema({
+    channelId: { type: String, required: true, unique: true },
+    channelUrl: { type: String, required: true },
+    channelName: { type: String, required: true },
+    order: { type: Number, default: 0 },
+    createdAt: { type: Date, default: Date.now },
+});
+exports.ForceSubChannel = mongoose_1.default.model('ForceSubChannel', ForceSubChannelSchema);
+//# sourceMappingURL=ForceSubChannel.js.map
