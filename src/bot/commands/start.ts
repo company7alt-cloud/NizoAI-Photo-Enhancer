@@ -4,6 +4,7 @@ import { User } from '../../database/models/User';
 import { Settings } from '../../database/models/Settings';
 import { BotContext } from '../../utils/validators';
 import { getSettings } from '../../services/settingsService';
+import { getGlobalCounter } from '../../services/statsService';
 
 
 // ─── /start ───────────────────────────────────────────────────────────────────
@@ -236,7 +237,8 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
     if (chanLink) keyboard.row().url('القناة', chanLink);
 
-    keyboard.row().text('📈 إحصائيات المعالجة (5000K+)', 'show_global_stats');
+    const totalStats = await getGlobalCounter();
+    keyboard.row().text(`📈 إحصائيات المعالجة (${totalStats})`, 'show_global_stats');
     keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
 
     await ctx.reply(greeting, {

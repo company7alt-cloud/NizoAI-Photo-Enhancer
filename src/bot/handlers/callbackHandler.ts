@@ -68,11 +68,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const { getGlobalCounter } = await import('../../services/statsService');
     const total = await getGlobalCounter();
     
-    // Format the number nicely (e.g., 5,023)
-    const formattedTotal = total.toLocaleString('en-US');
-
     await ctx.answerCallbackQuery({
-      text: `🚀 إحصائيات البوت:\n\nتمت معالجة وتحسين أكثر من [ ${formattedTotal} ] صورة وملف بنجاح عبر نظامنا الذكي! 🌟`,
+      text: `🚀 إحصائيات البوت:\n\nتمت معالجة وتحسين أكثر من [ ${total} ] صورة وملف بنجاح عبر نظامنا الذكي! 🌟`,
       show_alert: true
     }).catch(() => {});
     return;
