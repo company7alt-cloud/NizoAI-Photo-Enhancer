@@ -226,6 +226,9 @@ async function generateDocument(params) {
     });
 }
 async function generateDocumentFromLines(lines, pageSize = 'A4') {
+    if (!lines || !Array.isArray(lines) || lines.length === 0) {
+        throw new Error('No lines to generate');
+    }
     const fontPath = path_1.default.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
     await ensureFontExists(fontPath);
     return new Promise((resolve, reject) => {

@@ -274,10 +274,8 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
   // ── Compile & deliver ─────────────────────────────────────────────────────
   if (data === 'doc_compile') {
-    const lines = ctx.session.documentLines ?? [];
-
-    if (lines.length === 0) {
-      await ctx.answerCallbackQuery({ text: '⚠️ لم تضف أي محتوى بعد!', show_alert: true });
+    if (!ctx.session.documentLines || ctx.session.documentLines.length === 0) {
+      await ctx.reply('⚠️ لا يوجد محتوى للتصدير');
       return true;
     }
 
@@ -287,6 +285,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     try {
       const { generateDocumentFromLines } = await import('../../services/pdfGeneratorService');
       const pageSize = ctx.session.pageSize || 'A4';
+      const lines = ctx.session.documentLines;
       const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, pageSize);
       const fileName  = `NizoDoc_${Date.now()}.pdf`;
 

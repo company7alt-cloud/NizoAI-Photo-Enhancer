@@ -10,7 +10,7 @@ if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is missing');
 import http from 'http';
 import { Bot, session, NextFunction } from 'grammy';
 
-import { BotContext, isAdmin } from './utils/validators';
+import { BotContext, isAdmin, SessionData } from './utils/validators';
 import { connectDatabase, closeDatabaseConnection } from './database/connection';
 import { Settings } from './database/models/Settings';
 import { User } from './database/models/User';
@@ -31,7 +31,7 @@ const bot = new Bot<BotContext>(process.env.BOT_TOKEN);
 // ─── Middlewares ───────────────────────────────────────────────────────────────
 
 bot.use(forceSubMiddleware);
-bot.use(session({ initial: () => ({}) }));
+bot.use(session({ initial: (): SessionData => ({ documentLines: [] }) }));
 
 bot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
   const userId = ctx.from?.id;

@@ -269,6 +269,10 @@ export interface AlignedLine {
 }
 
 export async function generateDocumentFromLines(lines: AlignedLine[], pageSize: string = 'A4'): Promise<{ buffer: Buffer; pageCount: number }> {
+  if (!lines || !Array.isArray(lines) || lines.length === 0) {
+    throw new Error('No lines to generate');
+  }
+
   const fontPath = path.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
   await ensureFontExists(fontPath);
 

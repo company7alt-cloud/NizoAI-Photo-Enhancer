@@ -63,7 +63,7 @@ const botTextsService_1 = require("./services/botTextsService");
 const bot = new grammy_1.Bot(process.env.BOT_TOKEN);
 // ─── Middlewares ───────────────────────────────────────────────────────────────
 bot.use(forceSubMiddleware_1.forceSubMiddleware);
-bot.use((0, grammy_1.session)({ initial: () => ({}) }));
+bot.use((0, grammy_1.session)({ initial: () => ({ documentLines: [] }) }));
 bot.use(async (ctx, next) => {
     const userId = ctx.from?.id;
     if (!userId)

@@ -268,9 +268,8 @@ async function handleDocMakerCallback(ctx) {
     }
     // ── Compile & deliver ─────────────────────────────────────────────────────
     if (data === 'doc_compile') {
-        const lines = ctx.session.documentLines ?? [];
-        if (lines.length === 0) {
-            await ctx.answerCallbackQuery({ text: '⚠️ لم تضف أي محتوى بعد!', show_alert: true });
+        if (!ctx.session.documentLines || ctx.session.documentLines.length === 0) {
+            await ctx.reply('⚠️ لا يوجد محتوى للتصدير');
             return true;
         }
         await ctx.answerCallbackQuery();
@@ -278,6 +277,7 @@ async function handleDocMakerCallback(ctx) {
         try {
             const { generateDocumentFromLines } = await Promise.resolve().then(() => __importStar(require('../../services/pdfGeneratorService')));
             const pageSize = ctx.session.pageSize || 'A4';
+            const lines = ctx.session.documentLines;
             const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, pageSize);
             const fileName = `NizoDoc_${Date.now()}.pdf`;
             await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id).catch(() => { });
