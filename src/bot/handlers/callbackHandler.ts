@@ -245,7 +245,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   // ── Helper: get Telegram file URL from session ────────────────────────────────
-  const pendingFile = ctx.session.pendingFile;
+  const pendingFile = ctx.session?.pendingFile;
   const getTelegramFileUrl = async (): Promise<string | null> => {
     if (!pendingFile?.fileId) return null;
     const tgFile = await ctx.api.getFile(pendingFile.fileId);
@@ -321,7 +321,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     const jobId = uuidv4().substring(0, 8).toUpperCase();
     await ctx.editMessageText('⏳ جاري تحسين صورتك بدقة 2K...\nالرجاء الانتظار لحظات 🌟');
-    ctx.session.pendingFile = undefined;
+    if (ctx.session) ctx.session.pendingFile = undefined;
 
     try {
       const resultBuffer = await imageService.enhance(telegramFileUrl, '2K');
@@ -393,7 +393,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.editMessageText(
       '⚙️ جاري المعالجة بدقة 4K الفائقة ✨\nهذه العملية تستهلك محاولتين من رصيدك 💎\nالرجاء الانتظار، قد تستغرق دقيقة أو أكثر 🌸'
     );
-    ctx.session.pendingFile = undefined;
+    ctx.session && (ctx.session.pendingFile = undefined);
 
     try {
       const resultBuffer = await imageService.enhance(telegramFileUrl, '4K');

@@ -69,11 +69,12 @@ bot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
       await user.save();
     }
 
-    await next();
+    // removed await next(); from try block
   } catch (err: unknown) {
     console.error('[Auth] Middleware error:', err);
-    await next();
+    // removed await next(); from catch block
   }
+  await next();
 });
 
 
@@ -861,11 +862,14 @@ bot.on('my_chat_member', async (ctx) => {
 
 // ─── Error Handling ────────────────────────────────────────────────────────────
 
-bot.catch((err) => {
-  const msg = err instanceof Error ? err.message : String(err);
-  // Silently ignore routine Telegram callback timeout — not a real bug
-  if (msg.includes('query is too old')) return;
-  console.error('[Bot Error]', err);
+bot.catch((err) => {});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Unhandled Rejection]', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Uncaught Exception]', err);
 });
 
 // ─── HTTP Health Check (Render requirement) ────────────────────────────────────

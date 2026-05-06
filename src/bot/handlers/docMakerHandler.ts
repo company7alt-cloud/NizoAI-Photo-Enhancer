@@ -78,6 +78,7 @@ async function startContentLoop(ctx: BotContext, isNewPage = false) {
 // CALLBACK HANDLER
 // ══════════════════════════════════════════════════════════════════════════════
 export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> {
+  if (!ctx.from) return false;
   const data = ctx.callbackQuery?.data;
   if (!data) return false;
 
@@ -328,6 +329,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 // MESSAGE HANDLER
 // ══════════════════════════════════════════════════════════════════════════════
 export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
+  if (!ctx.from) return false;
   const telegramId = ctx.from!.id.toString();
   const user = await User.findOne({ telegramId });
   if (!user?.docWizard) return false;
