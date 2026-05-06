@@ -62,22 +62,94 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   }
 
   // Only handle recognised doc-maker callbacks
-  const DOC_CALLBACKS = [
+  const docCallbacks = [
     'doc_maker_start', 'doc_maker_cancel',
+    'doc_type_text', 'doc_type_image',
     'doc_compile', 'doc_continue', 'doc_finish',
     'align_right', 'align_center', 'align_left',
   ];
-  if (!DOC_CALLBACKS.includes(data)) return false;
+  const isDocCallback = docCallbacks.includes(data) || data.startsWith('doc_tpl_') || data.startsWith('doc_size_');
+  if (!isDocCallback) return false;
 
   const telegramId = ctx.from!.id.toString();
 
-  // ── Entry ─────────────────────────────────────────────────────────────────
+  // ── Entry: Ask Type ──────────────────────────────────────────────────────
   if (data === 'doc_maker_start') {
     await ctx.answerCallbackQuery();
+    await ctx.reply(
+      '📝 <b>صانع المستندات والكتب</b>\n\nاختر نوع المستند:',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📄 مستند نصي', callback_data: 'doc_type_text' }],
+            [{ text: '🖼 مستند مصور', callback_data: 'doc_type_image' }],
+            [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+          ],
+        },
+      }
+    );
+    return true;
+  }
+
+  // ── Step 1 → 2: Doc Type Selected -> Ask Template ────────────────────────
+  if (data === 'doc_type_text' || data === 'doc_type_image') {
+    await ctx.answerCallbackQuery();
+    ctx.session.docType = data === 'doc_type_text' ? 'text' : 'image';
+    
+    await ctx.editMessageText(
+      '🎨 <b>اختر نموذج التصميم:</b>\n\n' +
+      '1️⃣ كلاسيكي نظيف (إطار رفيع)\n' +
+      '2️⃣ احترافي مع رأس وتذييل\n' +
+      '3️⃣ زوايا مزخرفة — خط كبير\n' +
+      '4️⃣ أشرطة جانبية — خط مضغوط\n' +
+      '5️⃣ إطار مزدوج أنيق\n\n' +
+      '<i>اختر النموذج المناسب لمستندك:</i>',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1' }, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2' }],
+            [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3' }, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4' }],
+            [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5' }],
+            [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+          ],
+        },
+      }
+    );
+    return true;
+  }
+
+  // ── Step 2 → 3: Template Selected -> Ask Size ─────────────────────────────
+  if (data.startsWith('doc_tpl_')) {
+    await ctx.answerCallbackQuery();
+    ctx.session.templateId = parseInt(data.replace('doc_tpl_', ''), 10);
+    
+    await ctx.editMessageText('📐 <b>اختر مقاس الصفحة:</b>', {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'A4 (افتراضي)', callback_data: 'doc_size_A4' }, { text: 'A5', callback_data: 'doc_size_A5' }],
+          [{ text: 'Letter', callback_data: 'doc_size_Letter' }, { text: 'B5', callback_data: 'doc_size_B5' }],
+          [{ text: 'Legal', callback_data: 'doc_size_Legal' }, { text: 'Executive', callback_data: 'doc_size_Executive' }],
+          [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+        ],
+      },
+    });
+    return true;
+  }
+
+  // ── Step 3 → 4: Size Selected -> Enable Text Input Mode ───────────────────
+  if (data.startsWith('doc_size_')) {
+    await ctx.answerCallbackQuery();
+    ctx.session.pageSize = data.replace('doc_size_', '');
+    
+    // NOW enable text input state
     ctx.session.isInDocMaker = true;
     ctx.session.documentLines = [];
     ctx.session.tempLine = null;
-    await ctx.reply(DOC_MAKER_INSTRUCTION, {
+
+    await ctx.editMessageText(DOC_MAKER_INSTRUCTION, {
       parse_mode: 'HTML',
       reply_markup: COMPILE_KB,
     });

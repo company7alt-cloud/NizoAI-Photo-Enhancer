@@ -21,6 +21,9 @@ export interface SessionData {
   pendingBatchFiles?: string[];
   // Document Maker (session-based)
   isInDocMaker?: boolean;
+  docType?: string;
+  templateId?: number;
+  pageSize?: string;
   tempLine?: string | null;
   documentLines?: DocLine[];
 }
