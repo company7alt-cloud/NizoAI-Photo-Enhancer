@@ -58,6 +58,12 @@ export interface IUser extends Document {
     vipSizeBypass: boolean;
     successfulReferrals: number;
     canBypassLocks: boolean;
+    isInDocMaker?: boolean;
+    tempLine?: string | null;
+    documentLines?: {
+        text: string;
+        align: 'right' | 'center' | 'left';
+    }[];
     docWizard: {
         step: number;
         docType: 'text' | 'image' | null;
@@ -72,13 +78,18 @@ export interface IUser extends Document {
         lineCapacity: number;
         awaitingCustomSize: boolean;
         awaitingLineText: boolean;
+        awaitingAlignment: boolean;
+        tempLine: string | null;
         awaitingImagePhoto: boolean;
         awaitingOverlayText: boolean;
         awaitingCaptionText: boolean;
         pendingLongText: string | null;
         pages: Array<{
             type: 'text' | 'image';
-            lines?: string[];
+            lines?: {
+                text: string;
+                align: 'right' | 'center' | 'left';
+            }[];
             imageBuffer?: Buffer | string;
             overlayText?: string;
             captionText?: string;

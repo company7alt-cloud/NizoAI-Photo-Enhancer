@@ -1,6 +1,10 @@
 import { Context, SessionFlavor, InlineKeyboard } from 'grammy';
 import { IUser } from '../database/models/User';
 import { Resolution } from '../services/queueService';
+export interface DocLine {
+    text: string;
+    align: 'right' | 'center' | 'left';
+}
 export interface SessionData {
     pendingFile?: {
         fileId: string;
@@ -9,6 +13,9 @@ export interface SessionData {
     pendingConversionFileId?: string;
     pendingConversionFormat?: string;
     pendingBatchFiles?: string[];
+    isInDocMaker?: boolean;
+    tempLine?: string | null;
+    documentLines?: DocLine[];
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

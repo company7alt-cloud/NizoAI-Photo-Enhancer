@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import arabicReshaper from 'arabic-reshaper';
 import bidiFactory from 'bidi-js';
+import https from 'https';
 
 // Initialise the bidi engine once (singleton)
 const bidiEngine = bidiFactory();
@@ -20,6 +21,47 @@ function prepareArabicText(text: string): string {
   // 2. Reorder for RTL visual display
   const reordered: string = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
   return reordered;
+}
+
+// ─── Font Downloader ───────────────────────────────────────────────────────────
+
+async function ensureFontExists(fontPath: string): Promise<boolean> {
+  if (fs.existsSync(fontPath)) return true;
+  
+  const fontDir = path.dirname(fontPath);
+  if (!fs.existsSync(fontDir)) {
+    fs.mkdirSync(fontDir, { recursive: true });
+  }
+
+  const fontUrl = 'https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Regular.ttf';
+  
+  return new Promise((resolve) => {
+    https.get(fontUrl, (res) => {
+      if (res.statusCode === 200) {
+        const fileStream = fs.createWriteStream(fontPath);
+        res.pipe(fileStream);
+        fileStream.on('finish', () => {
+          fileStream.close();
+          resolve(true);
+        });
+        fileStream.on('error', () => {
+          resolve(false);
+        });
+      } else if (res.statusCode === 302 || res.statusCode === 301) {
+        // Handle redirect
+        https.get(res.headers.location!, (redirectRes) => {
+          const fileStream = fs.createWriteStream(fontPath);
+          redirectRes.pipe(fileStream);
+          fileStream.on('finish', () => {
+            fileStream.close();
+            resolve(true);
+          });
+        }).on('error', () => resolve(false));
+      } else {
+        resolve(false);
+      }
+    }).on('error', () => resolve(false));
+  });
 }
 
 // ─── Template line-capacity map ────────────────────────────────────────────────
@@ -110,6 +152,9 @@ function getContentBounds(templateId: number, pageWidth: number, pageHeight: num
 // ─── Main generator ────────────────────────────────────────────────────────────
 
 export async function generateDocument(params: PdfGeneratorParams): Promise<Buffer> {
+  const fontPath = path.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
+  await ensureFontExists(fontPath);
+
   return new Promise((resolve, reject) => {
     try {
       // Determine page dimensions
@@ -215,3 +260,82 @@ export async function generateDocument(params: PdfGeneratorParams): Promise<Buff
     }
   });
 }
+
+// ─── Aligned-line document generator ──────────────────────────────────────────
+
+export interface AlignedLine {
+  text: string;
+  align: 'right' | 'center' | 'left';
+}
+
+export async function generateDocumentFromLines(lines: AlignedLine[]): Promise<Buffer> {
+  const fontPath = path.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
+  await ensureFontExists(fontPath);
+
+  return new Promise((resolve, reject) => {
+    try {
+      const PADDING   = 40;   // pt — enforced on all four sides
+      const FONT_SIZE = 14;
+      const LINE_H    = FONT_SIZE * 1.6; // 22.4 pt
+
+      const doc = new PDFDocument({ autoFirstPage: false, size: 'A4', margin: 0 });
+
+      // Arabic font (graceful fallback)
+      const fontPath = path.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
+      const hasFont  = fs.existsSync(fontPath);
+      if (hasFont) doc.registerFont('Arabic', fontPath);
+
+      const buffers: Buffer[] = [];
+      doc.on('data', (c: Buffer) => buffers.push(c));
+      doc.on('end',  () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      const addPage = () => {
+        doc.addPage();
+        const W = doc.page.width;
+        const H = doc.page.height;
+        // Decorative thin border
+        doc.save().rect(PADDING / 2, PADDING / 2, W - PADDING, H - PADDING)
+           .lineWidth(0.5).stroke('#CCCCCC').restore();
+        return { W, H };
+      };
+
+      let { W, H } = addPage();
+      const contentW   = W - PADDING * 2;
+      const maxY       = H - PADDING;
+      let   currentY   = PADDING;
+
+      if (hasFont) doc.font('Arabic');
+      doc.fontSize(FONT_SIZE).fillColor('black');
+
+      for (const line of lines) {
+        // Auto-paginate
+        if (currentY + LINE_H > maxY) {
+          ({ W, H } = addPage());
+          currentY = PADDING;
+          if (hasFont) doc.font('Arabic');
+          doc.fontSize(FONT_SIZE).fillColor('black');
+        }
+
+        if (line.text === '') {
+          // Empty line — just advance Y
+          currentY += LINE_H;
+          continue;
+        }
+
+        const prepared = prepareArabicText(line.text);
+        doc.text(prepared, PADDING, currentY, {
+          width:     contentW,
+          align:     line.align,
+          lineBreak: false,
+        });
+        currentY += LINE_H;
+      }
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+

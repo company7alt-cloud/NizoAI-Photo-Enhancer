@@ -195,7 +195,7 @@ async function callbackHandler(ctx) {
     const canBypass = isAdminUser || bypassUser?.canBypassLocks === true;
     if (!canBypass && lockMap[data] === true) {
         await ctx.answerCallbackQuery({
-            text: 'عذراً، هذا الزر مقفل حالياً للصيانة 🔒',
+            text: '⚠️ هذا القسم مغلق مؤقتاً للتحديث. متاح حالياً للمطورين والمشتركين المعتمدين فقط.',
             show_alert: true
         }).catch(() => { });
         return;
@@ -240,7 +240,7 @@ async function callbackHandler(ctx) {
         return;
     }
     // ── Helper: get Telegram file URL from session ────────────────────────────────
-    const pendingFile = ctx.session.pendingFile;
+    const pendingFile = ctx.session?.pendingFile;
     const getTelegramFileUrl = async () => {
         if (!pendingFile?.fileId)
             return null;
@@ -299,7 +299,8 @@ async function callbackHandler(ctx) {
         }
         const jobId = (0, uuid_1.v4)().substring(0, 8).toUpperCase();
         await ctx.editMessageText('⏳ جاري تحسين صورتك بدقة 2K...\nالرجاء الانتظار لحظات 🌟');
-        ctx.session.pendingFile = undefined;
+        if (ctx.session)
+            ctx.session.pendingFile = undefined;
         try {
             const resultBuffer = await imageService.enhance(telegramFileUrl, '2K');
             user.totalEnhancements += 1;
@@ -357,7 +358,7 @@ async function callbackHandler(ctx) {
         }
         const jobId = (0, uuid_1.v4)().substring(0, 8).toUpperCase();
         await ctx.editMessageText('⚙️ جاري المعالجة بدقة 4K الفائقة ✨\nهذه العملية تستهلك محاولتين من رصيدك 💎\nالرجاء الانتظار، قد تستغرق دقيقة أو أكثر 🌸');
-        ctx.session.pendingFile = undefined;
+        ctx.session && (ctx.session.pendingFile = undefined);
         try {
             const resultBuffer = await imageService.enhance(telegramFileUrl, '4K');
             user.totalEnhancements += 1;
@@ -1039,16 +1040,14 @@ async function callbackHandler(ctx) {
         await ctx.answerCallbackQuery().catch(() => { });
         const buildAdminKeyboard = (l) => ({
             inline_keyboard: [
-                [{ text: `${l.btn_2k ? '🔴 مقفل' : '🟢 مفتوح'} — 2K`, callback_data: 'atoggle_btn_2k' }],
-                [{ text: `${l.btn_4k ? '🔴 مقفل' : '🟢 مفتوح'} — 4K`, callback_data: 'atoggle_btn_4k' }],
-                [{ text: `${l.btn_8k ? '🔴 مقفل' : '🟢 مفتوح'} — 8K`, callback_data: 'atoggle_btn_8k' }],
-                [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
-                [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
-                [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
-                [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
-                [{ text: `${l.btn_doc_maker ? '🔴 مقفل' : '🟢 مفتوح'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
-                [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
-                [{ text: `${l.btn_doc_maker ? '🔴 مقفل' : '🟢 مفتوح'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
+                [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k' }],
+                [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k' }],
+                [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k' }],
+                [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
+                [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
+                [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
+                [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+                [{ text: `${l.btn_doc_maker ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
                 [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
                 [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
                 [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
@@ -1071,13 +1070,15 @@ async function callbackHandler(ctx) {
         const newLocks = newSettings.locks;
         const buildAdminKeyboard = (l) => ({
             inline_keyboard: [
-                [{ text: `${l.btn_2k ? '🔴 مقفل' : '🟢 مفتوح'} — 2K`, callback_data: 'atoggle_btn_2k' }],
-                [{ text: `${l.btn_4k ? '🔴 مقفل' : '🟢 مفتوح'} — 4K`, callback_data: 'atoggle_btn_4k' }],
-                [{ text: `${l.btn_8k ? '🔴 مقفل' : '🟢 مفتوح'} — 8K`, callback_data: 'atoggle_btn_8k' }],
-                [{ text: `${l.btn_4kai ? '🔴 مقفل' : '🟢 مفتوح'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
-                [{ text: `${l.btn_8kai ? '🔴 مقفل' : '🟢 مفتوح'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
-                [{ text: `${l.btn_nano ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
-                [{ text: `${l.btn_eraser ? '🔴 مقفل' : '🟢 مفتوح'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+                [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k' }],
+                [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k' }],
+                [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k' }],
+                [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
+                [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
+                [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
+                [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+                [{ text: `${l.btn_doc_maker ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
+                [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
                 [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
                 [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
                 [{ text: '❌ إغلاق', callback_data: 'admin_close' }],

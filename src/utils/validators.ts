@@ -6,6 +6,11 @@ import { Resolution } from '../services/queueService';
 
 // ─── Session & Context Types ───────────────────────────────────────────────────
 
+export interface DocLine {
+  text: string;
+  align: 'right' | 'center' | 'left';
+}
+
 export interface SessionData {
   pendingFile?: {
     fileId: string;
@@ -14,6 +19,10 @@ export interface SessionData {
   pendingConversionFileId?: string;
   pendingConversionFormat?: string;
   pendingBatchFiles?: string[];
+  // Document Maker (session-based)
+  isInDocMaker?: boolean;
+  tempLine?: string | null;
+  documentLines?: DocLine[];
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

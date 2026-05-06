@@ -5,7 +5,7 @@ const ForceSubChannel_1 = require("../../database/models/ForceSubChannel");
 const WHITELIST_CALLBACKS = ['check_force_sub'];
 async function forceSubMiddleware(ctx, next) {
     if (!ctx.from || ctx.from.is_bot)
-        return next();
+        return await next();
     // Use string comparison — Telegram IDs are too large for safe parseInt
     const userIdStr = ctx.from.id.toString();
     const adminIds = (process.env.ADMIN_IDS ?? '')
@@ -13,18 +13,18 @@ async function forceSubMiddleware(ctx, next) {
         .map((id) => id.trim())
         .filter(Boolean);
     if (adminIds.includes(userIdStr))
-        return next();
+        return await next();
     // Only enforce in private chats — never block group/channel updates
     if (ctx.chat?.type !== 'private')
-        return next();
+        return await next();
     const cbData = ctx.callbackQuery?.data ?? '';
     if (WHITELIST_CALLBACKS.some((w) => cbData.startsWith(w))) {
-        return next();
+        return await next();
     }
     try {
         const channels = await ForceSubChannel_1.ForceSubChannel.find().sort({ order: 1 });
         if (channels.length === 0)
-            return next();
+            return await next();
         const notSubscribed = [];
         for (const ch of channels) {
             try {
@@ -41,7 +41,7 @@ async function forceSubMiddleware(ctx, next) {
             }
         }
         if (notSubscribed.length === 0)
-            return next();
+            return await next();
         // One button per channel (URL) + verify button last
         const keyboard = channels.map((ch) => ([{
                 text: `📢 ${ch.channelName}`,
@@ -78,7 +78,7 @@ async function forceSubMiddleware(ctx, next) {
     }
     catch (err) {
         console.error('[ForceSubMiddleware] Unexpected error:', err);
-        return next(); // On unexpected error, allow through
+        return await next(); // On unexpected error, allow through
     }
 }
 //# sourceMappingURL=forceSubMiddleware.js.map

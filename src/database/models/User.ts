@@ -60,6 +60,10 @@ export interface IUser extends Document {
   vipSizeBypass: boolean;
   successfulReferrals: number;
   canBypassLocks: boolean;
+  // Document Maker (session data)
+  isInDocMaker?: boolean;
+  tempLine?: string | null;
+  documentLines?: { text: string; align: 'right' | 'center' | 'left' }[];
   docWizard: {
     step: number;
     docType: 'text' | 'image' | null;
@@ -227,6 +231,16 @@ const UserSchema = new Schema<IUser>(
     vipSizeBypass: { type: Boolean, default: false },
     successfulReferrals: { type: Number, default: 0 },
     canBypassLocks: { type: Boolean, default: false },
+    // Document Maker (session data)
+    isInDocMaker: { type: Boolean, default: false },
+    tempLine: { type: String, default: null },
+    documentLines: {
+      type: [{
+        text: { type: String, required: true },
+        align: { type: String, enum: ['right', 'center', 'left'], default: 'right' }
+      }],
+      default: []
+    },
     docWizard: {
       type: {
         step:               { type: Number, default: 0 },

@@ -137,6 +137,16 @@ const UserSchema = new mongoose_1.Schema({
     vipSizeBypass: { type: Boolean, default: false },
     successfulReferrals: { type: Number, default: 0 },
     canBypassLocks: { type: Boolean, default: false },
+    // Document Maker (session data)
+    isInDocMaker: { type: Boolean, default: false },
+    tempLine: { type: String, default: null },
+    documentLines: {
+        type: [{
+                text: { type: String, required: true },
+                align: { type: String, enum: ['right', 'center', 'left'], default: 'right' }
+            }],
+        default: []
+    },
     docWizard: {
         type: {
             step: { type: Number, default: 0 },
@@ -152,6 +162,8 @@ const UserSchema = new mongoose_1.Schema({
             lineCapacity: { type: Number, default: 10 },
             awaitingCustomSize: { type: Boolean, default: false },
             awaitingLineText: { type: Boolean, default: false },
+            awaitingAlignment: { type: Boolean, default: false },
+            tempLine: { type: String, default: null },
             awaitingImagePhoto: { type: Boolean, default: false },
             awaitingOverlayText: { type: Boolean, default: false },
             awaitingCaptionText: { type: Boolean, default: false },
@@ -159,7 +171,13 @@ const UserSchema = new mongoose_1.Schema({
             pages: {
                 type: [{
                         type: { type: String },
-                        lines: { type: [String], default: [] },
+                        lines: {
+                            type: [{
+                                    text: { type: String },
+                                    align: { type: String, default: 'right' },
+                                }],
+                            default: [],
+                        },
                         imageBuffer: { type: mongoose_1.Schema.Types.Mixed, default: null },
                         overlayText: { type: String, default: null },
                         captionText: { type: String, default: null },
