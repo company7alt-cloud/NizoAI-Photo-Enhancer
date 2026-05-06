@@ -150,7 +150,7 @@ export async function enhanceWithONNX(inputBuffer: Buffer): Promise<Buffer> {
 
         const outTileRgb = await runTile(session, paddedTile, runW, runH);
         const outTileW = runW * SCALE;
-        const outTileH = runH * SCALE;
+        // const outTileH = runH * SCALE;
         const cropW = tileW * SCALE;
         const cropH = tileH * SCALE;
         const destX = tileX * SCALE;
