@@ -12,6 +12,7 @@ const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const arabic_reshaper_1 = __importDefault(require("arabic-reshaper"));
 const bidi_js_1 = __importDefault(require("bidi-js"));
+const https_1 = __importDefault(require("https"));
 // Initialise the bidi engine once (singleton)
 const bidiEngine = (0, bidi_js_1.default)();
 /**
@@ -27,6 +28,45 @@ function prepareArabicText(text) {
     // 2. Reorder for RTL visual display
     const reordered = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
     return reordered;
+}
+// ─── Font Downloader ───────────────────────────────────────────────────────────
+async function ensureFontExists(fontPath) {
+    if (fs_1.default.existsSync(fontPath))
+        return true;
+    const fontDir = path_1.default.dirname(fontPath);
+    if (!fs_1.default.existsSync(fontDir)) {
+        fs_1.default.mkdirSync(fontDir, { recursive: true });
+    }
+    const fontUrl = 'https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Regular.ttf';
+    return new Promise((resolve) => {
+        https_1.default.get(fontUrl, (res) => {
+            if (res.statusCode === 200) {
+                const fileStream = fs_1.default.createWriteStream(fontPath);
+                res.pipe(fileStream);
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    resolve(true);
+                });
+                fileStream.on('error', () => {
+                    resolve(false);
+                });
+            }
+            else if (res.statusCode === 302 || res.statusCode === 301) {
+                // Handle redirect
+                https_1.default.get(res.headers.location, (redirectRes) => {
+                    const fileStream = fs_1.default.createWriteStream(fontPath);
+                    redirectRes.pipe(fileStream);
+                    fileStream.on('finish', () => {
+                        fileStream.close();
+                        resolve(true);
+                    });
+                }).on('error', () => resolve(false));
+            }
+            else {
+                resolve(false);
+            }
+        }).on('error', () => resolve(false));
+    });
 }
 // ─── Template line-capacity map ────────────────────────────────────────────────
 // Each template ID maps to how many lines fit per page in that layout.
@@ -91,6 +131,8 @@ function getContentBounds(templateId, pageWidth, pageHeight) {
 }
 // ─── Main generator ────────────────────────────────────────────────────────────
 async function generateDocument(params) {
+    const fontPath = path_1.default.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
+    await ensureFontExists(fontPath);
     return new Promise((resolve, reject) => {
         try {
             // Determine page dimensions
@@ -184,6 +226,8 @@ async function generateDocument(params) {
     });
 }
 async function generateDocumentFromLines(lines) {
+    const fontPath = path_1.default.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
+    await ensureFontExists(fontPath);
     return new Promise((resolve, reject) => {
         try {
             const PADDING = 40; // pt — enforced on all four sides

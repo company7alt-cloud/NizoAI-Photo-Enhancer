@@ -26,6 +26,10 @@ export interface SessionData {
   pageSize?: string;
   tempLine?: string | null;
   documentLines?: DocLine[];
+  // DocMaker Edit State
+  editingLineIndex?: number;
+  awaitingLineEditIndex?: boolean;
+  awaitingLineEditText?: boolean;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

@@ -14,8 +14,14 @@ export interface SessionData {
     pendingConversionFormat?: string;
     pendingBatchFiles?: string[];
     isInDocMaker?: boolean;
+    docType?: string;
+    templateId?: number;
+    pageSize?: string;
     tempLine?: string | null;
     documentLines?: DocLine[];
+    editingLineIndex?: number;
+    awaitingLineEditIndex?: boolean;
+    awaitingLineEditText?: boolean;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;
