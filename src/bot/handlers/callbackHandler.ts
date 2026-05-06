@@ -64,6 +64,21 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
   if (!data || !ctx.from) return;
 
+  if (data === 'show_global_stats') {
+    const { getGlobalCounter } = await import('../../services/statsService');
+    const total = await getGlobalCounter();
+    
+    // Format the number nicely (e.g., 5,023)
+    const formattedTotal = total.toLocaleString('en-US');
+
+    await ctx.answerCallbackQuery({
+      text: `🚀 إحصائيات البوت:\n\nتمت معالجة وتحسين أكثر من [ ${formattedTotal} ] صورة وملف بنجاح عبر نظامنا الذكي! 🌟`,
+      show_alert: true
+    }).catch(() => {});
+    return;
+  }
+
+
   if (data === 'check_force_sub') {
     await ctx.answerCallbackQuery().catch(() => {});
 
@@ -142,6 +157,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
       
       const ext = targetFormat === 'jpeg' ? 'jpg' : targetFormat;
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
       await ctx.replyWithDocument(
         new InputFile(convertedBuffer, `converted_${Date.now()}.${ext}`),
         {
@@ -312,6 +329,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
       const outputFileName = `NizoAI_2K_${jobId}.jpg`;
 
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
       await ctx.replyWithDocument(new InputFile(resultBuffer, outputFileName), {
         caption: `🎉 صورتك جاهزة بدقة 2K! 🌟\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
         reply_markup: {
@@ -382,6 +401,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
       const outputFileName = `NizoAI_4K_${jobId}.jpg`;
 
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
       await ctx.replyWithDocument(new InputFile(resultBuffer, outputFileName), {
         caption: `💎 صورتك جاهزة بدقة 4K الفائقة! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
         reply_markup: {
@@ -539,6 +560,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       }
 
       // STEP 6 — Deliver to user ─────────────────────────────────────────────
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
         {
@@ -1499,6 +1522,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       } catch { }
 
       // Send converted file to user
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
       await ctx.replyWithDocument(
         new InputFile(convertedBuffer, newFileName),
         {
@@ -1823,6 +1848,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         const { buffer, name } = convertedFiles[0];
         const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
 
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
         await ctx.replyWithDocument(
           new InputFile(buffer, name),
           {
@@ -1864,6 +1891,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         const zipFileName = `NizoAI_Batch_${format.toUpperCase()}_${Date.now()}.zip`;
         const zipSizeMB = (zipBuffer.length / (1024 * 1024)).toFixed(2);
 
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
         await ctx.replyWithDocument(
           new InputFile(zipBuffer, zipFileName),
           {
@@ -2084,6 +2113,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
 
       const { InputFile } = await import('grammy');
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
       await ctx.replyWithDocument(
         new InputFile(convertedBuffer, fileName),
         { caption: `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح! 🎉`, parse_mode: 'HTML' }

@@ -192,6 +192,8 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const { InputFile } = await import('grammy');
 
       // Send document first WITHOUT buttons
+const { incrementGlobalCounter } = await import('../../services/statsService');
+await incrementGlobalCounter();
       const sentDoc = await ctx.replyWithDocument(
         new InputFile(resultBuffer, `watermark_removed_${Date.now()}.jpg`),
         {
@@ -477,6 +479,8 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const { InputFile } = await import('grammy');
 
       // Send document to user
+const { incrementGlobalCounter } = await import('../../services/statsService');
+await incrementGlobalCounter();
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
         {
@@ -699,6 +703,8 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
 
       // ── STEP: Deliver to user ─────────────────────────────────────────────
+const { incrementGlobalCounter } = await import('../../services/statsService');
+await incrementGlobalCounter();
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
         {
@@ -837,6 +843,8 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const freshUser = await User.findOne({ telegramId: userId.toString() });
 
       const { InputFile } = await import('grammy');
+const { incrementGlobalCounter } = await import('../../services/statsService');
+await incrementGlobalCounter();
       await ctx.replyWithDocument(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
         caption: `💎 صورتك جاهزة بتقنية Pro Enhance! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${freshUser?.dailyQuota}`,
         reply_markup: {

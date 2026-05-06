@@ -9,18 +9,20 @@ export interface ILockSettings extends Document {
     btn_8kai: boolean;
     btn_nano: boolean;
     btn_eraser: boolean;
+    btn_doc_maker: boolean;
   };
 }
 
 const LockSettingsSchema = new Schema<ILockSettings>({
   locks: {
-    btn_2k:   { type: Boolean, default: false },
-    btn_4k:   { type: Boolean, default: false },
-    btn_8k:   { type: Boolean, default: true },
-    btn_4kai: { type: Boolean, default: false },
-    btn_8kai: { type: Boolean, default: true },
-    btn_nano: { type: Boolean, default: false },
-    btn_eraser: { type: Boolean, default: false },
+    btn_2k:        { type: Boolean, default: false },
+    btn_4k:        { type: Boolean, default: false },
+    btn_8k:        { type: Boolean, default: true },
+    btn_4kai:      { type: Boolean, default: false },
+    btn_8kai:      { type: Boolean, default: true },
+    btn_nano:      { type: Boolean, default: false },
+    btn_eraser:    { type: Boolean, default: false },
+    btn_doc_maker: { type: Boolean, default: false },
   }
 }, { collection: 'lock_settings' });
 

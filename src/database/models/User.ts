@@ -59,6 +59,30 @@ export interface IUser extends Document {
   awaitingAutoEraserImage?: boolean;
   vipSizeBypass: boolean;
   successfulReferrals: number;
+  canBypassLocks: boolean;
+  docWizard: {
+    step: number;
+    docType: 'text' | 'image' | null;
+    pageSize: string | null;
+    customSize: { width: number; height: number } | null;
+    templateId: 1 | 2 | 3 | 4 | 5 | null;
+    currentPageIndex: number;
+    currentLineIndex: number;
+    lineCapacity: number;
+    awaitingCustomSize: boolean;
+    awaitingLineText: boolean;
+    awaitingImagePhoto: boolean;
+    awaitingOverlayText: boolean;
+    awaitingCaptionText: boolean;
+    pendingLongText: string | null;
+    pages: Array<{
+      type: 'text' | 'image';
+      lines: string[];
+      imageFileId: string | null;
+      overlayText: string | null;
+      captionText: string | null;
+    }>;
+  } | null;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -200,6 +224,39 @@ const UserSchema = new Schema<IUser>(
     awaitingAutoEraserImage: { type: Boolean, default: false },
     vipSizeBypass: { type: Boolean, default: false },
     successfulReferrals: { type: Number, default: 0 },
+    canBypassLocks: { type: Boolean, default: false },
+    docWizard: {
+      type: {
+        step:               { type: Number, default: 0 },
+        docType:            { type: String, default: null },
+        pageSize:           { type: String, default: null },
+        customSize: {
+          type: { width: { type: Number }, height: { type: Number } },
+          default: null,
+        },
+        templateId:         { type: Number, default: null },
+        currentPageIndex:   { type: Number, default: 0 },
+        currentLineIndex:   { type: Number, default: 0 },
+        lineCapacity:       { type: Number, default: 10 },
+        awaitingCustomSize: { type: Boolean, default: false },
+        awaitingLineText:   { type: Boolean, default: false },
+        awaitingImagePhoto: { type: Boolean, default: false },
+        awaitingOverlayText: { type: Boolean, default: false },
+        awaitingCaptionText: { type: Boolean, default: false },
+        pendingLongText:    { type: String, default: null },
+        pages: {
+          type: [{
+            type:        { type: String },
+            lines:       { type: [String], default: [] },
+            imageFileId: { type: String, default: null },
+            overlayText: { type: String, default: null },
+            captionText: { type: String, default: null },
+          }],
+          default: [],
+        },
+      },
+      default: null,
+    },
   },
   {
     timestamps: false,

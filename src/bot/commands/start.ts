@@ -236,7 +236,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
     if (chanLink) keyboard.row().url('القناة', chanLink);
 
-
+    keyboard.row().text('📈 إحصائيات المعالجة (5000K+)', 'show_global_stats');
     keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
 
     await ctx.reply(greeting, {
