@@ -222,7 +222,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     const keyboard = new InlineKeyboard();
     if (devLink) keyboard.url('المطور', devLink);
 
-    keyboard.row().text('🚀 Pro Enhance', 'pro_enhance_start');
+    keyboard.row().text('⚙️ تحسين الصور (Pro)', 'pro_enhance_start');
     keyboard.row().text(nanoLocks.btn_nano ? '🔒 تحسين الصورة بالذكاء — مقفل' : '✨ تحسين الصورة بالذكاء', 'nano_banana_start');
 
     const eraserSettingsData = await getSettings();
