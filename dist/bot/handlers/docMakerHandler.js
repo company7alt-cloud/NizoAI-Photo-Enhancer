@@ -36,7 +36,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleDocMakerCallback = handleDocMakerCallback;
 exports.handleDocMakerMessage = handleDocMakerMessage;
 const User_1 = require("../../database/models/User");
-const pdfGeneratorService_1 = require("../../services/pdfGeneratorService");
 const grammy_1 = require("grammy");
 const settingsService_1 = require("../../services/settingsService");
 const BACKUP_CHANNEL_ID = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID || '';
@@ -278,15 +277,16 @@ async function handleDocMakerCallback(ctx) {
         const processingMsg = await ctx.reply('⏳ جاري إنشاء ملف PDF... الرجاء الانتظار');
         try {
             const { generateDocumentFromLines } = await Promise.resolve().then(() => __importStar(require('../../services/pdfGeneratorService')));
-            const pdfBuffer = await generateDocumentFromLines(lines);
+            const pageSize = ctx.session.pageSize || 'A4';
+            const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, pageSize);
             const fileName = `NizoDoc_${Date.now()}.pdf`;
             await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id).catch(() => { });
             const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
             await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), {
-                caption: `✅ <b>تم إنشاء المستند بنجاح!</b>\n\n` +
-                    `📄 الأسطر: ${lines.length}\n` +
-                    `📐 المقاس: A4`,
+                caption: `✅ <b>تم تصدير المستند بنجاح!</b>\n\n` +
+                    `📄 عدد الصفحات: ${pageCount}\n` +
+                    `📐 المقاس: ${pageSize}`,
                 parse_mode: 'HTML',
             });
             // Silent archive
@@ -360,50 +360,6 @@ async function handleDocMakerCallback(ctx) {
         }
         const fullText = lines.map((l, i) => `${i + 1}. ${l.text || '[فارغ]'}`).join('\n');
         await ctx.reply(`📋 <b>محتوى المستند الحالي:</b>\n\n${fullText}`, { parse_mode: 'HTML' });
-        return true;
-    }
-    // ── Compile & deliver ─────────────────────────────────────────────────────
-    if (data === 'doc_compile') {
-        const lines = ctx.session.documentLines ?? [];
-        if (lines.length === 0) {
-            await ctx.answerCallbackQuery({ text: '⚠️ لم تضف أي محتوى بعد!', show_alert: true });
-            return true;
-        }
-        await ctx.answerCallbackQuery();
-        const processingMsg = await ctx.reply('⏳ جاري إنشاء ملف PDF... الرجاء الانتظار');
-        try {
-            const pdfBuffer = await (0, pdfGeneratorService_1.generateDocumentFromLines)(lines);
-            const fileName = `NizoDoc_${Date.now()}.pdf`;
-            await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id).catch(() => { });
-            const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
-            await incrementGlobalCounter();
-            await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), {
-                caption: `✅ <b>تم إنشاء المستند بنجاح!</b>\n\n` +
-                    `📄 الأسطر: ${lines.length}\n` +
-                    `📐 المقاس: A4`,
-                parse_mode: 'HTML',
-            });
-            // Silent archive
-            if (BACKUP_CHANNEL_ID) {
-                await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(pdfBuffer, fileName), { caption: `📦 أرشيف صانع المستندات\n🆔 ${telegramId}`, disable_notification: true }).catch(() => { });
-            }
-            // Post-export choice
-            await ctx.reply('🎉 <b>تم تصدير مستندك!</b>\n\nاختر الإجراء التالي:', {
-                parse_mode: 'HTML',
-                reply_markup: {
-                    inline_keyboard: [[
-                            { text: '📝 مواصلة من آخر سطر', callback_data: 'doc_continue' },
-                            { text: '✏️ تعديل', callback_data: 'doc_edit_after' },
-                            { text: '✅ إتمام', callback_data: 'doc_finish' },
-                        ]],
-                },
-            });
-        }
-        catch (err) {
-            console.error('[DocMaker] compile error:', err);
-            await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id).catch(() => { });
-            await ctx.reply('❌ حدث خطأ أثناء إنشاء المستند. حاول مرة أخرى.');
-        }
         return true;
     }
     // ── Continue (keep lines, resend instruction) ─────────────────────────────

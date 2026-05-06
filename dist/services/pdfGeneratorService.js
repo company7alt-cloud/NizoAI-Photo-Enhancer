@@ -225,26 +225,32 @@ async function generateDocument(params) {
         }
     });
 }
-async function generateDocumentFromLines(lines) {
+async function generateDocumentFromLines(lines, pageSize = 'A4') {
     const fontPath = path_1.default.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
     await ensureFontExists(fontPath);
     return new Promise((resolve, reject) => {
         try {
             const PADDING = 40; // pt — enforced on all four sides
-            const FONT_SIZE = 14;
-            const LINE_H = FONT_SIZE * 1.6; // 22.4 pt
-            const doc = new pdfkit_1.default({ autoFirstPage: false, size: 'A4', margin: 0 });
+            const FONT_SIZE = 13;
+            const LINE_H = FONT_SIZE * 1.6; // 20.8 pt
+            // Standardize page size
+            let safePageSize = 'A4';
+            if (['A3', 'A4', 'A5', 'Letter', 'Legal', 'B5', 'Executive'].includes(pageSize)) {
+                safePageSize = pageSize;
+            }
+            const doc = new pdfkit_1.default({ autoFirstPage: false, size: safePageSize, margin: 0 });
             // Arabic font (graceful fallback)
-            const fontPath = path_1.default.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
             const hasFont = fs_1.default.existsSync(fontPath);
             if (hasFont)
                 doc.registerFont('Arabic', fontPath);
             const buffers = [];
+            let pageCount = 0;
             doc.on('data', (c) => buffers.push(c));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('end', () => resolve({ buffer: Buffer.concat(buffers), pageCount }));
             doc.on('error', reject);
             const addPage = () => {
                 doc.addPage();
+                pageCount++;
                 const W = doc.page.width;
                 const H = doc.page.height;
                 // Decorative thin border
@@ -284,6 +290,7 @@ async function generateDocumentFromLines(lines) {
             doc.end();
         }
         catch (err) {
+            console.error('[pdfGeneratorService] Error in generateDocumentFromLines:', err);
             reject(err);
         }
     });

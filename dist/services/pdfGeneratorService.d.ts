@@ -20,4 +20,7 @@ export interface AlignedLine {
     text: string;
     align: 'right' | 'center' | 'left';
 }
-export declare function generateDocumentFromLines(lines: AlignedLine[]): Promise<Buffer>;
+export declare function generateDocumentFromLines(lines: AlignedLine[], pageSize?: string): Promise<{
+    buffer: Buffer;
+    pageCount: number;
+}>;
