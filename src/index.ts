@@ -44,7 +44,7 @@ bot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
     if (user?.isBanned) {
       const msg = '🚫 أنت محظور من استخدام البوت.';
       if (ctx.callbackQuery) {
-        void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => {});
+        void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => { });
         return;
       }
       await ctx.reply(msg);
@@ -56,7 +56,7 @@ bot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
     if (botStatus === false && !isAdmin(userId)) {
       const msg = '🔧 البوت في وضع الصيانة حالياً. سنعود قريباً!';
       if (ctx.callbackQuery) {
-        void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => {});
+        void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => { });
         return;
       }
       await ctx.reply(msg);
@@ -119,7 +119,7 @@ bot.command('endchat', async (ctx) => {
       activeUser.telegramId,
       `✅ <b>تم إغلاق جلسة الدعم</b>\n\nشكراً لتواصلك معنا 🌹\nنتمنى لك يوماً طيباً 😊`,
       { parse_mode: 'HTML' }
-    ).catch(() => {});
+    ).catch(() => { });
   }
 
   await ctx.reply(
@@ -139,7 +139,7 @@ bot.on('message:text', async (ctx, next) => {
   if (isAdm && messageText.startsWith('/vip')) {
     const parts = messageText.split(' ');
     const targetId = parts[1];
-    
+
     if (!targetId) {
       await ctx.reply('❌ <b>خطأ في الصيغة</b>\nالاستخدام الصحيح: <code>/vip 123456789</code>', { parse_mode: 'HTML' });
       return;
@@ -153,11 +153,11 @@ bot.on('message:text', async (ctx, next) => {
 
     await User.findOneAndUpdate({ telegramId: targetId }, { $set: { vipSizeBypass: true } });
     await ctx.reply(`✅ <b>تم تفعيل VIP!</b>\nالمستخدم (<code>${targetId}</code>) يمكنه الآن رفع صور بحجم 15 ميجابايت.`, { parse_mode: 'HTML' });
-    
+
     try {
       await ctx.api.sendMessage(targetId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nبناءً على طلبك، تم فتح الحد الأقصى للممحاة السحرية. يمكنك الآن إرسال صور بحجم يصل إلى <b>15 ميجابايت</b>! 😎', { parse_mode: 'HTML' });
-    } catch (e) {}
-    
+    } catch (e) { }
+
     return;
   }
 
@@ -176,7 +176,7 @@ bot.on('message:text', async (ctx, next) => {
       await ctx.reply(`✅ <b>تم إنهاء المحادثة المباشرة مع العميل.</b>`, { parse_mode: 'HTML' });
       try {
         await ctx.api.sendMessage(activeUser.telegramId, '🔔 تم إغلاق جلسة الدعم. شكراً لتواصلك معنا 💙');
-      } catch (e) {}
+      } catch (e) { }
     } else {
       await ctx.reply('❌ لا توجد محادثة نشطة حالياً لإغلاقها.');
     }
@@ -200,7 +200,7 @@ bot.on('message:text', async (ctx, next) => {
       { $set: { adminAwaitingInput: null } }
     );
     const result = await User.updateMany({}, { $inc: { dailyQuota: amount } });
-    
+
     // Notify users safely
     const allUsers = await User.find({}).select('telegramId').lean();
     let notified = 0;
@@ -212,7 +212,7 @@ bot.on('message:text', async (ctx, next) => {
           { parse_mode: 'HTML' }
         );
         notified++;
-      } catch (e) {}
+      } catch (e) { }
       if (notified % 25 === 0) await new Promise(r => setTimeout(r, 1000));
     }
     await ctx.reply(`✅ تمت إضافة ${amount} محاولات لـ ${result.modifiedCount} مستخدم\n📢 تم إشعار ${notified} مستخدم`);
@@ -253,7 +253,7 @@ bot.on('message:text', async (ctx, next) => {
         `🎁 <b>مفاجأة من المطور!</b>\n\nتم إضافة <b>${amount}</b> محاولات مجانية لرصيدك الشخصي 🌟\nهذه مكافأة خاصة لك تقديراً لحسن تعاملك مع البوت 💙`,
         { parse_mode: 'HTML' }
       );
-    } catch (e) {}
+    } catch (e) { }
     await ctx.reply(`✅ تمت إضافة ${amount} محاولات للمستخدم <code>${targetId}</code> وتم إشعاره`, { parse_mode: 'HTML' });
     return;
   }
@@ -285,7 +285,7 @@ bot.on('message:text', async (ctx, next) => {
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: null, adminTargetUserId: null } }
     );
-    
+
     // Smart subtraction pipeline: prevents negative quota
     await User.findOneAndUpdate(
       { telegramId: targetId },
@@ -381,7 +381,7 @@ bot.on('message:text', async (ctx, next) => {
 
     // Verify bot is admin in the channel before accepting
     try {
-      const botInfo   = await ctx.api.getMe();
+      const botInfo = await ctx.api.getMe();
       const botMember = await ctx.api.getChatMember(channelId, botInfo.id);
 
       if (!['administrator', 'creator'].includes(botMember.status)) {
@@ -467,8 +467,8 @@ bot.on('message:text', async (ctx, next) => {
         await ctx.reply(
           `✅ <b>تم التحديث بنجاح!</b>\n\n` +
           `🔑 المفتاح: <code>${key}</code>\n\n` +
-          `📝 <b>النص القديم:</b>\n<code>${oldValue.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>\n\n` +
-          `✨ <b>النص الجديد:</b>\n<code>${newValue.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`,
+          `📝 <b>النص القديم:</b>\n<code>${oldValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>\n\n` +
+          `✨ <b>النص الجديد:</b>\n<code>${newValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`,
           { parse_mode: 'HTML' }
         );
       } else {
@@ -544,7 +544,7 @@ bot.on('message:text', async (ctx, next) => {
       );
       return;
     }
-if (inputType === 'grant_vip_id') {
+    if (inputType === 'grant_vip_id') {
       const targetUser = await User.findOne({ telegramId: inputText.trim() });
       if (!targetUser) {
         await ctx.reply('❌ لم يتم العثور على مستخدم بهذا الـ ID.');
@@ -554,7 +554,7 @@ if (inputType === 'grant_vip_id') {
       await ctx.reply(`✅ <b>تم التفعيل!</b>\nالمستخدم (<code>${targetUser.telegramId}</code>) يستطيع الآن استخدام صانع المستندات وجميع الميزات المقفلة 🌟`, { parse_mode: 'HTML' });
       try {
         await ctx.api.sendMessage(targetUser.telegramId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nتم فتح جميع الميزات المقفلة لك بما فيها صانع المستندات! 😎', { parse_mode: 'HTML' });
-      } catch (e) {}
+      } catch (e) { }
       return;
     }
 
@@ -568,7 +568,7 @@ if (inputType === 'grant_vip_id') {
       await ctx.reply(`✅ <b>تم التفعيل!</b>\nالمستخدم (<code>${targetUser.telegramId}</code>) يستطيع الآن إرسال صور بحجم يصل إلى 15 ميجابايت 🌟`, { parse_mode: 'HTML' });
       try {
         await ctx.api.sendMessage(targetUser.telegramId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nبناءً على طلبك، تم فتح الحد الأقصى للممحاة السحرية. يمكنك الآن إرسال صور بحجم يصل إلى <b>15 ميجابايت</b>! 😎', { parse_mode: 'HTML' });
-      } catch (e) {}
+      } catch (e) { }
       return;
     }
   }
@@ -759,12 +759,12 @@ bot.on('chat_member', async (ctx) => {
 
   const newStatus = update.new_chat_member.status;
   const oldStatus = update.old_chat_member.status;
-  const userId    = update.new_chat_member.user.id;
+  const userId = update.new_chat_member.user.id;
   const channelId = String(update.chat.id);
 
   // ── Existing fund-campaign penalty ──────────────────────────────────────────
   const wasActive = ['member', 'administrator', 'creator'].includes(oldStatus);
-  const hasLeft   = ['left', 'kicked', 'restricted'].includes(newStatus);
+  const hasLeft = ['left', 'kicked', 'restricted'].includes(newStatus);
 
   if (wasActive && hasLeft) {
     const { handleMemberLeft } = await import('./services/channelFundService');
@@ -785,7 +785,7 @@ bot.on('chat_member', async (ctx) => {
       fleeingUser.referralRewardClaimed === true
     ) {
       const REFERRAL_REWARD = 5; // same amount given in start.ts referral block
-      const POINTS_FIELD    = 'dailyQuota'; // exact field from User model
+      const POINTS_FIELD = 'dailyQuota'; // exact field from User model
 
       await User.findOneAndUpdate(
         { telegramId: fleeingUser.referredBy },
@@ -823,14 +823,14 @@ bot.on('my_chat_member', async (ctx) => {
     if (newStatus !== 'kicked') return;
 
     const fleeingUserId = ctx.from.id;
-    const fleeingUser   = await User.findOne({ telegramId: fleeingUserId });
+    const fleeingUser = await User.findOne({ telegramId: fleeingUserId });
 
     if (
       fleeingUser?.referredBy != null &&
       fleeingUser.referralRewardClaimed === true
     ) {
       const REFERRAL_REWARD = 5; // same amount given in start.ts referral block
-      const POINTS_FIELD    = 'dailyQuota'; // exact field from User model
+      const POINTS_FIELD = 'dailyQuota'; // exact field from User model
 
       await User.findOneAndUpdate(
         { telegramId: fleeingUser.referredBy },
@@ -862,8 +862,7 @@ bot.on('my_chat_member', async (ctx) => {
 
 // ─── Error Handling ────────────────────────────────────────────────────────────
 
-bot.catch((err) => {});
-
+bot.catch((err) => console.error(err));
 process.on('unhandledRejection', (reason) => {
   console.error('[Unhandled Rejection]', reason);
 });
