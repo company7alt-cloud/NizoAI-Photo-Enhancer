@@ -3,12 +3,12 @@ import * as ort from 'onnxruntime-node';
 import sharp from 'sharp';
 import path from 'path';
 
-const MODEL_PATH     = path.join(process.cwd(), 'RealESRGAN_x4.onnx');
+const MODEL_PATH = path.join(process.cwd(), 'RealESRGAN_x4.onnx');
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_CONCURRENT = 2;
-const JPEG_QUALITY   = 95;
-const TILE_SIZE      = 64;
-const SCALE          = 4;
+const JPEG_QUALITY = 95;
+const TILE_SIZE = 64;
+const SCALE = 4;
 
 let sessionCache: ort.InferenceSession | null = null;
 
@@ -51,7 +51,7 @@ async function runTile(session: ort.InferenceSession, tileBuffer: Buffer, tileW:
   for (let y = 0; y < tileH; y++) {
     for (let x = 0; x < tileW; x++) {
       const src = (y * tileW + x) * 3;
-      tensorData[0 * tileH * tileW + y * tileW + x] = raw[src]     / 255.0;
+      tensorData[0 * tileH * tileW + y * tileW + x] = raw[src] / 255.0;
       tensorData[1 * tileH * tileW + y * tileW + x] = raw[src + 1] / 255.0;
       tensorData[2 * tileH * tileW + y * tileW + x] = raw[src + 2] / 255.0;
     }
@@ -70,7 +70,7 @@ async function runTile(session: ort.InferenceSession, tileBuffer: Buffer, tileW:
   for (let y = 0; y < outH; y++) {
     for (let x = 0; x < outW; x++) {
       const dst = (y * outW + x) * 3;
-      rgb[dst]     = Math.min(255, Math.max(0, Math.round(outData[0 * outH * outW + y * outW + x] * 255)));
+      rgb[dst] = Math.min(255, Math.max(0, Math.round(outData[0 * outH * outW + y * outW + x] * 255)));
       rgb[dst + 1] = Math.min(255, Math.max(0, Math.round(outData[1 * outH * outW + y * outW + x] * 255)));
       rgb[dst + 2] = Math.min(255, Math.max(0, Math.round(outData[2 * outH * outW + y * outW + x] * 255)));
     }
@@ -84,7 +84,7 @@ export async function enhanceWithONNX(inputBuffer: Buffer): Promise<Buffer> {
   await acquireSlot();
   try {
     const metadata = await sharp(inputBuffer).metadata();
-    const origW = metadata.width  ?? 256;
+    const origW = metadata.width ?? 256;
     const origH = metadata.height ?? 256;
 
     // Resize to max 512 on longest edge
@@ -122,7 +122,7 @@ export async function enhanceWithONNX(inputBuffer: Buffer): Promise<Buffer> {
           for (let x = 0; x < tileW; x++) {
             const src = ((tileY + y) * procW + (tileX + x)) * 3;
             const dst = (y * tileW + x) * 3;
-            tileRaw[dst]     = rawData[src];
+            tileRaw[dst] = rawData[src];
             tileRaw[dst + 1] = rawData[src + 1];
             tileRaw[dst + 2] = rawData[src + 2];
           }
@@ -139,7 +139,7 @@ export async function enhanceWithONNX(inputBuffer: Buffer): Promise<Buffer> {
             for (let x = 0; x < tileW; x++) {
               const src = (y * tileW + x) * 3;
               const dst = (y * TILE_SIZE + x) * 3;
-              paddedTile[dst]     = tileRaw[src];
+              paddedTile[dst] = tileRaw[src];
               paddedTile[dst + 1] = tileRaw[src + 1];
               paddedTile[dst + 2] = tileRaw[src + 2];
             }
@@ -161,7 +161,7 @@ export async function enhanceWithONNX(inputBuffer: Buffer): Promise<Buffer> {
           for (let x = 0; x < cropW; x++) {
             const src = (y * outTileW + x) * 3;
             const dst = ((destY + y) * outW + (destX + x)) * 3;
-            outputCanvas[dst]     = outTileRgb[src];
+            outputCanvas[dst] = outTileRgb[src];
             outputCanvas[dst + 1] = outTileRgb[src + 1];
             outputCanvas[dst + 2] = outTileRgb[src + 2];
           }
