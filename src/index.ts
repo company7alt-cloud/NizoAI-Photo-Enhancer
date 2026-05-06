@@ -862,7 +862,10 @@ bot.on('my_chat_member', async (ctx) => {
 
 // ─── Error Handling ────────────────────────────────────────────────────────────
 
-bot.catch((err) => console.error(err));
+bot.catch((err) => {
+  const ctx = err.ctx;
+  console.error(`[BotError] Update ${ctx.update.update_id}:`, err.error);
+});
 process.on('unhandledRejection', (reason) => {
   console.error('[Unhandled Rejection]', reason);
 });

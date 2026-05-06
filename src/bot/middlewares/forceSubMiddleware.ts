@@ -10,7 +10,7 @@ export async function forceSubMiddleware(
   next: NextFunction
 ): Promise<void> {
 
-  if (!ctx.from || ctx.from.is_bot) return next();
+  if (!ctx.from || ctx.from.is_bot) return await next();
 
   // Use string comparison — Telegram IDs are too large for safe parseInt
   const userIdStr = ctx.from.id.toString();
@@ -19,19 +19,19 @@ export async function forceSubMiddleware(
     .map((id) => id.trim())
     .filter(Boolean);
 
-  if (adminIds.includes(userIdStr)) return next();
+  if (adminIds.includes(userIdStr)) return await next();
 
   // Only enforce in private chats — never block group/channel updates
-  if (ctx.chat?.type !== 'private') return next();
+  if (ctx.chat?.type !== 'private') return await next();
 
   const cbData = ctx.callbackQuery?.data ?? '';
   if (WHITELIST_CALLBACKS.some((w) => cbData.startsWith(w))) {
-    return next();
+    return await next();
   }
 
   try {
     const channels = await ForceSubChannel.find().sort({ order: 1 });
-    if (channels.length === 0) return next();
+    if (channels.length === 0) return await next();
 
     const notSubscribed: typeof channels = [];
 
@@ -52,7 +52,7 @@ export async function forceSubMiddleware(
       }
     }
 
-    if (notSubscribed.length === 0) return next();
+    if (notSubscribed.length === 0) return await next();
 
     // One button per channel (URL) + verify button last
     const keyboard: InlineKeyboardButton[][] = channels.map((ch) => ([{
@@ -95,6 +95,6 @@ export async function forceSubMiddleware(
 
   } catch (err) {
     console.error('[ForceSubMiddleware] Unexpected error:', err);
-    return next(); // On unexpected error, allow through
+    return await next(); // On unexpected error, allow through
   }
 }
