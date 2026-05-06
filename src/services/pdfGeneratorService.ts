@@ -182,7 +182,7 @@ export async function generateDocument(params: PdfGeneratorParams): Promise<Buff
           doc.image(imgBuf, bounds.x, bounds.y, {
             fit: [maxImgWidth, maxImgHeight],
             align: 'center',
-            valign: 'top',
+            valign: 'center',
           });
 
           // Overlay text (centered, red, large)
