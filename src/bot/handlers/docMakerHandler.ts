@@ -4,6 +4,7 @@ import { User } from '../../database/models/User';
 import { generateDocument, getLineCapacity } from '../../services/pdfGeneratorService';
 import { InputFile } from 'grammy';
 import https from 'https';
+import { getSettings } from '../../services/settingsService';
 
 const BACKUP_CHANNEL_ID = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID || '';
 
@@ -83,6 +84,26 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   ctx.session.pendingBatchFiles ??= [];
   const data = ctx.callbackQuery?.data;
   if (!data) return false;
+
+  // ── Lock guard: doc_maker_start bypasses callbackHandler's lockMap ────────
+  if (data === 'doc_maker_start') {
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isAdminUser = adminIds.includes(ctx.from!.id.toString());
+    if (!isAdminUser) {
+      const lockSettings = await getSettings();
+      const isLocked = lockSettings.locks.btn_doc_maker === true;
+      if (isLocked) {
+        const bypassUser = await User.findOne({ telegramId: ctx.from!.id.toString() }).select('canBypassLocks');
+        if (!bypassUser?.canBypassLocks) {
+          await ctx.answerCallbackQuery({
+            text: '⚠️ هذا القسم مغلق مؤقتاً للتحديث. متاح حالياً للمطورين والمشتركين المعتمدين فقط.',
+            show_alert: true,
+          }).catch(() => {});
+          return true;
+        }
+      }
+    }
+  }
 
   // Only handle doc_maker prefixed callbacks
   const docCallbacks = [
