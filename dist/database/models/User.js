@@ -106,6 +106,9 @@ const UserSchema = new mongoose_1.Schema({
     awaitingNanoBananaImage: { type: Boolean, default: false },
     awaitingEraserImage: { type: Boolean, default: false },
     awaitingEraserOriginal: { type: Boolean, default: false },
+    awaitingMarkedImage: { type: Boolean, default: false },
+    awaitingRawImage: { type: Boolean, default: false },
+    markedImageFileId: { type: String, default: '' },
     eraserCoords: {
         type: {
             minX: { type: Number, default: null },

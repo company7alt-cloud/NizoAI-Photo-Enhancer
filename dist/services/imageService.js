@@ -45,8 +45,11 @@ exports.extractMaskCoordinates = extractMaskCoordinates;
 exports.processTwoStepInpainting = processTwoStepInpainting;
 exports.removeBottomRightWatermarkAI = removeBottomRightWatermarkAI;
 exports.convertImageFormat = convertImageFormat;
+exports.getFileBuffer = getFileBuffer;
+exports.generateMaskFromDiff = generateMaskFromDiff;
 const replicate_1 = __importDefault(require("replicate"));
 const sharp_1 = __importDefault(require("sharp"));
+const pixelmatch_1 = __importDefault(require("pixelmatch"));
 const replicate = new replicate_1.default({
     auth: process.env.REPLICATE_API_KEY || '',
 });
@@ -604,5 +607,45 @@ async function convertImageFormat(buffer, format) {
             mimeType = 'image/png';
     }
     return { buffer: result, mimeType, ext: format === 'jpg' ? 'jpg' : format };
+}
+async function getFileBuffer(fileId, ctx) {
+    const file = await ctx.api.getFile(fileId);
+    const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.statusText}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+}
+async function generateMaskFromDiff(markedBuf, rawBuf) {
+    // Prevent OOM: Resize both buffers to a max of 1024x1024 
+    const resizeOpts = { width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true };
+    const markedImg = (0, sharp_1.default)(markedBuf).resize(resizeOpts);
+    const rawImg = (0, sharp_1.default)(rawBuf).resize(resizeOpts);
+    const { width, height } = (await rawImg.metadata());
+    const [markedRaw, rawRaw] = await Promise.all([
+        markedImg.ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+        rawImg.ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    ]);
+    const diffImage = new Uint8ClampedArray(width * height * 4);
+    (0, pixelmatch_1.default)(markedRaw.data, rawRaw.data, diffImage, width, height, { threshold: 0.15, includeAA: true });
+    // Generate binary mask: white for diff, black for match
+    const maskPixels = Buffer.alloc(width * height * 4);
+    for (let i = 0; i < diffImage.length; i += 4) {
+        const isDiff = diffImage[i] > 0 || diffImage[i + 1] > 0 || diffImage[i + 2] > 0;
+        const color = isDiff ? 255 : 0;
+        maskPixels[i] = color; // R
+        maskPixels[i + 1] = color; // G
+        maskPixels[i + 2] = color; // B
+        maskPixels[i + 3] = 255; // A
+    }
+    // Morphological dilation to expand edges
+    const maskBuffer = await (0, sharp_1.default)(maskPixels, { raw: { width, height, channels: 4 } })
+        .blur(5)
+        .threshold(40)
+        .png()
+        .toBuffer();
+    return { maskBuffer, width, height };
 }
 //# sourceMappingURL=imageService.js.map

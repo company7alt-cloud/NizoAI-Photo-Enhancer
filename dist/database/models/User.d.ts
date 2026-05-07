@@ -33,6 +33,9 @@ export interface IUser extends Document {
     awaitingNanoBananaImage: boolean;
     awaitingEraserImage?: boolean;
     awaitingEraserOriginal?: boolean;
+    awaitingMarkedImage?: boolean;
+    awaitingRawImage?: boolean;
+    markedImageFileId?: string;
     eraserCoords?: {
         minX: number | null;
         minY: number | null;

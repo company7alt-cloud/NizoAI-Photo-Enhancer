@@ -1,5 +1,7 @@
 import Replicate from "replicate";
 import sharp from "sharp";
+import pixelmatch from "pixelmatch";
+import { Context } from "grammy";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY || '',
@@ -657,4 +659,64 @@ export async function convertImageFormat(
   }
 
   return { buffer: result, mimeType, ext: format === 'jpg' ? 'jpg' : format };
+}
+
+export async function getFileBuffer(fileId: string, ctx: Context): Promise<Buffer> {
+  const file = await ctx.api.getFile(fileId);
+  const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch file: ${response.statusText}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+export async function generateMaskFromDiff(
+  markedBuf: Buffer,
+  rawBuf: Buffer
+): Promise<{ maskBuffer: Buffer; width: number; height: number }> {
+  // Prevent OOM: Resize both buffers to a max of 1024x1024 
+  const resizeOpts = { width: 1024, height: 1024, fit: 'inside' as const, withoutEnlargement: true };
+  
+  const markedImg = sharp(markedBuf).resize(resizeOpts);
+  const rawImg = sharp(rawBuf).resize(resizeOpts);
+
+  const { width, height } = (await rawImg.metadata()) as { width: number; height: number };
+
+  const [markedRaw, rawRaw] = await Promise.all([
+    markedImg.ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+    rawImg.ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  ]);
+
+  const diffImage = new Uint8ClampedArray(width * height * 4);
+
+  pixelmatch(
+    markedRaw.data,
+    rawRaw.data,
+    diffImage,
+    width,
+    height,
+    { threshold: 0.15, includeAA: true }
+  );
+
+  // Generate binary mask: white for diff, black for match
+  const maskPixels = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < diffImage.length; i += 4) {
+    const isDiff = diffImage[i] > 0 || diffImage[i + 1] > 0 || diffImage[i + 2] > 0;
+    const color = isDiff ? 255 : 0;
+    maskPixels[i] = color;     // R
+    maskPixels[i + 1] = color; // G
+    maskPixels[i + 2] = color; // B
+    maskPixels[i + 3] = 255;   // A
+  }
+
+  // Morphological dilation to expand edges
+  const maskBuffer = await sharp(maskPixels, { raw: { width, height, channels: 4 } })
+    .blur(5)
+    .threshold(40)
+    .png()
+    .toBuffer();
+
+  return { maskBuffer, width, height };
 }

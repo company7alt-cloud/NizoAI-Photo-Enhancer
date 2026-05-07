@@ -2077,9 +2077,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
 
     await ctx.reply(
-      '🧹 <b>مزيل النجمة التلقائي</b>\n\n📸 أرسل الصورة التي تريد إزالة النجمة/الشعار منها\n✨ سأقوم تلقائياً بإزالة العلامة من <b>الزاوية السفلية اليمنى</b>\n💎 <b>السعر:</b> نقطة واحدة (1)',
+      '📸 أرسل لي الصورة الآن وسأقوم بإزالة نجمة Gemini من الزاوية تلقائياً.',
       {
-        parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_auto_eraser' }]]
         }
@@ -2087,6 +2086,36 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
     return;
   }
+
+  if (data === 'watermark_custom_start') {
+    const adminIds = process.env.ADMIN_IDS?.split(',') || [];
+    const isAdminUser = adminIds.includes(ctx.from!.id.toString());
+
+    const customUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (!customUser) return;
+
+    if (customUser.dailyQuota < 2 && !isAdminUser) {
+      await ctx.reply(
+        "⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>2 محاولات</b> لتفعيل هذه الأداة.",
+        { parse_mode: 'HTML' }
+      );
+      await ctx.answerCallbackQuery().catch(() => {});
+      return;
+    }
+
+    customUser.awaitingMarkedImage = true;
+    customUser.awaitingRawImage = false;
+    customUser.markedImageFileId = '';
+    await customUser.save();
+
+    await ctx.reply(
+      `🖌️ <b>الخطوة 1 من 2 — تحديد منطقة الإزالة</b>\n\nافتح الصورة التي تريد تعديلها، ثم استخدم <b>قلم تيليجرام المدمج</b>\nلرسم دائرة أو خط واضح باللون الأحمر (أو أي لون بارز) فوق العنصر\nأو النص الذي تريد إزالته. ثم أرسل لي الصورة المشخبطة.\n\n💡 <i>كلما كانت الشخبطة أوضح وأكثر تغطيةً للعنصر، كانت النتيجة أدق.</i>`,
+      { parse_mode: 'HTML' }
+    );
+    await ctx.answerCallbackQuery().catch(() => {});
+    return;
+  }
+
 
   if (data === 'cancel_auto_eraser') {
     await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });

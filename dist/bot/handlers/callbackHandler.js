@@ -1556,11 +1556,13 @@ async function callbackHandler(ctx) {
                 }
             }
             // Reset state
-            await User_1.User.findOneAndUpdate({ telegramId }, { $set: {
+            await User_1.User.findOneAndUpdate({ telegramId }, {
+                $set: {
                     awaitingFormatConversion: false,
                     pendingConversionFiles: [],
                     conversionUpscale: false,
-                } });
+                }
+            });
         }
         catch (error) {
             console.error('[fconv Error]:', error);
@@ -1570,11 +1572,13 @@ async function callbackHandler(ctx) {
             catch { }
             await (0, adminAlert_1.sendAdminAlert)(ctx, `fconv Error (${format}): ${error.message}`);
             await ctx.reply('❌ حدث خطأ أثناء التحويل. تم إشعار المطور 💙');
-            await User_1.User.findOneAndUpdate({ telegramId }, { $set: {
+            await User_1.User.findOneAndUpdate({ telegramId }, {
+                $set: {
                     awaitingFormatConversion: false,
                     pendingConversionFiles: [],
                     conversionUpscale: false,
-                } });
+                }
+            });
         }
         return;
     }
@@ -1618,30 +1622,57 @@ async function callbackHandler(ctx) {
     // ══════════════════════════════════════
     // 🧹 مُزيل النجمة التلقائي — one-shot auto watermark removal
     // ══════════════════════════════════════
+    // القائمة الجديدة المزدوجة (تظهر للمستخدم أولاً)
     if (data === 'remove_watermark_auto') {
         await ctx.answerCallbackQuery().catch(() => { });
-        const autoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+        await ctx.editMessageText(`✨ <b>وحدة التنقيح البصري الذكي</b>\n\nتعتمد هذه الأداة على خوارزميات الذكاء الاصطناعي التوليدي لتحليل بنية الصورة وإزالة أي عناصر أو علامات غير مرغوب فيها بدقة عالية دون تشويه المحتوى الأصلي.\n\n🔍 <b>اختر نوع المعالجة:</b>`, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '✨ إزالة نجمة Gemini تلقائياً', callback_data: 'watermark_auto_gemini' }],
+                    [{ text: '🖌️ إزالة عنصر مخصص', callback_data: 'watermark_custom_start' }]
+                ]
+            }
+        }).catch(() => { });
+        return;
+    }
+    // مسار إزالة النجمة القديم (يشتغل لما يضغط الزر الأول)
+    if (data === 'watermark_auto_gemini') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const autoAdminIds = (process.env.ADMIN_IDS || '').split(',');
         const isAutoAdmin = autoAdminIds.includes(ctx.from.id.toString());
         const autoUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
         if (!autoUser)
             return;
         if (!isAutoAdmin && autoUser.dailyQuota < 1) {
-            await ctx.reply(`⚠️ رصيدك غير كافٍ! 🥺\n` +
-                `تحتاج <b>نقطة واحدة (1)</b> لاستخدام مُزيل النجمة التلقائي 🧹\n` +
-                `رصيدك الحالي: <b>${autoUser.dailyQuota}</b>\n\n` +
-                `💡 احصل على محاولات مجانية من زر الهدية اليومية 🎁`, { parse_mode: 'HTML' });
+            await ctx.reply(`⚠️ <b>عذراً، رصيدك غير كافٍ!</b>\nتحتاج محاولة واحدة على الأقل.\n💡 رصيدك الحالي: ${autoUser.dailyQuota}`, { parse_mode: 'HTML' });
             return;
         }
         await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingAutoEraserImage: true } });
-        await ctx.reply('🧹 <b>مُزيل النجمة التلقائي</b>\n\n' +
-            'أرسل الصورة التي تريد إزالة النجمة/الشعار منها 📷\n\n' +
-            '✨ سأقوم تلقائياً بإزالة العلامة من <b>الزاوية السفلية اليمنى</b> بالذكاء الاصطناعي\n' +
-            '💎 <b>السعر: نقطة واحدة (1)</b>', {
-            parse_mode: 'HTML',
+        await ctx.reply('📸 أرسل لي الصورة الآن وسأقوم بإزالة نجمة Gemini من الزاوية تلقائياً.', {
             reply_markup: {
                 inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_auto_eraser' }]]
             }
         });
+        return;
+    }
+    if (data === 'watermark_custom_start') {
+        const adminIds = process.env.ADMIN_IDS?.split(',') || [];
+        const isAdminUser = adminIds.includes(ctx.from.id.toString());
+        const customUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+        if (!customUser)
+            return;
+        if (customUser.dailyQuota < 2 && !isAdminUser) {
+            await ctx.reply("⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>2 محاولات</b> لتفعيل هذه الأداة.", { parse_mode: 'HTML' });
+            await ctx.answerCallbackQuery().catch(() => { });
+            return;
+        }
+        customUser.awaitingMarkedImage = true;
+        customUser.awaitingRawImage = false;
+        customUser.markedImageFileId = '';
+        await customUser.save();
+        await ctx.reply(`🖌️ <b>الخطوة 1 من 2 — تحديد منطقة الإزالة</b>\n\nافتح الصورة التي تريد تعديلها، ثم استخدم <b>قلم تيليجرام المدمج</b>\nلرسم دائرة أو خط واضح باللون الأحمر (أو أي لون بارز) فوق العنصر\nأو النص الذي تريد إزالته. ثم أرسل لي الصورة المشخبطة.\n\n💡 <i>كلما كانت الشخبطة أوضح وأكثر تغطيةً للعنصر، كانت النتيجة أدق.</i>`, { parse_mode: 'HTML' });
+        await ctx.answerCallbackQuery().catch(() => { });
         return;
     }
     if (data === 'cancel_auto_eraser') {

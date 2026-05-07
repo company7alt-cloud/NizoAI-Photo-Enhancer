@@ -1,6 +1,9 @@
 // src/bot/handlers/imageHandler.ts
 import { InlineKeyboard } from 'grammy';
 import { InputFile } from 'grammy';
+import sharp from 'sharp';
+import Replicate from 'replicate';
+import { getFileBuffer, generateMaskFromDiff } from '../../services/imageService';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
 import { getSettings } from '../../services/settingsService';
@@ -110,6 +113,135 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   let user = await User.findOne({ telegramId: userId.toString() });
   if (!user) {
     await ctx.reply('⚠️ يرجى إرسال /start أولاً لتسجيل حسابك.');
+    return;
+  }
+
+  if (user?.awaitingMarkedImage) {
+    const photo = ctx.message?.photo;
+    const document = ctx.message?.document;
+    const fileId = photo ? photo[photo.length - 1].file_id : document?.file_id;
+
+    if (!fileId) return;
+
+    user.markedImageFileId = fileId;
+    user.awaitingMarkedImage = false;
+    user.awaitingRawImage = true;
+    await user.save();
+
+    await ctx.reply(
+      `✅ <b>تم تحديد منطقة الإزالة بنجاح!</b>\n\n📸 <b>الخطوة 2 من 2 — الصورة الأصلية</b>\n\nأرسل لي الآن <b>نفس الصورة بدون أي شخبطة أو تعديل</b>\n(الصورة الخام الأصلية). سأقوم بمقارنة الصورتين لتحديد\nموقع العنصر بدقة واستخدام الذكاء الاصطناعي لإزالته\nبشكل احترافي دون المساس بباقي الصورة.`,
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
+  if (user?.awaitingRawImage) {
+    const photo = ctx.message?.photo;
+    const document = ctx.message?.document;
+    const rawFileId = photo ? photo[photo.length - 1].file_id : document?.file_id;
+
+    if (!rawFileId) return;
+
+    await ctx.replyWithChatAction('upload_photo');
+
+    try {
+      const [markedBuffer, rawBuffer] = await Promise.all([
+        getFileBuffer(user.markedImageFileId, ctx),
+        getFileBuffer(rawFileId, ctx)
+      ]);
+
+      const { maskBuffer } = await generateMaskFromDiff(markedBuffer, rawBuffer);
+
+      const resizedRawBuffer = await sharp(rawBuffer)
+        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+        .jpeg()
+        .toBuffer();
+
+      const rawBase64 = `data:image/jpeg;base64,${resizedRawBuffer.toString('base64')}`;
+      const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
+
+      const replicate = new Replicate({
+        auth: process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY,
+      });
+
+      const output = await replicate.run(
+        "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd58bf",
+        {
+          input: {
+            image: rawBase64,
+            mask: maskBase64,
+            prompt: "clean background, seamless texture, photo realistic",
+            negative_prompt: "artifacts, blurry, watermark, text, logo"
+          }
+        }
+      ) as string[];
+
+      if (!output || !output[0]) {
+        throw new Error("Failed to generate image from AI.");
+      }
+
+      const resultRes = await fetch(output[0]);
+      if (!resultRes.ok) throw new Error("Failed to fetch generated image.");
+      const resultBuffer = Buffer.from(await resultRes.arrayBuffer());
+
+      await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -2 } });
+
+      user.awaitingMarkedImage = false;
+      user.awaitingRawImage = false;
+      user.markedImageFileId = '';
+      user.lastEraserResultBuffer = resultBuffer.toString('base64');
+      await user.save();
+
+      const sentMsg = await ctx.replyWithDocument(
+        new InputFile(resultBuffer, 'erased_custom.png'),
+        {
+          reply_markup: new InlineKeyboard()
+            .text('JPG', 'eraser_fmt_jpg')
+            .text('PNG', 'eraser_fmt_png')
+            .text('WEBP', 'eraser_fmt_webp')
+            .row()
+            .text('GIF', 'eraser_fmt_gif')
+            .text('TIFF', 'eraser_fmt_tiff')
+        }
+      );
+
+      user.lastEraserResultMsgId = sentMsg.message_id;
+      await user.save();
+
+      const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.ARCHIVE_CHANNEL || process.env.CHANNEL_ID;
+      if (archiveChannel) {
+        const userId = ctx.from!.id;
+        const userLink = ctx.from!.username ? `@${ctx.from!.username}` : ctx.from!.first_name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const sizeMB = (resultBuffer.length / (1024 * 1024)).toFixed(2);
+        const date = new Date().toLocaleString('en-US', { timeZone: 'Asia/Riyadh' });
+
+        ctx.api.sendDocument(archiveChannel, new InputFile(resultBuffer, 'erased_custom.png'), {
+          caption: `📦 <b>نسخة أرشيفية — إزالة مخصصة</b>\n━━━━━━━━━━━━━━\n🆔 <b>User ID:</b> <code>${userId}</code>\n👤 <b>Username:</b> ${userLink}\n🔄 <b>العملية:</b> إزالة عنصر مخصص\n💳 <b>المحاولات المخصومة:</b> 2\n✅ <b>الحالة:</b> ناجحة\n📦 <b>الحجم:</b> ${sizeMB} MB\n📅 <b>الوقت:</b> ${date}\n━━━━━━━━━━━━━━`,
+          parse_mode: 'HTML',
+          disable_notification: true,
+        }).catch(e => console.error('[Archive Error]:', e));
+      }
+
+    } catch (err: any) {
+      user.awaitingMarkedImage = false;
+      user.awaitingRawImage = false;
+      user.markedImageFileId = '';
+      await user.save();
+
+      await ctx.reply(
+        "عذراً منك يا صديقي، لم أتمكن من معالجة الصورة هذه المرة. ⚠️\n<b>لم يتم خصم أي محاولات من رصيدك.</b>\nيرجى التأكد من جودة الصورتين ووضوح التحديد والمحاولة مجدداً.",
+        { parse_mode: 'HTML' }
+      );
+
+      const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.ARCHIVE_CHANNEL || process.env.CHANNEL_ID;
+      if (archiveChannel) {
+        ctx.api.sendMessage(
+          archiveChannel,
+          `❌ الحالة: فشل | سبب الخطأ: ${err.message?.replace(/</g, '&lt;').replace(/>/g, '&gt;')} | المخصوم: 0`,
+          { parse_mode: 'HTML', disable_notification: true }
+        ).catch(e => console.error('[Archive Error]:', e));
+      }
+    }
     return;
   }
 
