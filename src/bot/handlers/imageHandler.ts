@@ -146,7 +146,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
     try {
       const [markedBuffer, rawBuffer] = await Promise.all([
-        getFileBuffer(user.markedImageFileId, ctx),
+        getFileBuffer(user.markedImageFileId ?? '', ctx),
         getFileBuffer(rawFileId, ctx)
       ]);
 
