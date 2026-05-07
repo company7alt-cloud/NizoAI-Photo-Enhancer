@@ -22,6 +22,7 @@ export interface SessionData {
     editingLineIndex?: number;
     awaitingLineEditIndex?: boolean;
     awaitingLineEditText?: boolean;
+    previewMessageId?: number;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;
