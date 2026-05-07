@@ -164,23 +164,34 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         auth: process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY,
       });
 
-      const output = await replicate.run(
-        "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd58bf",
-        {
-          input: {
-            image: rawBase64,
-            mask: maskBase64,
-            prompt: "clean background, seamless texture, photo realistic",
-            negative_prompt: "artifacts, blurry, watermark, text, logo"
-          }
-        }
-      ) as string[];
+      const modelId = process.env.REPLICATE_MODEL_ID || "lucataco/sdxl-inpainting:a5b13068cc81a89a4fbeefeccc774869fcb34df4dbc92c1555e0f2771d49dde7";
 
-      if (!output || !output[0]) {
+      const replicateOutput = await Promise.race<unknown>([
+        replicate.run(
+          modelId as `${string}/${string}:${string}`,
+          {
+            input: {
+              image: rawBase64,
+              mask: maskBase64,
+              prompt: "clean background, seamless texture, photo realistic",
+              negative_prompt: "artifacts, blurry, watermark, text, logo"
+            }
+          }
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Replicate timeout after 120 s')), 120_000)
+        )
+      ]);
+
+      const outputUrl = Array.isArray(replicateOutput)
+        ? String(replicateOutput[0])
+        : String(replicateOutput);
+
+      if (!outputUrl || outputUrl === "undefined") {
         throw new Error("Failed to generate image from AI.");
       }
 
-      const resultRes = await fetch(output[0]);
+      const resultRes = await fetch(outputUrl);
       if (!resultRes.ok) throw new Error("Failed to fetch generated image.");
       const resultBuffer = Buffer.from(await resultRes.arrayBuffer());
 
