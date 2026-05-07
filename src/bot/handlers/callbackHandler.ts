@@ -67,23 +67,23 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   if (data === 'show_global_stats') {
     const { getGlobalCounter } = await import('../../services/statsService');
     const total = await getGlobalCounter();
-    
+
     await ctx.answerCallbackQuery({
       text: `🚀 إحصائيات البوت:\n\nتمت معالجة وتحسين أكثر من [ ${total} ] صورة وملف بنجاح عبر نظامنا الذكي! 🌟`,
       show_alert: true
-    }).catch(() => {});
+    }).catch(() => { });
     return;
   }
 
 
   if (data === 'check_force_sub') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
-    const userId   = ctx.from!.id;
+    const userId = ctx.from!.id;
     const channels = await ForceSubChannel.find().sort({ order: 1 });
 
     if (channels.length === 0) {
-      await ctx.deleteMessage().catch(() => {});
+      await ctx.deleteMessage().catch(() => { });
       return;
     }
 
@@ -107,42 +107,42 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.answerCallbackQuery({
         text: '✅ تم التحقق! يمكنك استخدام البوت الآن 🎉',
         show_alert: true,
-      }).catch(() => {});
-      await ctx.deleteMessage().catch(() => {});
+      }).catch(() => { });
+      await ctx.deleteMessage().catch(() => { });
     } else {
       await ctx.answerCallbackQuery({
         text: '❌ لم تشترك في جميع القنوات بعد!',
         show_alert: true,
-      }).catch(() => {});
+      }).catch(() => { });
     }
     return;
   }
 
   if (data.startsWith("eraser_fmt_")) {
     await ctx.answerCallbackQuery();
-    
+
     const user = await User.findOne({ telegramId: ctx.from!.id.toString() });
     if (!user?.lastEraserResultBuffer) {
       await ctx.reply("❌ انتهت صلاحية الملف. أرسل الصورة مجدداً.");
       return;
     }
-    
+
     const formatMap: Record<string, string> = {
-      eraser_fmt_jpg:  'jpeg',
-      eraser_fmt_png:  'png',
+      eraser_fmt_jpg: 'jpeg',
+      eraser_fmt_png: 'png',
       eraser_fmt_webp: 'webp',
-      eraser_fmt_gif:  'gif',
+      eraser_fmt_gif: 'gif',
       eraser_fmt_tiff: 'tiff',
     };
-    
+
     const targetFormat = formatMap[data];
     if (!targetFormat) return;
-    
+
     const processingMsg = await ctx.reply(`⏳ جاري تحويل الصيغة إلى ${data.split('_')[2].toUpperCase()}...`);
-    
+
     try {
       const inputBuffer = Buffer.from(user.lastEraserResultBuffer, 'base64');
-      
+
       // Convert using sharp
       const convertedBuffer = await sharp(inputBuffer)
         .toFormat(targetFormat as keyof sharp.FormatEnum, {
@@ -150,9 +150,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           lossless: targetFormat === 'webp',
         })
         .toBuffer();
-      
-      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
-      
+
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => { });
+
       const ext = targetFormat === 'jpeg' ? 'jpg' : targetFormat;
       const { incrementGlobalCounter } = await import('../../services/statsService');
       await incrementGlobalCounter();
@@ -163,7 +163,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         }
       );
     } catch (err: any) {
-      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => { });
       await ctx.reply("❌ فشل التحويل. حاول مرة أخرى.");
       console.error("[EraserFmt] Error:", err.message);
     }
@@ -455,18 +455,18 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     if (msg?.photo && msg.photo.length > 0) {
       const photo = msg.photo[msg.photo.length - 1];
-      fileId   = photo.file_id;
+      fileId = photo.file_id;
       fileSize = photo.file_size ?? 0;
     } else if (msg?.reply_to_message?.photo?.length > 0) {
       const photo = msg.reply_to_message.photo[msg.reply_to_message.photo.length - 1];
-      fileId   = photo.file_id;
+      fileId = photo.file_id;
       fileSize = photo.file_size ?? 0;
     } else if (msg?.document?.mime_type?.startsWith('image/')) {
-      fileId   = msg.document.file_id;
+      fileId = msg.document.file_id;
       fileSize = msg.document.file_size ?? 0;
       fileName = (msg.document.file_name?.replace(/\.[^/.]+$/, '') || 'RealESRGAN_Enhanced') + '.jpg';
     } else if (msg?.reply_to_message?.document?.mime_type?.startsWith('image/')) {
-      fileId   = msg.reply_to_message.document.file_id;
+      fileId = msg.reply_to_message.document.file_id;
       fileSize = msg.reply_to_message.document.file_size ?? 0;
       fileName = (msg.reply_to_message.document.file_name?.replace(/\.[^/.]+$/, '') || 'RealESRGAN_Enhanced') + '.jpg';
     }
@@ -485,9 +485,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     // STEP 2 — Atomic lock + deduction (3 points) ───────────────────────────
     const lockedUser = await User.findOneAndUpdate(
       {
-        telegramId:         ctx.from!.id.toString(),
-        isProcessingImage:  { $ne: true },
-        dailyQuota:         { $gte: 3 },
+        telegramId: ctx.from!.id.toString(),
+        isProcessingImage: { $ne: true },
+        dailyQuota: { $gte: 3 },
       },
       {
         $set: { isProcessingImage: true },
@@ -508,7 +508,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     }
 
     // Acknowledge the button press
-    await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'بدأ التحسين... ⏳' }).catch(() => { });
 
     // Delete the inline-keyboard message
     try {
@@ -533,7 +533,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       }
 
       // STEP 4 — Download image as Buffer ────────────────────────────────────
-      const tgFile  = await ctx.api.getFile(fileId);
+      const tgFile = await ctx.api.getFile(fileId);
       const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
 
       const fetchRes = await fetch(fileUrl);
@@ -550,7 +550,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
             '✨ *جاري معالجة الصورة بلمسة سحرية...*\n⏳ يتم الآن رفع الدقة وإبراز التفاصيل المخفية، لحظات من فضلك.',
             { parse_mode: 'Markdown' }
           )
-          .catch(() => {});
+          .catch(() => { });
       }
 
       const resultBuffer = await enhanceWithONNX(inputBuffer);
@@ -635,7 +635,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await User.findOneAndUpdate(
         { telegramId: ctx.from!.id.toString() },
         { $set: { isProcessingImage: false } }
-      ).catch(() => {});
+      ).catch(() => { });
     }
     return;
   }
@@ -673,7 +673,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         await ctx.answerCallbackQuery({
           text: `تحتاج دعوة ${REQUIRED_REFERRALS - referralCount} شخص إضافي للحصول على الهدية`,
           show_alert: true
-        }).catch(() => {});
+        }).catch(() => { });
 
         await ctx.reply(
           `🎁 <b>الهدية اليومية</b>\n\n` +
@@ -795,7 +795,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const sourceMessageId = Number(withoutPrefix.substring(underscoreIdx + 1));
 
     if (!sourceChatId || !sourceMessageId || isNaN(sourceChatId) || isNaN(sourceMessageId)) {
-      await ctx.editMessageText('❌ انتهت صلاحية البلاغ. يرجى إرسال بلاغ جديد.').catch(() => {});
+      await ctx.editMessageText('❌ انتهت صلاحية البلاغ. يرجى إرسال بلاغ جديد.').catch(() => { });
       return;
     }
 
@@ -846,11 +846,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           : '❌ حدث خطأ أثناء إرسال البلاغ. حاول مجدداً.',
         { parse_mode: 'HTML' }
       );
-    } catch {}
+    } catch { }
     return;
   }
 
-    // ══════════════════════════════════════
+  // ══════════════════════════════════════
   // 💬 فتح جلسة دعم مع العميل
   // ══════════════════════════════════════
   if (data.startsWith('admin_support_')) {
@@ -1294,7 +1294,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
 
   if (data === 'admin_grant_vip' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from.id.toString() },
       { $set: { adminAwaitingInput: 'grant_vip_id', adminTargetUserId: null } }
@@ -1421,7 +1421,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
             '⏰ انتهى وقت الإرسال (60 ثانية).\nاضغط الزر مجدداً إذا أردت المتابعة ❌'
           );
         }
-      } catch (_e) {}
+      } catch (_e) { }
     }, 60_000);
 
     await ctx.reply(
@@ -1452,7 +1452,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ══════════════════════════════════════
   // 🖼 تحويل صيغة الملف
   // ══════════════════════════════════════
-  if (['conv_png','conv_jpg','conv_webp','conv_avif','conv_tiff','conv_pdf','conv_svg'].includes(data)) {
+  if (['conv_png', 'conv_jpg', 'conv_webp', 'conv_avif', 'conv_tiff', 'conv_pdf', 'conv_svg'].includes(data)) {
     await ctx.answerCallbackQuery({ text: 'جاري تحويل الصيغة... ⏳' });
 
     const format = data.replace('conv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'svg';
@@ -1726,7 +1726,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  if (['fconv_png','fconv_jpg','fconv_webp','fconv_avif','fconv_tiff','fconv_pdf','fconv_svg'].includes(data)) {
+  if (['fconv_png', 'fconv_jpg', 'fconv_webp', 'fconv_avif', 'fconv_tiff', 'fconv_pdf', 'fconv_svg'].includes(data)) {
     await ctx.answerCallbackQuery({ text: 'جاري المعالجة... ⏳' });
 
     const format = data.replace('fconv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'svg';
@@ -1825,7 +1825,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           const response = await fetch(fileUrl);
           if (!response.ok) continue;
           const inputBuffer = Buffer.from(await response.arrayBuffer());
-          
+
           const shouldUpscale = currentUser?.conversionUpscale === true;
           let processBuffer: any = inputBuffer;
 
@@ -1853,7 +1853,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
       if (!convertedFiles.length) throw new Error('فشل تحويل جميع الصور');
 
-      try { await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id); } catch {}
+      try { await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id); } catch { }
 
       const actionUser = ctx.from;
       const userLink = actionUser?.username
@@ -1865,8 +1865,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         const { buffer, name } = convertedFiles[0];
         const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
 
-      const { incrementGlobalCounter } = await import('../../services/statsService');
-      await incrementGlobalCounter();
+        const { incrementGlobalCounter } = await import('../../services/statsService');
+        await incrementGlobalCounter();
         await ctx.replyWithDocument(
           new InputFile(buffer, name),
           {
@@ -1908,8 +1908,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         const zipFileName = `NizoAI_Batch_${format.toUpperCase()}_${Date.now()}.zip`;
         const zipSizeMB = (zipBuffer.length / (1024 * 1024)).toFixed(2);
 
-      const { incrementGlobalCounter } = await import('../../services/statsService');
-      await incrementGlobalCounter();
+        const { incrementGlobalCounter } = await import('../../services/statsService');
+        await incrementGlobalCounter();
         await ctx.replyWithDocument(
           new InputFile(zipBuffer, zipFileName),
           {
@@ -1948,25 +1948,29 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       // Reset state
       await User.findOneAndUpdate(
         { telegramId },
-        { $set: {
-          awaitingFormatConversion: false,
-          pendingConversionFiles: [],
-          conversionUpscale: false,
-        }}
+        {
+          $set: {
+            awaitingFormatConversion: false,
+            pendingConversionFiles: [],
+            conversionUpscale: false,
+          }
+        }
       );
 
     } catch (error) {
       console.error('[fconv Error]:', error);
-      try { await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id); } catch {}
+      try { await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id); } catch { }
       await sendAdminAlert(ctx as any, `fconv Error (${format}): ${(error as Error).message}`);
       await ctx.reply('❌ حدث خطأ أثناء التحويل. تم إشعار المطور 💙');
       await User.findOneAndUpdate(
         { telegramId },
-        { $set: {
-          awaitingFormatConversion: false,
-          pendingConversionFiles: [],
-          conversionUpscale: false,
-        }}
+        {
+          $set: {
+            awaitingFormatConversion: false,
+            pendingConversionFiles: [],
+            conversionUpscale: false,
+          }
+        }
       );
     }
     return;
@@ -1986,7 +1990,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'eraser_start') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
     const eraserUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
     if (!eraserUser) return;
@@ -2031,10 +2035,29 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ══════════════════════════════════════
   // 🧹 مُزيل النجمة التلقائي — one-shot auto watermark removal
   // ══════════════════════════════════════
+  // القائمة الجديدة المزدوجة (تظهر للمستخدم أولاً)
   if (data === 'remove_watermark_auto') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
+    await ctx.editMessageText(
+      `✨ <b>وحدة التنقيح البصري الذكي</b>\n\nتعتمد هذه الأداة على خوارزميات الذكاء الاصطناعي التوليدي لتحليل بنية الصورة وإزالة أي عناصر أو علامات غير مرغوب فيها بدقة عالية دون تشويه المحتوى الأصلي.\n\n🔍 <b>اختر نوع المعالجة:</b>`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '✨ إزالة نجمة Gemini تلقائياً', callback_data: 'watermark_auto_gemini' }],
+            [{ text: '🖌️ إزالة عنصر مخصص', callback_data: 'watermark_custom_start' }]
+          ]
+        }
+      }
+    ).catch(() => { });
+    return;
+  }
 
-    const autoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+  // مسار إزالة النجمة القديم (يشتغل لما يضغط الزر الأول)
+  if (data === 'watermark_auto_gemini') {
+    await ctx.answerCallbackQuery().catch(() => { });
+
+    const autoAdminIds = (process.env.ADMIN_IDS || '').split(',');
     const isAutoAdmin = autoAdminIds.includes(ctx.from!.id.toString());
 
     const autoUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
@@ -2042,10 +2065,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     if (!isAutoAdmin && autoUser.dailyQuota < 1) {
       await ctx.reply(
-        `⚠️ رصيدك غير كافٍ! 🥺\n` +
-        `تحتاج <b>نقطة واحدة (1)</b> لاستخدام مُزيل النجمة التلقائي 🧹\n` +
-        `رصيدك الحالي: <b>${autoUser.dailyQuota}</b>\n\n` +
-        `💡 احصل على محاولات مجانية من زر الهدية اليومية 🎁`,
+        `⚠️ <b>عذراً، رصيدك غير كافٍ!</b>\nتحتاج محاولة واحدة على الأقل.\n💡 رصيدك الحالي: ${autoUser.dailyQuota}`,
         { parse_mode: 'HTML' }
       );
       return;
@@ -2057,10 +2077,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
 
     await ctx.reply(
-      '🧹 <b>مُزيل النجمة التلقائي</b>\n\n' +
-      'أرسل الصورة التي تريد إزالة النجمة/الشعار منها 📷\n\n' +
-      '✨ سأقوم تلقائياً بإزالة العلامة من <b>الزاوية السفلية اليمنى</b> بالذكاء الاصطناعي\n' +
-      '💎 <b>السعر: نقطة واحدة (1)</b>',
+      '🧹 <b>مزيل النجمة التلقائي</b>\n\n📸 أرسل الصورة التي تريد إزالة النجمة/الشعار منها\n✨ سأقوم تلقائياً بإزالة العلامة من <b>الزاوية السفلية اليمنى</b>\n💎 <b>السعر:</b> نقطة واحدة (1)',
       {
         parse_mode: 'HTML',
         reply_markup: {
@@ -2072,17 +2089,17 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'cancel_auto_eraser') {
-    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { awaitingAutoEraserImage: false } }
     );
-    await ctx.deleteMessage().catch(() => {});
+    await ctx.deleteMessage().catch(() => { });
     return;
   }
 
   if (data === 'cancel_eraser') {
-    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       {
@@ -2096,11 +2113,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         }
       }
     );
-    await ctx.deleteMessage().catch(() => {});
+    await ctx.deleteMessage().catch(() => { });
     return;
   }
   if (data.startsWith('convert_')) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
     // Extract format from callback_data (e.g., convert_jpg_1234567890 → jpg)
     const parts = data.split('_');
@@ -2127,7 +2144,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
       const fileName = `NizoAI_Clean_${Date.now()}.${ext}`;
 
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       const { InputFile } = await import('grammy');
       const { incrementGlobalCounter } = await import('../../services/statsService');
@@ -2138,10 +2155,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       );
 
       // Delete the format selection message to keep chat clean
-      await ctx.deleteMessage().catch(() => {});
+      await ctx.deleteMessage().catch(() => { });
 
     } catch (error: any) {
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
       console.error('[Convert] Error:', error?.message);
       await ctx.reply('❌ حدث خطأ أثناء التحويل. يرجى المحاولة مجدداً.');
     }
@@ -2161,10 +2178,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '💬 رسائل البوت',  callback_data: 'txtedit_cat_message' }],
+            [{ text: '💬 رسائل البوت', callback_data: 'txtedit_cat_message' }],
             [{ text: '🔘 أسماء الأزرار', callback_data: 'txtedit_cat_button' }],
-            [{ text: '🔔 الإشعارات',    callback_data: 'txtedit_cat_notification' }],
-            [{ text: '🔙 رجوع للوحة',   callback_data: 'admin_panel' }],
+            [{ text: '🔔 الإشعارات', callback_data: 'txtedit_cat_notification' }],
+            [{ text: '🔙 رجوع للوحة', callback_data: 'admin_panel' }],
           ]
         }
       }
@@ -2176,9 +2193,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     if (!adminIds.includes(ctx.from!.id.toString())) return;
     await ctx.answerCallbackQuery();
 
-    const catMap: Record<string, 'message'|'button'|'notification'> = {
-      txtedit_cat_message:      'message',
-      txtedit_cat_button:       'button',
+    const catMap: Record<string, 'message' | 'button' | 'notification'> = {
+      txtedit_cat_message: 'message',
+      txtedit_cat_button: 'button',
       txtedit_cat_notification: 'notification',
     };
     const category = catMap[data];
@@ -2188,8 +2205,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const items = await getByCategory(category);
 
     const labelMap: Record<string, string> = {
-      message:      '💬 رسائل البوت',
-      button:       '🔘 أسماء الأزرار',
+      message: '💬 رسائل البوت',
+      button: '🔘 أسماء الأزرار',
       notification: '🔔 الإشعارات',
     };
 
@@ -2225,7 +2242,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       `✏️ <b>تعديل النص</b>\n\n` +
       `🔑 <b>المفتاح:</b> <code>${key}</code>\n\n` +
       `📝 <b>النص الحالي:</b>\n` +
-      `<code>${currentValue.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>\n\n` +
+      `<code>${currentValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>\n\n` +
       `📨 <b>أرسل الآن النص الجديد</b>\n\n` +
       `📌 المتغيرات المتاحة (إن وجدت):\n` +
       `• <code>{timeLeft}</code> الوقت المتبقي\n` +
@@ -2239,7 +2256,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🔄 استعادة الافتراضي', callback_data: `txtedit_reset_${key}`.slice(0,64) }],
+            [{ text: '🔄 استعادة الافتراضي', callback_data: `txtedit_reset_${key}`.slice(0, 64) }],
             [{ text: '❌ إلغاء', callback_data: 'txtedit_cancel' }],
           ]
         }
@@ -2264,7 +2281,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     if (restored) {
       await ctx.reply(
         `✅ <b>تم استعادة النص الافتراضي</b>\n\n` +
-        `📝 <b>النص المُستعاد:</b>\n<code>${restored.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`,
+        `📝 <b>النص المُستعاد:</b>\n<code>${restored.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`,
         { parse_mode: 'HTML' }
       );
     } else {
@@ -2288,7 +2305,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ════════════════════════════════
 
   if (data === 'admin_manage_attempts' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await ctx.reply(
       '🎯 <b>إدارة المحاولات</b>\n\nاختر العملية المطلوبة:',
       {
@@ -2308,7 +2325,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'attempts_add_all' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'attempts_add_all', adminTargetUserId: null } }
@@ -2318,7 +2335,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'attempts_add_one' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'attempts_add_one_id', adminTargetUserId: null } }
@@ -2328,7 +2345,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'attempts_remove_one' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'attempts_remove_one_id', adminTargetUserId: null } }
@@ -2338,7 +2355,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'attempts_reset_one' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'attempts_reset_one_id', adminTargetUserId: null } }
@@ -2348,7 +2365,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'admin_create_magic_link' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'magic_link_reward', adminTargetUserId: null } }
@@ -2365,7 +2382,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ════════════════════════════════
 
   if (data === 'admin_force_sub' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const channels = await ForceSubChannel.find().sort({ order: 1 });
 
     const fsubKeyboard = channels.map((ch) => ([{
@@ -2396,7 +2413,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'add_fsub' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'add_fsub_input' } }
@@ -2432,7 +2449,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery({
       text: '✅ تم حذف القناة',
       show_alert: true,
-    }).catch(() => {});
+    }).catch(() => { });
 
     // Refresh the force-sub management screen
     const updatedChannels = await ForceSubChannel.find().sort({ order: 1 });
@@ -2455,7 +2472,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: { inline_keyboard: updatedKeyboard },
       }
-    ).catch(() => {});
+    ).catch(() => { });
     return;
   }
 }
