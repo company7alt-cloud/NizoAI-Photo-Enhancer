@@ -136,15 +136,15 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   }
 
   if (user?.awaitingRawImage) {
-    const photo = ctx.message?.photo;
-    const document = ctx.message?.document;
-    const rawFileId = photo ? photo[photo.length - 1].file_id : document?.file_id;
-
-    if (!rawFileId) return;
-
-    await ctx.replyWithChatAction('upload_photo');
-
     try {
+      const photo = ctx.message?.photo;
+      const document = ctx.message?.document;
+      const rawFileId = photo ? photo[photo.length - 1].file_id : document?.file_id;
+
+      if (!rawFileId) return;
+
+      await ctx.replyWithChatAction('upload_photo');
+
       const [markedBuffer, rawBuffer] = await Promise.all([
         getFileBuffer(user.markedImageFileId ?? '', ctx),
         getFileBuffer(rawFileId, ctx)
@@ -221,7 +221,6 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           disable_notification: true,
         }).catch(e => console.error('[Archive Error]:', e));
       }
-
     } catch (err: any) {
       user.awaitingMarkedImage = false;
       user.awaitingRawImage = false;
