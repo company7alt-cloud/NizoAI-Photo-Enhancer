@@ -30,6 +30,8 @@ export interface SessionData {
   editingLineIndex?: number;
   awaitingLineEditIndex?: boolean;
   awaitingLineEditText?: boolean;
+  // Live preview
+  previewMessageId?: number;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

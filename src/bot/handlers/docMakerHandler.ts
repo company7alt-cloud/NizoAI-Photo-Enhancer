@@ -3,39 +3,23 @@ import { BotContext } from '../../utils/validators';
 import { User } from '../../database/models/User';
 import { InputFile } from 'grammy';
 import { getSettings } from '../../services/settingsService';
+import { generatePreviewPNG, TEMPLATE_NAMES } from '../../services/previewGeneratorService';
 
 const BACKUP_CHANNEL_ID = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID || '';
 
-// ─── Utilities ─────────────────────────────────────────────────────────────────
-
 function smartWrap(text: string, pageSize: string): string[] {
-  // A4 = 595 width. Padding = 40 on each side -> 515 usable.
-  // 14pt Arabic avg width ~ 7pt. 515 / 7 = ~73 chars. Using 65 for safety.
-  // For A5 (420 x 595), usable 340. 340 / 7 = ~48. Using 40 for safety.
-  const isA5 = pageSize === 'A5';
-  const MAX_CHARS = isA5 ? 40 : 65; 
-
+  const MAX_CHARS = pageSize === 'A5' ? 40 : 65;
   const words = text.split(/\s+/);
   const lines: string[] = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    if (!currentLine) {
-      currentLine = word;
-    } else if (currentLine.length + 1 + word.length <= MAX_CHARS) {
-      currentLine += ' ' + word;
-    } else {
-      lines.push(currentLine);
-      currentLine = word;
-    }
+  let cur = '';
+  for (const w of words) {
+    if (!cur) { cur = w; }
+    else if (cur.length + 1 + w.length <= MAX_CHARS) { cur += ' ' + w; }
+    else { lines.push(cur); cur = w; }
   }
-  if (currentLine) {
-    lines.push(currentLine);
-  }
+  if (cur) lines.push(cur);
   return lines;
 }
-
-// ─── Instruction message ───────────────────────────────────────────────────────
 
 const DOC_MAKER_INSTRUCTION =
   `✨ <b>صانع المستندات والكتب</b>\n\n` +
@@ -46,9 +30,8 @@ const DOC_MAKER_INSTRUCTION =
   `📐 <b>للأسطر الفارغة:</b>\n` +
   `▸ أرسل <code>فارغ</code> ← لسطر فارغ واحد\n` +
   `▸ أرسل <code>فارغ 2</code> ← لسطرين فارغين\n` +
-  `▸ أرسل <code>فارغ 3</code> ← لثلاثة أسطر فارغة\n` +
-  `(وهكذا لأي عدد تريده)\n\n` +
-  `⚠️ <b>ملاحظة:</b> النص لن يلمس حواف المستند أبداً — هناك هوامش احترافية على جميع الجوانب.`;
+  `▸ أرسل <code>فارغ 3</code> ← لثلاثة أسطر فارغة\n\n` +
+  `⚠️ <b>ملاحظة:</b> النص لن يلمس حواف المستند أبداً — هناك هوامش احترافية.`;
 
 const COMPILE_KB = {
   inline_keyboard: [
@@ -57,101 +40,107 @@ const COMPILE_KB = {
   ],
 };
 
-function generateControlPanel() {
+function controlPanel() {
   return {
     inline_keyboard: [
-      [
-        { text: '📤 تصدير الآن', callback_data: 'doc_compile' },
-        { text: '✏️ تعديل سطر', callback_data: 'doc_edit_line' }
-      ],
-      [
-        { text: '🔄 إعادة آخر سطر', callback_data: 'doc_redo' },
-        { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' }
-      ],
-      [
-        { text: '📋 عرض الأسطر', callback_data: 'doc_view' }
-      ]
-    ]
+      [{ text: '📤 تصدير الآن', callback_data: 'doc_compile' }, { text: '✏️ تعديل سطر', callback_data: 'doc_edit_line' }],
+      [{ text: '🔄 إعادة آخر سطر', callback_data: 'doc_redo' }, { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' }],
+      [{ text: '📋 عرض الأسطر', callback_data: 'doc_view' }],
+    ],
   };
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// CALLBACK HANDLER
-// ══════════════════════════════════════════════════════════════════════════════
+const SIZE_KB = {
+  inline_keyboard: [
+    [{ text: 'A4 (افتراضي)', callback_data: 'doc_size_A4' }, { text: 'A5', callback_data: 'doc_size_A5' }],
+    [{ text: 'Letter', callback_data: 'doc_size_Letter' }, { text: 'B5', callback_data: 'doc_size_B5' }],
+    [{ text: 'Legal', callback_data: 'doc_size_Legal' }, { text: 'Executive', callback_data: 'doc_size_Executive' }],
+    [{ text: '🔙 رجوع', callback_data: 'doc_tpl_back' }],
+  ],
+};
+
+async function refreshPreview(ctx: BotContext): Promise<void> {
+  if (!ctx.session.previewMessageId || !ctx.chat) return;
+  try {
+    const png = await generatePreviewPNG({
+      templateId: ctx.session.templateId || 1,
+      pageSize: ctx.session.pageSize || 'A4',
+      lines: ctx.session.documentLines || [],
+    });
+    const tplName = TEMPLATE_NAMES[ctx.session.templateId || 1] || '';
+    await ctx.api.editMessageMedia(ctx.chat.id, ctx.session.previewMessageId, {
+      type: 'photo',
+      media: new InputFile(png, 'preview.png'),
+      caption: `🖼 <b>معاينة مباشرة</b> · ${tplName} · ${ctx.session.pageSize || 'A4'}\n📝 ${(ctx.session.documentLines || []).length} سطر`,
+      parse_mode: 'HTML',
+    });
+  } catch { /* silent */ }
+}
+
+// ── CALLBACK HANDLER ─────────────────────────────────────────────────────────
 
 export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> {
-  if (!ctx.session) return false;
-  if (!ctx.from) return false;
+  if (!ctx.session || !ctx.from) return false;
   ctx.session.pendingBatchFiles ??= [];
 
   const data = ctx.callbackQuery?.data;
   if (!data) return false;
 
-  // ── Lock guard: doc_maker_start bypasses callbackHandler's lockMap ────────
   if (data === 'doc_maker_start') {
-    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-    const isAdminUser = adminIds.includes(ctx.from!.id.toString());
-    if (!isAdminUser) {
-      const lockSettings = await getSettings();
-      const isLocked = lockSettings.locks.btn_doc_maker === true;
-      if (isLocked) {
-        const bypassUser = await User.findOne({ telegramId: ctx.from!.id.toString() }).select('canBypassLocks');
-        if (!bypassUser?.canBypassLocks) {
-          await ctx.answerCallbackQuery({
-            text: '⚠️ هذا القسم مغلق مؤقتاً للتحديث. متاح حالياً للمطورين والمشتركين المعتمدين فقط.',
-            show_alert: true,
-          }).catch(() => {});
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim());
+    if (!adminIds.includes(ctx.from!.id.toString())) {
+      const lock = await getSettings();
+      if (lock.locks.btn_doc_maker === true) {
+        const u = await User.findOne({ telegramId: ctx.from!.id.toString() }).select('canBypassLocks');
+        if (!u?.canBypassLocks) {
+          await ctx.answerCallbackQuery({ text: '⚠️ هذا القسم مغلق مؤقتاً.', show_alert: true }).catch(() => {});
           return true;
         }
       }
     }
   }
 
-  // Only handle recognised doc-maker callbacks
   const docCallbacks = [
-    'doc_maker_start', 'doc_maker_cancel',
-    'doc_type_text', 'doc_type_image',
-    'doc_compile', 'doc_continue', 'doc_finish',
-    'align_right', 'align_center', 'align_left',
-    'doc_redo', 'doc_edit_line', 'doc_view', 'doc_edit_after', 'doc_new_page'
+    'doc_maker_start','doc_maker_cancel',
+    'doc_type_text','doc_type_image',
+    'doc_compile','doc_continue','doc_finish',
+    'align_right','align_center','align_left',
+    'doc_redo','doc_edit_line','doc_view','doc_edit_after','doc_new_page',
+    'doc_tpl_confirm','doc_tpl_back',
   ];
-  const isDocCallback = docCallbacks.includes(data) || data.startsWith('doc_tpl_') || data.startsWith('doc_size_');
-  if (!isDocCallback) return false;
+  const isDoc = docCallbacks.includes(data) || data.startsWith('doc_tpl_') || data.startsWith('doc_size_');
+  if (!isDoc) return false;
 
   const telegramId = ctx.from!.id.toString();
 
-  // ── Entry: Ask Type ──────────────────────────────────────────────────────
+  // ── Entry ─────────────────────────────────────────────────────────────────
   if (data === 'doc_maker_start') {
     await ctx.answerCallbackQuery();
-    await ctx.reply(
-      '📝 <b>صانع المستندات والكتب</b>\n\nاختر نوع المستند:',
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📄 مستند نصي', callback_data: 'doc_type_text' }],
-            [{ text: '🖼 مستند مصور', callback_data: 'doc_type_image' }],
-            [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
-          ],
-        },
-      }
-    );
+    await ctx.reply('📝 <b>صانع المستندات</b>\n\nاختر نوع المستند:', {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📄 مستند نصي', callback_data: 'doc_type_text' }],
+          [{ text: '🖼 مستند مصور', callback_data: 'doc_type_image' }],
+          [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+        ],
+      },
+    });
     return true;
   }
 
-  // ── Step 1 → 2: Doc Type Selected -> Ask Template ────────────────────────
+  // ── Type Selected → Template Selection ───────────────────────────────────
   if (data === 'doc_type_text' || data === 'doc_type_image') {
     await ctx.answerCallbackQuery();
     ctx.session.docType = data === 'doc_type_text' ? 'text' : 'image';
-    
     await ctx.editMessageText(
       '🎨 <b>اختر نموذج التصميم:</b>\n\n' +
       '1️⃣ كلاسيكي نظيف (إطار رفيع)\n' +
       '2️⃣ احترافي مع رأس وتذييل\n' +
-      '3️⃣ زوايا مزخرفة — خط كبير\n' +
-      '4️⃣ أشرطة جانبية — خط مضغوط\n' +
+      '3️⃣ زوايا مزخرفة\n' +
+      '4️⃣ أشرطة جانبية\n' +
       '5️⃣ إطار مزدوج أنيق\n\n' +
-      '<i>اختر النموذج المناسب لمستندك:</i>',
+      '<i>اختر النموذج المناسب:</i>',
       {
         parse_mode: 'HTML',
         reply_markup: {
@@ -167,72 +156,125 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── Step 2 → 3: Template Selected -> Ask Size ─────────────────────────────
-  if (data.startsWith('doc_tpl_')) {
+  // ── Template Selected → Send Preview Photo ────────────────────────────────
+  if (data.startsWith('doc_tpl_') && data !== 'doc_tpl_confirm' && data !== 'doc_tpl_back') {
     await ctx.answerCallbackQuery();
-    ctx.session.templateId = parseInt(data.replace('doc_tpl_', ''), 10);
-    
-    await ctx.editMessageText('📐 <b>اختر مقاس الصفحة:</b>', {
+    const tplId = parseInt(data.replace('doc_tpl_', ''), 10);
+    ctx.session.templateId = tplId;
+
+    let png: Buffer;
+    try {
+      png = await generatePreviewPNG({ templateId: tplId, pageSize: ctx.session.pageSize || 'A4', lines: [] });
+    } catch {
+      await ctx.reply('⚠️ تعذّر توليد المعاينة. اختر المقاس:',  { reply_markup: SIZE_KB });
+      return true;
+    }
+
+    // Delete current text message, send photo
+    await ctx.deleteMessage().catch(() => {});
+    const sent = await ctx.replyWithPhoto(new InputFile(png, 'preview.png'), {
+      caption: `🎨 <b>معاينة النموذج: ${TEMPLATE_NAMES[tplId]}</b>\n\nهذه معاينة مبدئية للإطار. اضغط ✅ موافق للمتابعة.`,
       parse_mode: 'HTML',
       reply_markup: {
-        inline_keyboard: [
-          [{ text: 'A4 (افتراضي)', callback_data: 'doc_size_A4' }, { text: 'A5', callback_data: 'doc_size_A5' }],
-          [{ text: 'Letter', callback_data: 'doc_size_Letter' }, { text: 'B5', callback_data: 'doc_size_B5' }],
-          [{ text: 'Legal', callback_data: 'doc_size_Legal' }, { text: 'Executive', callback_data: 'doc_size_Executive' }],
-          [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
-        ],
+        inline_keyboard: [[
+          { text: '✅ موافق', callback_data: 'doc_tpl_confirm' },
+          { text: '🔙 رجوع', callback_data: 'doc_tpl_back' },
+        ]],
       },
     });
+    ctx.session.previewMessageId = sent.message_id;
     return true;
   }
 
-  // ── Step 3 → 4: Size Selected -> Enable Text Input Mode ───────────────────
+  // ── Confirm Template → Show Size Selection (edit caption) ─────────────────
+  if (data === 'doc_tpl_confirm') {
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageCaption({
+      caption: '📐 <b>اختر مقاس الصفحة:</b>',
+      parse_mode: 'HTML',
+      reply_markup: SIZE_KB,
+    }).catch(() => {});
+    return true;
+  }
+
+  // ── Back from Preview → Restore Template List ─────────────────────────────
+  if (data === 'doc_tpl_back') {
+    await ctx.answerCallbackQuery();
+    await ctx.deleteMessage().catch(() => {});
+    ctx.session.previewMessageId = undefined;
+    await ctx.reply(
+      '🎨 <b>اختر نموذج التصميم:</b>\n\n' +
+      '1️⃣ كلاسيكي · 2️⃣ احترافي · 3️⃣ زوايا · 4️⃣ أشرطة · 5️⃣ إطار مزدوج',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1' }, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2' }],
+            [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3' }, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4' }],
+            [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5' }],
+            [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+          ],
+        },
+      }
+    );
+    return true;
+  }
+
+  // ── Size Selected → Init + Send Instruction + Update Preview ─────────────
   if (data.startsWith('doc_size_')) {
     await ctx.answerCallbackQuery();
     ctx.session.pageSize = data.replace('doc_size_', '');
-    
-    // NOW enable text input state
     ctx.session.isInDocMaker = true;
     ctx.session.documentLines = [];
     ctx.session.tempLine = null;
 
-    await ctx.editMessageText(DOC_MAKER_INSTRUCTION, {
-      parse_mode: 'HTML',
-      reply_markup: COMPILE_KB,
-    });
+    // Update the preview photo for correct size, remove keyboard
+    if (ctx.session.previewMessageId && ctx.chat) {
+      try {
+        const png = await generatePreviewPNG({
+          templateId: ctx.session.templateId || 1,
+          pageSize: ctx.session.pageSize,
+          lines: [],
+        });
+        const tplName = TEMPLATE_NAMES[ctx.session.templateId || 1] || '';
+        await ctx.api.editMessageMedia(ctx.chat.id, ctx.session.previewMessageId, {
+          type: 'photo',
+          media: new InputFile(png, 'preview.png'),
+          caption: `🖼 <b>معاينة مباشرة</b> · ${tplName} · ${ctx.session.pageSize}\n📝 0 سطر`,
+          parse_mode: 'HTML',
+        });
+      } catch { /* silent */ }
+    }
+
+    await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML', reply_markup: COMPILE_KB });
     return true;
   }
 
-  // ── Cancel ────────────────────────────────────────────────────────────────
+  // ── Cancel ─────────────────────────────────────────────────────────────────
   if (data === 'doc_maker_cancel') {
     await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' });
     ctx.session.isInDocMaker = false;
     ctx.session.documentLines = [];
     ctx.session.tempLine = null;
+    ctx.session.previewMessageId = undefined;
     await ctx.deleteMessage().catch(() => {});
     return true;
   }
 
-  // ── Alignment callbacks ───────────────────────────────────────────────────
+  // ── Alignment ─────────────────────────────────────────────────────────────
   if (data === 'align_right' || data === 'align_center' || data === 'align_left') {
     await ctx.answerCallbackQuery();
-
     const tempLine = ctx.session.tempLine;
     if (!tempLine) {
       await ctx.editMessageText('⚠️ انتهت صلاحية النص. أرسل النص مجدداً.').catch(() => {});
       return true;
     }
-
     const alignMap: Record<string, 'right' | 'center' | 'left'> = {
-      align_right: 'right',
-      align_center: 'center',
-      align_left: 'left',
+      align_right: 'right', align_center: 'center', align_left: 'left',
     };
-
     if (!ctx.session.documentLines) ctx.session.documentLines = [];
     const pageSize = ctx.session.pageSize || 'A4';
-    
-    // Check if we are editing an existing line
+
     if (ctx.session.editingLineIndex !== undefined) {
       const idx = ctx.session.editingLineIndex;
       if (idx >= 0 && idx < ctx.session.documentLines.length) {
@@ -241,93 +283,58 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       ctx.session.editingLineIndex = undefined;
       ctx.session.awaitingLineEditText = false;
       ctx.session.tempLine = null;
-
       const lines = ctx.session.documentLines;
-      const preview = lines.map((l, i) => `${i + 1}. ${l.text ? l.text.substring(0, 30) + '...' : '[فارغ]'}`).join('\n');
-      
-      await ctx.editMessageText(
-        `✅ تم تعديل السطر بنجاح!\n\n📄 <b>المستند الحالي:</b>\n${preview}`,
-        {
-          parse_mode: 'HTML',
-          reply_markup: generateControlPanel()
-        }
-      ).catch(() => {});
+      const preview = lines.map((l, i) => `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`).join('\n');
+      await ctx.editMessageText(`✅ تم تعديل السطر!\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() }).catch(() => {});
+      await refreshPreview(ctx);
       return true;
     }
 
-    // Normal add line
-    const wrappedLines = smartWrap(tempLine, pageSize);
-    for (const chunk of wrappedLines) {
-      ctx.session.documentLines.push({ text: chunk, align: alignMap[data] });
-    }
+    const wrapped = smartWrap(tempLine, pageSize);
+    for (const chunk of wrapped) ctx.session.documentLines.push({ text: chunk, align: alignMap[data] });
     ctx.session.tempLine = null;
 
     const lines = ctx.session.documentLines;
-    const preview = lines.map((l, i) => `${i + 1}. ${l.text ? l.text.substring(0, 30) + '...' : '[فارغ]'}`).join('\n');
-    
-    await ctx.editMessageText(
-      `✅ تمت إضافة النص بنجاح\n\n📄 <b>المستند الحالي:</b>\n${preview}`,
-      {
-        parse_mode: 'HTML',
-        reply_markup: generateControlPanel()
-      }
-    ).catch(() => {});
+    const preview = lines.map((l, i) => `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`).join('\n');
+    await ctx.editMessageText(`✅ تمت إضافة النص\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() }).catch(() => {});
+    await refreshPreview(ctx);
     return true;
   }
 
-  // ── Compile & deliver ─────────────────────────────────────────────────────
+  // ── Compile ────────────────────────────────────────────────────────────────
   if (data === 'doc_compile') {
     if (!ctx.session.documentLines || ctx.session.documentLines.length === 0) {
       await ctx.reply('⚠️ لا يوجد محتوى للتصدير');
       return true;
     }
-
     await ctx.answerCallbackQuery();
-    const processingMsg = await ctx.reply('⏳ جاري إنشاء ملف PDF... الرجاء الانتظار');
-
+    const processingMsg = await ctx.reply('⏳ جاري إنشاء ملف PDF...');
     try {
       const { generateDocumentFromLines } = await import('../../services/pdfGeneratorService');
-      const pageSize = ctx.session.pageSize || 'A4';
-      const lines = ctx.session.documentLines;
-      const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, pageSize);
-      const fileName  = `NizoDoc_${Date.now()}.pdf`;
-
+      const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(ctx.session.documentLines, ctx.session.pageSize || 'A4');
+      const fileName = `NizoDoc_${Date.now()}.pdf`;
       await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
-
       const { incrementGlobalCounter } = await import('../../services/statsService');
       await incrementGlobalCounter();
-
       await ctx.replyWithDocument(new InputFile(pdfBuffer, fileName), {
-        caption:
-          `✅ <b>تم تصدير المستند بنجاح!</b>\n\n` +
-          `📄 عدد الصفحات: ${pageCount}\n` +
-          `📐 المقاس: ${pageSize}`,
+        caption: `✅ <b>تم تصدير المستند!</b>\n\n📄 عدد الصفحات: ${pageCount}\n📐 المقاس: ${ctx.session.pageSize || 'A4'}`,
         parse_mode: 'HTML',
       });
-
-      // Silent archive
       if (BACKUP_CHANNEL_ID) {
-        await ctx.api.sendDocument(
-          BACKUP_CHANNEL_ID,
-          new InputFile(pdfBuffer, fileName),
-          { caption: `📦 أرشيف صانع المستندات\n🆔 ${telegramId}`, disable_notification: true }
-        ).catch(() => {});
+        await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new InputFile(pdfBuffer, fileName), {
+          caption: `📦 أرشيف صانع المستندات\n🆔 ${telegramId}`, disable_notification: true,
+        }).catch(() => {});
       }
-
-      // Post-export choice
-      await ctx.reply(
-        '🎉 <b>تم تصدير مستندك!</b>\n\nاختر الإجراء التالي:',
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '📝 مواصلة من آخر سطر', callback_data: 'doc_continue' },
-              { text: '✏️ تعديل', callback_data: 'doc_edit_after' },
-              { text: '✅ إتمام',  callback_data: 'doc_finish'   },
-            ]],
-          },
-        }
-      );
+      await ctx.reply('🎉 <b>تم تصدير مستندك!</b>\n\nاختر الإجراء التالي:', {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '📝 مواصلة', callback_data: 'doc_continue' },
+            { text: '✏️ تعديل', callback_data: 'doc_edit_after' },
+            { text: '✅ إتمام', callback_data: 'doc_finish' },
+          ]],
+        },
+      });
     } catch (err) {
       console.error('[DocMaker] compile error:', err);
       await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
@@ -336,50 +343,39 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── Redo (doc_redo) ───────────────────────────────────────────────────────
+  // ── Redo ───────────────────────────────────────────────────────────────────
   if (data === 'doc_redo') {
     await ctx.answerCallbackQuery();
     if (!ctx.session.documentLines || ctx.session.documentLines.length === 0) {
-      await ctx.editMessageText('⚠️ المستند فارغ لا يوجد شيء لحذفه!').catch(() => {});
+      await ctx.editMessageText('⚠️ المستند فارغ!').catch(() => {});
       return true;
     }
-
     ctx.session.documentLines.pop();
     ctx.session.tempLine = null;
     ctx.session.awaitingLineEditIndex = false;
     ctx.session.awaitingLineEditText = false;
-
     const lines = ctx.session.documentLines;
     if (lines.length === 0) {
-      await ctx.editMessageText(
-        '🗑️ تم حذف آخر سطر.\n\nالمستند فارغ الآن. أرسل النص البديل:',
-        { reply_markup: COMPILE_KB }
-      ).catch(() => {});
+      await ctx.editMessageText('🗑️ تم حذف آخر سطر.\n\nالمستند فارغ. أرسل النص البديل:', { reply_markup: COMPILE_KB }).catch(() => {});
     } else {
-      const preview = lines.map((l, i) => `${i + 1}. ${l.text ? l.text.substring(0, 30) + '...' : '[فارغ]'}`).join('\n');
-      await ctx.editMessageText(
-        `🗑️ تم حذف آخر سطر. أرسل النص البديل:\n\n📄 <b>المستند الحالي:</b>\n${preview}`,
-        { parse_mode: 'HTML', reply_markup: generateControlPanel() }
-      ).catch(() => {});
+      const preview = lines.map((l, i) => `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`).join('\n');
+      await ctx.editMessageText(`🗑️ تم حذف آخر سطر.\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() }).catch(() => {});
     }
+    await refreshPreview(ctx);
     return true;
   }
 
-  // ── New Page (doc_new_page) ───────────────────────────────────────────────
+  // ── New Page ───────────────────────────────────────────────────────────────
   if (data === 'doc_new_page') {
     await ctx.answerCallbackQuery();
     if (!ctx.session.documentLines) ctx.session.documentLines = [];
-    ctx.session.documentLines.push({ text: "---PAGE_BREAK---", align: "right" });
+    ctx.session.documentLines.push({ text: '---PAGE_BREAK---', align: 'right' });
     ctx.session.tempLine = null;
-    
-    await ctx.reply(
-      '✅ تم حفظ الصفحة الأولى. ابدأ كتابة الصفحة التالية:',
-      { reply_markup: generateControlPanel() }
-    );
+    await ctx.reply('✅ تم حفظ الصفحة. ابدأ كتابة الصفحة التالية:', { reply_markup: controlPanel() });
     return true;
   }
 
-  // ── Edit Line (doc_edit_line) ──────────────────────────────────────────────
+  // ── Edit Line ──────────────────────────────────────────────────────────────
   if (data === 'doc_edit_line') {
     await ctx.answerCallbackQuery();
     ctx.session.awaitingLineEditIndex = true;
@@ -387,47 +383,37 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── Edit After Export (doc_edit_after) ─────────────────────────────────────
+  // ── Edit After Export ──────────────────────────────────────────────────────
   if (data === 'doc_edit_after') {
     await ctx.answerCallbackQuery();
     ctx.session.isInDocMaker = true;
     ctx.session.awaitingLineEditIndex = true;
-    
     const lines = ctx.session.documentLines || [];
-    const preview = lines.map((l, i) => `${i + 1}. ${l.text || '[فارغ]'}`).join('\n');
-    
-    await ctx.reply(`📋 <b>أسطر المستند:</b>\n\n${preview}\n\n✏️ أرسل <b>رقم السطر</b> الذي تريد تعديله:`, { parse_mode: 'HTML' });
+    const preview = lines.map((l, i) => `${i+1}. ${l.text || '[فارغ]'}`).join('\n');
+    await ctx.reply(`📋 <b>أسطر المستند:</b>\n\n${preview}\n\n✏️ أرسل <b>رقم السطر</b>:`, { parse_mode: 'HTML' });
     return true;
   }
 
-  // ── View Lines (doc_view) ─────────────────────────────────────────────────
+  // ── View Lines ─────────────────────────────────────────────────────────────
   if (data === 'doc_view') {
     await ctx.answerCallbackQuery();
     const lines = ctx.session.documentLines || [];
-    if (lines.length === 0) {
-      await ctx.reply('⚠️ المستند فارغ.');
-      return true;
-    }
-    const fullText = lines.map((l, i) => `${i + 1}. ${l.text || '[فارغ]'}`).join('\n');
-    await ctx.reply(`📋 <b>محتوى المستند الحالي:</b>\n\n${fullText}`, { parse_mode: 'HTML' });
+    if (lines.length === 0) { await ctx.reply('⚠️ المستند فارغ.'); return true; }
+    const fullText = lines.map((l, i) => `${i+1}. ${l.text || '[فارغ]'}`).join('\n');
+    await ctx.reply(`📋 <b>محتوى المستند:</b>\n\n${fullText}`, { parse_mode: 'HTML' });
     return true;
   }
 
-
-
-  // ── Continue (keep lines, resend instruction) ─────────────────────────────
+  // ── Continue ───────────────────────────────────────────────────────────────
   if (data === 'doc_continue') {
     await ctx.answerCallbackQuery();
     ctx.session.tempLine = null;
     await ctx.editMessageReplyMarkup(undefined).catch(() => {});
-    await ctx.reply(DOC_MAKER_INSTRUCTION, {
-      parse_mode: 'HTML',
-      reply_markup: COMPILE_KB,
-    });
+    await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML', reply_markup: COMPILE_KB });
     return true;
   }
 
-  // ── Finish (reset all state) ──────────────────────────────────────────────
+  // ── Finish ─────────────────────────────────────────────────────────────────
   if (data === 'doc_finish') {
     await ctx.answerCallbackQuery();
     ctx.session.isInDocMaker = false;
@@ -436,106 +422,72 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     ctx.session.awaitingLineEditIndex = false;
     ctx.session.awaitingLineEditText = false;
     ctx.session.editingLineIndex = undefined;
-    
-    await ctx.editMessageText(
-      '✅ تم إنهاء المستند. يمكنك البدء من جديد.',
-    ).catch(() => {});
+    ctx.session.previewMessageId = undefined;
+    await ctx.editMessageText('✅ تم إنهاء المستند. يمكنك البدء من جديد.').catch(() => {});
     return true;
   }
 
   return false;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// MESSAGE HANDLER
-// ══════════════════════════════════════════════════════════════════════════════
+// ── MESSAGE HANDLER ────────────────────────────────────────────────────────────
 
 export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
-  if (!ctx.session) return false;
-  if (!ctx.from) return false;
-  if (!ctx.session.isInDocMaker) return false;
-
+  if (!ctx.session || !ctx.from || !ctx.session.isInDocMaker) return false;
   const text = ctx.message?.text?.trim();
-  if (!text) return false;
+  if (!text || text.startsWith('/')) return false;
 
-  // 1. HARD RULE — ignore commands (prevents ObjectParameterError crash)
-  if (text.startsWith('/')) return false;
-
-  // 1.5 Handle line editing states
+  // Awaiting line index to edit
   if (ctx.session.awaitingLineEditIndex) {
     const idx = parseInt(text, 10) - 1;
     const lines = ctx.session.documentLines || [];
-    
     if (isNaN(idx) || idx < 0 || idx >= lines.length) {
       await ctx.reply('❌ رقم السطر غير صحيح. أرسل الرقم الصحيح:');
       return true;
     }
-    
     ctx.session.editingLineIndex = idx;
     ctx.session.awaitingLineEditIndex = false;
     ctx.session.awaitingLineEditText = true;
-    
-    await ctx.reply(
-      `✏️ <b>السطر الحالي:</b>\n<code>${lines[idx].text || '[سطر فارغ]'}</code>\n\nأرسل النص الجديد:`,
-      { parse_mode: 'HTML' }
-    );
+    await ctx.reply(`✏️ <b>السطر الحالي:</b>\n<code>${lines[idx].text || '[سطر فارغ]'}</code>\n\nأرسل النص الجديد:`, { parse_mode: 'HTML' });
     return true;
   }
 
+  // Awaiting replacement text
   if (ctx.session.awaitingLineEditText) {
     ctx.session.tempLine = text;
-    await ctx.reply(
-      `📝 <b>اختر محاذاة النص الجديد:</b>\n\n<code>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`,
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '➡️ يمين',  callback_data: 'align_right'  },
-            { text: '↔️ وسط',   callback_data: 'align_center' },
-            { text: '⬅️ يسار', callback_data: 'align_left'   },
-          ]],
-        },
-      }
-    );
+    await ctx.reply(`📝 <b>اختر محاذاة النص الجديد:</b>\n\n<code>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`, {
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: [[
+        { text: '➡️ يمين', callback_data: 'align_right' },
+        { text: '↔️ وسط', callback_data: 'align_center' },
+        { text: '⬅️ يسار', callback_data: 'align_left' },
+      ]] },
+    });
     return true;
   }
 
-  // 2. Empty line detection: "فارغ" or "فارغ N"
+  // Empty line command
   const emptyMatch = text.match(/^فارغ(\s+(\d+))?$/);
   if (emptyMatch) {
-    const rawN = emptyMatch[2] ? parseInt(emptyMatch[2], 10) : 1;
-    const n    = Math.min(Math.max(rawN, 1), 20); // cap at 20 for safety
-
+    const n = Math.min(Math.max(emptyMatch[2] ? parseInt(emptyMatch[2], 10) : 1, 1), 20);
     if (!ctx.session.documentLines) ctx.session.documentLines = [];
-    for (let i = 0; i < n; i++) {
-      ctx.session.documentLines.push({ text: '', align: 'right' });
-    }
-
+    for (let i = 0; i < n; i++) ctx.session.documentLines.push({ text: '', align: 'right' });
     const lines = ctx.session.documentLines;
-    const preview = lines.map((l, i) => `${i + 1}. ${l.text ? l.text.substring(0, 30) + '...' : '[فارغ]'}`).join('\n');
-
-    await ctx.reply(
-      `✅ تمت إضافة ${n} سطر فارغ\n\n📄 <b>المستند الحالي:</b>\n${preview}`,
-      { parse_mode: 'HTML', reply_markup: generateControlPanel() }
-    );
+    const preview = lines.map((l, i) => `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`).join('\n');
+    await ctx.reply(`✅ تمت إضافة ${n} سطر فارغ\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() });
+    await refreshPreview(ctx);
     return true;
   }
 
-  // 3. Normal text → save to tempLine, show alignment keyboard
+  // Normal text → alignment selection
   ctx.session.tempLine = text;
-
-  await ctx.reply(
-    `📝 <b>اختر محاذاة النص:</b>\n\n<code>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`,
-    {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '➡️ يمين',  callback_data: 'align_right'  },
-          { text: '↔️ وسط',   callback_data: 'align_center' },
-          { text: '⬅️ يسار', callback_data: 'align_left'   },
-        ]],
-      },
-    }
-  );
+  await ctx.reply(`📝 <b>اختر محاذاة النص:</b>\n\n<code>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`, {
+    parse_mode: 'HTML',
+    reply_markup: { inline_keyboard: [[
+      { text: '➡️ يمين', callback_data: 'align_right' },
+      { text: '↔️ وسط', callback_data: 'align_center' },
+      { text: '⬅️ يسار', callback_data: 'align_left' },
+    ]] },
+  });
   return true;
 }
