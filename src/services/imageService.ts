@@ -800,37 +800,29 @@ export async function removeCustomAreaAI(
   const imageBase64 = `data:image/jpeg;base64,${resizedRaw.toString('base64')}`;
   const maskBase64 = `data:image/png;base64,${resizedMask.toString('base64')}`;
 
-  const replicateOutput = await Promise.race<unknown>([
-    replicate.run(
-      "allenhooo/lama" as any,
-      {
-        input: {
-          image: imageBase64,
-          mask: maskBase64
-        }
+  const output = await replicate.run(
+    "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd58bf",
+    {
+      input: {
+        image: imageBase64,
+        mask: maskBase64,
+        prompt: "remove the element in the masked area completely, fill seamlessly with the surrounding background texture and lighting",
+        negative_prompt: "watermark, text, logo, blur, distortion, artifacts",
+        disable_safety_checker: true,
+        num_inference_steps: 30,
+        guidance_scale: 7.5
       }
-    ),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Replicate timeout after 90 s')), 90_000)
-    )
-  ]);
+    }
+  );
 
-  const outputUrl = Array.isArray(replicateOutput)
-    ? String(replicateOutput[0])
-    : String(replicateOutput);
+  const resultUrl = Array.isArray(output) ? String(output[0]) : String(output);
+  if (!resultUrl || resultUrl === 'undefined') throw new Error('Inpainting API returned no image.');
 
-  if (!outputUrl || outputUrl === "undefined") {
-    throw new Error("Failed to generate image from AI.");
-  }
+  const res = await fetch(resultUrl);
+  if (!res.ok) throw new Error('Failed to fetch result');
+  const resultBuffer = Buffer.from(await res.arrayBuffer());
 
-  const replicateResponse = await fetch(outputUrl);
-  if (!replicateResponse.ok) throw new Error(`Result download failed: ${replicateResponse.status}`);
-  const resultArrayBuffer = await replicateResponse.arrayBuffer();
-  const resultBuffer = Buffer.from(resultArrayBuffer);
-
-  const finalBuffer = await sharp(resultBuffer)
+  return await sharp(resultBuffer)
     .resize(originalWidth, originalHeight, { fit: 'fill' })
     .toBuffer();
-
-  return finalBuffer;
 }
