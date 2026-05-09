@@ -169,6 +169,8 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       ]);
 
       const coords = await extractMaskCoordinatesFromBuffer(markedBuffer);
+      console.log('[CustomEraser] Coords:', JSON.stringify(coords));
+      console.log('[CustomEraser] Raw image size:', rawBuffer.length);
       if (!coords) {
         await ctx.reply(
           "لم أتمكن من تحديد العلامة. تأكد من رسم علامة ملونة واضحة"
@@ -194,12 +196,16 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         .png()
         .toBuffer();
 
+      const maskMeta = await sharp(maskBuffer).metadata();
+      console.log('[CustomEraser] Mask dimensions:', maskMeta.width, 'x', maskMeta.height);
+
       await ctx.reply(
         "⚙️ <b>جارٍ المعالجة...</b>\nتم استلام الصورتين بنجاح. الذكاء الاصطناعي يعمل الآن على تحليل وإزالة العنصر المحدد. قد يستغرق ذلك 30-60 ثانية.",
         { parse_mode: 'HTML' }
       );
 
       const resultBuffer = await removeCustomAreaAI(rawBuffer, maskBuffer);
+      console.log('[CustomEraser] Result size:', resultBuffer.length);
 
       await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -4 } });
 
