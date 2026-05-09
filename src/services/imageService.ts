@@ -723,86 +723,65 @@ export async function generateMaskFromDiff(
 
 export async function removeCustomAreaAI(
   rawBuffer: Buffer,
-  maskBuffer: Buffer
+  maskBuffer: Buffer,
+  onProcessingStart?: () => Promise<void>
 ): Promise<Buffer> {
-  // 1 & 2. Get metadata
-  const metadata = await sharp(rawBuffer).metadata();
-  const width = metadata.width || 1024;
-  const height = metadata.height || 1024;
-
-  // 3. Convert maskBuffer to grayscale, blur(2), threshold(128)
-  const cleanMaskBuffer = await sharp(maskBuffer)
-    .resize(width, height, { fit: 'fill' }) // Ensure perfect alignment
-    .toColorspace('b-w')
-    .blur(2)
-    .threshold(128)
-    .raw()
-    .toBuffer();
-
-  // 4. Extract raw image as RGBA
-  const rawImageBuffer = await sharp(rawBuffer)
-    .ensureAlpha()
-    .raw()
-    .toBuffer();
-
-  const pixelData = new Uint8ClampedArray(rawImageBuffer);
-  const maskData = new Uint8ClampedArray(cleanMaskBuffer);
-
-  // 6. Local pixel sampling algorithm
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const maskIdx = y * width + x;
-      if (maskData[maskIdx] > 128) { // Mask is white
-        let sumR = 0, sumG = 0, sumB = 0, sumA = 0;
-        let count = 0;
-
-        // Find the nearest non-masked pixels in a 20px radius
-        for (let r = 1; r <= 20; r++) {
-          for (let dy = -r; dy <= r; dy++) {
-            for (let dx = -r; dx <= r; dx++) {
-              if (Math.abs(dx) === r || Math.abs(dy) === r) {
-                const nx = x + dx;
-                const ny = y + dy;
-
-                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                  const nMaskIdx = ny * width + nx;
-                  if (maskData[nMaskIdx] <= 128) {
-                    const nPixelIdx = nMaskIdx * 4;
-                    sumR += pixelData[nPixelIdx];
-                    sumG += pixelData[nPixelIdx + 1];
-                    sumB += pixelData[nPixelIdx + 2];
-                    sumA += pixelData[nPixelIdx + 3];
-                    count++;
-                  }
-                }
-              }
-            }
-          }
-          // If we found the nearest non-masked pixels at this radius, average and break
-          if (count > 0) break;
-        }
-
-        // Replace the masked pixel with the average color
-        if (count > 0) {
-          const pixelIdx = maskIdx * 4;
-          pixelData[pixelIdx] = Math.round(sumR / count);
-          pixelData[pixelIdx + 1] = Math.round(sumG / count);
-          pixelData[pixelIdx + 2] = Math.round(sumB / count);
-          pixelData[pixelIdx + 3] = Math.round(sumA / count);
-        }
-      }
-    }
+  if (onProcessingStart) {
+    await onProcessingStart();
   }
 
-  // 7 & 8. Reconstruct image and return
-  const finalBuffer = await sharp(pixelData, {
-    raw: {
-      width,
-      height,
-      channels: 4
-    }
-  })
+  const metadata = await sharp(rawBuffer).metadata();
+  const originalWidth = metadata.width || 1024;
+  const originalHeight = metadata.height || 1024;
+
+  const resizedRaw = await sharp(rawBuffer)
+    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+    .jpeg()
+    .toBuffer();
+
+  const { width: resizedWidth, height: resizedHeight } = await sharp(resizedRaw).metadata();
+
+  const resizedMask = await sharp(maskBuffer)
+    .resize(resizedWidth, resizedHeight, { fit: 'fill' })
+    .grayscale()
+    .blur(3)
+    .threshold(128)
     .png()
+    .toBuffer();
+
+  const imageBase64 = `data:image/jpeg;base64,${resizedRaw.toString('base64')}`;
+  const maskBase64 = `data:image/png;base64,${resizedMask.toString('base64')}`;
+
+  const replicateOutput = await Promise.race<unknown>([
+    replicate.run(
+      "cjwbw/lama:a4b26df6e69e069c9048e787ff80760ebb3d1d90e0e00c9d60be67e52427c9c7",
+      {
+        input: {
+          image: imageBase64,
+          mask: maskBase64
+        }
+      }
+    ),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Replicate timeout after 90 s')), 90_000)
+    )
+  ]);
+
+  const outputUrl = Array.isArray(replicateOutput)
+    ? String(replicateOutput[0])
+    : String(replicateOutput);
+
+  if (!outputUrl || outputUrl === "undefined") {
+    throw new Error("Failed to generate image from AI.");
+  }
+
+  const replicateResponse = await fetch(outputUrl);
+  if (!replicateResponse.ok) throw new Error(`Result download failed: ${replicateResponse.status}`);
+  const resultArrayBuffer = await replicateResponse.arrayBuffer();
+  const resultBuffer = Buffer.from(resultArrayBuffer);
+
+  const finalBuffer = await sharp(resultBuffer)
+    .resize(originalWidth, originalHeight, { fit: 'fill' })
     .toBuffer();
 
   return finalBuffer;

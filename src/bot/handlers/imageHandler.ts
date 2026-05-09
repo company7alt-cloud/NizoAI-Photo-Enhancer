@@ -152,6 +152,11 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
 
 
+      await ctx.reply(
+        "⚙️ <b>جارٍ المعالجة...</b>\nتم استلام الصورتين بنجاح. الذكاء الاصطناعي يعمل الآن على تحليل وإزالة العنصر المحدد. قد يستغرق ذلك 30-60 ثانية.",
+        { parse_mode: 'HTML' }
+      );
+
       const resultBuffer = await removeCustomAreaAI(rawBuffer, maskBuffer);
 
       await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -2 } });
