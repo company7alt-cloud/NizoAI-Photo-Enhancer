@@ -728,49 +728,41 @@ export async function generateMaskFromDiff(
   markedBuf: Buffer,
   rawBuf: Buffer
 ): Promise<{ maskBuffer: Buffer; width: number; height: number }> {
-  // Prevent OOM: Resize both buffers to a max of 1024x1024 
   const resizeOpts = { width: 1024, height: 1024, fit: 'inside' as const, withoutEnlargement: true };
-  
-  const markedImg = sharp(markedBuf).resize(resizeOpts);
-  const rawImg = sharp(rawBuf).resize(resizeOpts);
 
-  const { width, height } = (await rawImg.metadata()) as { width: number; height: number };
-
-  const [markedRaw, rawRaw] = await Promise.all([
-    markedImg.ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
-    rawImg.ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const [markedResized, rawResized] = await Promise.all([
+    sharp(markedBuf).resize(resizeOpts).png().toBuffer(),
+    sharp(rawBuf).resize(resizeOpts).png().toBuffer()
   ]);
 
-  const diffImage = new Uint8ClampedArray(width * height * 4);
+  const markedMeta = await sharp(markedResized).metadata();
+  const W = markedMeta.width!;
+  const H = markedMeta.height!;
 
-  pixelmatch(
-    markedRaw.data,
-    rawRaw.data,
-    diffImage,
-    width,
-    height,
-    { threshold: 0.15, includeAA: true }
-  );
-
-  // Generate binary mask: white for diff, black for match
-  const maskPixels = Buffer.alloc(width * height * 4);
-  for (let i = 0; i < diffImage.length; i += 4) {
-    const isDiff = diffImage[i] > 0 || diffImage[i + 1] > 0 || diffImage[i + 2] > 0;
-    const color = isDiff ? 255 : 0;
-    maskPixels[i] = color;     // R
-    maskPixels[i + 1] = color; // G
-    maskPixels[i + 2] = color; // B
-    maskPixels[i + 3] = 255;   // A
-  }
-
-  // Morphological dilation to expand edges
-  const maskBuffer = await sharp(maskPixels, { raw: { width, height, channels: 4 } })
-    .blur(5)
-    .threshold(40)
+  const rawResizedExact = await sharp(rawBuf)
+    .resize(W, H, { fit: 'fill' })
     .png()
     .toBuffer();
 
-  return { maskBuffer, width, height };
+  const markedRaw = await sharp(markedResized).removeAlpha().raw().toBuffer();
+  const rawRaw = await sharp(rawResizedExact).removeAlpha().raw().toBuffer();
+
+  const diffPixels = new Uint8ClampedArray(W * H * 4);
+  pixelmatch(markedRaw, rawRaw, diffPixels, W, H, { threshold: 0.1, includeAA: true });
+
+  const maskPixels = Buffer.alloc(W * H);
+  for (let i = 0; i < W * H; i++) {
+    const idx = i * 4;
+    maskPixels[i] = (diffPixels[idx] > 0 || diffPixels[idx+1] > 0 || diffPixels[idx+2] > 0) ? 255 : 0;
+  }
+
+  const maskBuffer = await sharp(maskPixels, { raw: { width: W, height: H, channels: 1 } })
+    .blur(6)
+    .threshold(30)
+    .png()
+    .toBuffer();
+
+  return { maskBuffer, width: W, height: H };
 }
 
 export async function removeCustomAreaAI(
