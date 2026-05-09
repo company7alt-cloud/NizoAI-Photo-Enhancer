@@ -2,7 +2,7 @@
 import { InlineKeyboard } from 'grammy';
 import { InputFile } from 'grammy';
 import sharp from 'sharp';
-import { getFileBuffer, generateMaskFromDiff, removeCustomAreaAI, extractMaskCoordinatesFromBuffer } from '../../services/imageService';
+import { getFileBuffer, removeCustomAreaAI, extractMaskCoordinatesFromBuffer } from '../../services/imageService';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
 import { getSettings } from '../../services/settingsService';
