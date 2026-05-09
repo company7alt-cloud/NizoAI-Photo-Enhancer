@@ -152,16 +152,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const { maskBuffer } = await generateMaskFromDiff(markedBuffer, rawBuffer);
 
-      // 1. Use mask buffer to find bounding box of the white region
-      let trimInfo;
-      try {
-        const trimResult = await sharp(maskBuffer)
-          .trim({ threshold: 10 })
-          .toBuffer({ resolveWithObject: true });
-        trimInfo = trimResult.info;
-      } catch (e) {
-        trimInfo = { trimOffsetLeft: 0, trimOffsetTop: 0, width: 100, height: 100 };
-      }
+
 
       const rawMetadata = await sharp(rawBuffer).metadata();
       const rawWidth = rawMetadata.width || 1024;
