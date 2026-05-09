@@ -802,16 +802,15 @@ export async function removeCustomAreaAI(
 
   const replicateOutput = await Promise.race<unknown>([
     replicate.run(
-      "lucataco/sdxl-inpainting:a5b13068cc81a89a4fbeefeccc774869fcb34df4dbc92c1555e0f2771d49dde7",
+      "andreasjansson/stable-diffusion-inpainting:e490d072a34a94a11e9711ed5a6ba621c3fab884eda1665d9d3a282d65a21180",
       {
         input: {
-          image:                imageBase64,
-          mask:                 maskBase64,
-          prompt:               "seamless background continuation, matching texture and lighting, photorealistic, no watermark, no logo, no text, 8k quality",
-          negative_prompt:      "watermark, logo, text, star, mark, signature, blur, distortion, artifact, smear, low quality",
-          num_inference_steps:  40,
-          guidance_scale:       8,
-          strength:             0.99,
+          image: imageBase64,
+          mask: maskBase64,
+          prompt: "seamless background, original texture, no text, no watermark, photo realistic",
+          negative_prompt: "text, watermark, logo, blurry, distorted",
+          num_inference_steps: 50,
+          guidance_scale: 7.5
         }
       }
     ),
