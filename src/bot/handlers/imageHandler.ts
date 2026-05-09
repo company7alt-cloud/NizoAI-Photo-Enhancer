@@ -2,8 +2,7 @@
 import { InlineKeyboard } from 'grammy';
 import { InputFile } from 'grammy';
 import sharp from 'sharp';
-import Replicate from 'replicate';
-import { getFileBuffer, generateMaskFromDiff } from '../../services/imageService';
+import { getFileBuffer, generateMaskFromDiff, removeCustomAreaAI } from '../../services/imageService';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
 import { getSettings } from '../../services/settingsService';
@@ -154,85 +153,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
 
 
-      const rawMetadata = await sharp(rawBuffer).metadata();
-      const rawWidth = rawMetadata.width || 1024;
-      const rawHeight = rawMetadata.height || 1024;
-
-      // 3. Use Replicate inpainting with EXACT input parameters
-      const resizedRawBuffer = await sharp(rawBuffer)
-        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-        .jpeg()
-        .toBuffer();
-
-      const { width: resizedWidth, height: resizedHeight } = await sharp(resizedRawBuffer).metadata();
-
-      const dilatedMaskBuffer = await sharp(maskBuffer)
-        .resize(resizedWidth, resizedHeight, { fit: 'fill' })
-        .blur(5)
-        .threshold(20)
-        .png()
-        .toBuffer();
-
-      const rawBase64 = `data:image/jpeg;base64,${resizedRawBuffer.toString('base64')}`;
-      const maskBase64 = `data:image/png;base64,${dilatedMaskBuffer.toString('base64')}`;
-
-      const replicate = new Replicate({
-        auth: process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY,
-      });
-
-      const modelId = process.env.REPLICATE_MODEL_ID || "lucataco/sdxl-inpainting:a5b13068cc81a89a4fbeefeccc774869fcb34df4dbc92c1555e0f2771d49dde7";
-
-      const replicateOutput = await Promise.race<unknown>([
-        replicate.run(
-          modelId as `${string}/${string}:${string}`,
-          {
-            input: {
-              image: rawBase64,
-              mask: maskBase64,
-              prompt: "seamless background, same texture, no text, no watermark, photo realistic, clean surface",
-              negative_prompt: "text, watermark, logo, signature, blurry, distorted, artifacts, different color",
-              num_inference_steps: 50,
-              guidance_scale: 7.5
-            }
-          }
-        ),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Replicate timeout after 120 s')), 120_000)
-        )
-      ]);
-
-      const outputUrl = Array.isArray(replicateOutput)
-        ? String(replicateOutput[0])
-        : String(replicateOutput);
-
-      if (!outputUrl || outputUrl === "undefined") {
-        throw new Error("Failed to generate image from AI.");
-      }
-
-      const resultRes = await fetch(outputUrl);
-      if (!resultRes.ok) throw new Error("Failed to fetch generated image.");
-      const aiResultBuffer = Buffer.from(await resultRes.arrayBuffer());
-
-      // 4 & 5. Restore original dimensions and NEVER upscale original parts
-      const upscaledAiBuffer = await sharp(aiResultBuffer)
-        .resize(rawWidth, rawHeight, { fit: 'fill' })
-        .toBuffer();
-
-      const blendMaskBuffer = await sharp(maskBuffer)
-        .toColorspace('b-w')
-        .blur(15)
-        .toBuffer();
-
-      const aiWithAlpha = await sharp(upscaledAiBuffer)
-        .removeAlpha()
-        .joinChannel(blendMaskBuffer)
-        .png()
-        .toBuffer();
-
-      const resultBuffer = await sharp(rawBuffer)
-        .composite([{ input: aiWithAlpha }])
-        .png()
-        .toBuffer();
+      const resultBuffer = await removeCustomAreaAI(rawBuffer, maskBuffer);
 
       await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -2 } });
 

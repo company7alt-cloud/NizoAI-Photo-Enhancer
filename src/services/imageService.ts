@@ -720,3 +720,69 @@ export async function generateMaskFromDiff(
 
   return { maskBuffer, width, height };
 }
+
+export async function removeCustomAreaAI(
+  rawBuffer: Buffer,
+  maskBuffer: Buffer
+): Promise<Buffer> {
+  const metadata = await sharp(rawBuffer).metadata();
+  const rawWidth = metadata.width || 1024;
+  const rawHeight = metadata.height || 1024;
+
+  const resizedRaw = await sharp(rawBuffer)
+    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+    .jpeg()
+    .toBuffer();
+
+  const { width: resizedWidth, height: resizedHeight } = await sharp(resizedRaw).metadata();
+
+  const resizedMask = await sharp(maskBuffer)
+    .resize(resizedWidth, resizedHeight, { fit: 'fill' })
+    .blur(8)
+    .threshold(10)
+    .png()
+    .toBuffer();
+
+  const imageBase64 = `data:image/jpeg;base64,${resizedRaw.toString('base64')}`;
+  const maskBase64 = `data:image/png;base64,${resizedMask.toString('base64')}`;
+
+  const modelId = process.env.REPLICATE_INPAINT_MODEL_ID || "lucataco/sdxl-inpainting:a5b13068cc81a89a4fbeefeccc774869fcb34df4dbc92c1555e0f2771d49dde7";
+
+  const replicateOutput = await Promise.race<unknown>([
+    replicate.run(
+      modelId as `${string}/${string}:${string}`,
+      {
+        input: {
+          image: imageBase64,
+          mask: maskBase64,
+          prompt: "seamless background, original texture, clean, photo realistic",
+          negative_prompt: "text, watermark, logo, blurry, distorted, deformed",
+          num_inference_steps: 50,
+          guidance_scale: 8
+        }
+      }
+    ),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Replicate timeout after 120 s')), 120_000)
+    )
+  ]);
+
+  const outputUrl = Array.isArray(replicateOutput)
+    ? String(replicateOutput[0])
+    : String(replicateOutput);
+
+  if (!outputUrl || outputUrl === "undefined") {
+    throw new Error("Failed to generate image from AI.");
+  }
+
+  const replicateResponse = await fetch(outputUrl);
+  if (!replicateResponse.ok) throw new Error(`Result download failed: ${replicateResponse.status}`);
+  const resultArrayBuffer = await replicateResponse.arrayBuffer();
+  const resultBuffer = Buffer.from(resultArrayBuffer);
+
+  const finalBuffer = await sharp(resultBuffer)
+    .resize(rawWidth, rawHeight, { fit: 'fill' })
+    .toBuffer();
+
+  return finalBuffer;
+}
