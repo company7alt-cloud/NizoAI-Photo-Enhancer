@@ -22,6 +22,13 @@ import {
 } from '../../services/onnxEnhanceService';
 import { ForceSubChannel } from '../../database/models/ForceSubChannel';
 
+const GRID_CONFIGS: Record<number, { cols: number; rows: number }> = {
+  30: { cols: 5, rows: 6  },
+  40: { cols: 5, rows: 8  },
+  50: { cols: 5, rows: 10 },
+  60: { cols: 6, rows: 10 },
+};
+
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
 const BACKUP_CHANNEL_ID = ARCHIVE_GROUP_ID || CHANNEL_ID;
@@ -2117,13 +2124,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
 async function buildMaskFromCells(
   rawBuffer: Buffer,
-  selectedCells: number[]
+  selectedCells: number[],
+  cols: number,
+  rows: number
 ): Promise<Buffer> {
   const meta = await sharp(rawBuffer).metadata();
   const W = meta.width!;
   const H = meta.height!;
-  const cellW = Math.floor(W / 5);
-  const cellH = Math.floor(H / 6);
+  const cellW = Math.floor(W / cols);
+  const cellH = Math.floor(H / rows);
 
   let maskPipeline = sharp({
     create: { width: W, height: H, channels: 3,
@@ -2134,8 +2143,8 @@ async function buildMaskFromCells(
 
   for (const cellNum of selectedCells) {
     const idx = cellNum - 1;
-    const col = idx % 5;
-    const row = Math.floor(idx / 5);
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
 
     const x = Math.max(0, col * cellW - Math.round(cellW * 0.1));
     const y = Math.max(0, row * cellH - Math.round(cellH * 0.1));
@@ -2159,62 +2168,86 @@ async function buildMaskFromCells(
   return maskBuffer;
 }
 
-  if (data.startsWith('cgz_') && data !== 'cgz_more' && data !== 'cgz_process') {
-    const N = parseInt(data.replace('cgz_', ''));
-    if (isNaN(N)) return;
+async function drawGridOnImage(
+  inputBuffer: Buffer,
+  cols: number = 5,
+  rows: number = 6
+): Promise<Buffer> {
+  const meta = await sharp(inputBuffer).metadata();
+  const W = meta.width!;
+  const H = meta.height!;
+  const cellW = Math.floor(W / cols);
+  const cellH = Math.floor(H / rows);
 
-    const userId = ctx.from!.id.toString();
-    const user = await User.findOne({ telegramId: userId });
-    
-    if (!user || !user.awaitingCustomEraserZone) return;
+  const lineThickness = Math.max(2, Math.round(W / 300));
+  const fontSize = Math.max(18, Math.round(cellW / 4));
 
-    if (user.customEraserSelectedCells?.includes(N)) {
-      await ctx.answerCallbackQuery({ text: 'هذا المربع محدد مسبقاً ✅', show_alert: false }).catch(() => {});
-      return;
-    }
-
-    if ((user.customEraserSelectedCells?.length || 0) >= 6) {
-      await ctx.answerCallbackQuery({
-        text: '⚠️ وصلت للحد الأقصى (6 مربعات). اضغط "عالج الصورة" للمتابعة.',
-        show_alert: true
-      }).catch(() => {});
-      return;
-    }
-
-    const selectedCells = user.customEraserSelectedCells || [];
-    selectedCells.push(N);
-    user.customEraserSelectedCells = selectedCells;
-    await user.save();
-
-    await ctx.answerCallbackQuery({ text: `✅ تم إضافة المربع ${N}`, show_alert: false }).catch(() => {});
-
-    if (user.customEraserBtnMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
-    }
-
-    const count = selectedCells.length;
-    const list = selectedCells.join(', ');
-
-    const { InlineKeyboard } = await import('grammy');
-    const keyboard = new InlineKeyboard();
-    
-    if (count < 6) {
-      keyboard.text('➕ أضف مربعاً آخر', 'cgz_more').row();
-    }
-    keyboard.text('🚀 عالج الصورة الآن', 'cgz_process').row();
-    keyboard.text('❌ إلغاء', 'cancel_custom_eraser');
-
-    const newBtnMsg = await ctx.reply(
-      `✅ <b>تم اختيار ${count} مربع/مربعات:</b> ${list}\n\nهل تريد إضافة مربع آخر أم تبدأ المعالجة؟`,
-      {
-        parse_mode: 'HTML',
-        reply_markup: keyboard
-      }
-    );
-    user.customEraserBtnMsgId = newBtnMsg.message_id;
-    await user.save();
-    return;
+  let svgLines = '';
+  for (let c = 1; c < cols; c++) {
+    const x = c * cellW;
+    svgLines += `<line x1="${x}" y1="0" x2="${x}" y2="${H}"
+      stroke="white" stroke-width="${lineThickness}" opacity="0.85"/>`;
   }
+  for (let r = 1; r < rows; r++) {
+    const y = r * cellH;
+    svgLines += `<line x1="0" y1="${y}" x2="${W}" y2="${y}"
+      stroke="white" stroke-width="${lineThickness}" opacity="0.85"/>`;
+  }
+
+  let svgNumbers = '';
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const num = r * cols + c + 1;
+      const cx = c * cellW + Math.round(cellW / 2);
+      const cy = r * cellH + Math.round(cellH / 2);
+      svgNumbers += `<text x="${cx+2}" y="${cy+2}" font-family="Arial"
+        font-size="${fontSize}" font-weight="bold"
+        text-anchor="middle" dominant-baseline="middle"
+        fill="black" opacity="0.6">${num}</text>`;
+      svgNumbers += `<text x="${cx}" y="${cy}" font-family="Arial"
+        font-size="${fontSize}" font-weight="bold"
+        text-anchor="middle" dominant-baseline="middle"
+        fill="white" opacity="0.95">${num}</text>`;
+    }
+  }
+
+  const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+    ${svgLines}
+    ${svgNumbers}
+  </svg>`;
+
+  return sharp(inputBuffer)
+    .composite([{ input: Buffer.from(svg), gravity: 'northwest' }])
+    .jpeg({ quality: 90 })
+    .toBuffer();
+}
+
+function buildCellKeyboard(
+  totalCells: number,
+  selectedCells: number[],
+  currentGridSize: number,
+  InlineKeyboardClass: any
+): any {
+  const kb = new InlineKeyboardClass();
+  const cols = 5;
+
+  for (let i = 1; i <= totalCells; i++) {
+    const isSelected = selectedCells.includes(i);
+    const label = isSelected ? `✅${i}` : String(i);
+    kb.text(label, `cgz_${i}`);
+    if (i % cols === 0) kb.row();
+  }
+
+  kb.row();
+  const sizes = [40, 50, 60];
+  for (const s of sizes) {
+    const isActive = currentGridSize === s;
+    kb.text(isActive ? `✅ تقسيم ${s}` : `تقسيم ${s}`, `cgz_size_${s}`);
+  }
+
+  kb.row().text('❌ إلغاء', 'cancel_custom_eraser');
+  return kb;
+}
 
   if (data === 'cgz_more') {
     await ctx.answerCallbackQuery().catch(() => {});
@@ -2232,24 +2265,12 @@ async function buildMaskFromCells(
     const list = selectedCells.join(', ');
 
     const { InlineKeyboard } = await import('grammy');
-    const keyboard = new InlineKeyboard();
-    let btnCount = 1;
-    for (let r = 0; r < 6; r++) {
-      for (let c = 0; c < 5; c++) {
-        const text = selectedCells.includes(btnCount) ? `✅${btnCount}` : `${btnCount}`;
-        keyboard.text(text, `cgz_${btnCount}`);
-        btnCount++;
-      }
-      keyboard.row();
-    }
-    keyboard.text('❌ إلغاء', 'cancel_custom_eraser');
+    const gridSize = user.customEraserGridSize || 30;
+    const kb = buildCellKeyboard(gridSize, selectedCells, gridSize, InlineKeyboard);
 
     const newBtnMsg = await ctx.reply(
       `📍 <b>اختر مربعاً إضافياً:</b>\nالمحدد حالياً: ${list}\n(المتبقي: ${6 - count} مربعات)`,
-      {
-        parse_mode: 'HTML',
-        reply_markup: keyboard
-      }
+      { parse_mode: 'HTML', reply_markup: kb }
     );
     user.customEraserBtnMsgId = newBtnMsg.message_id;
     await user.save();
@@ -2290,7 +2311,9 @@ async function buildMaskFromCells(
       if (!res.ok) throw new Error('Failed to download image');
       const rawBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
 
-      const maskBuffer = await buildMaskFromCells(rawBuffer, user.customEraserSelectedCells!);
+      const gridSize = user.customEraserGridSize || 30;
+      const cfg = GRID_CONFIGS[gridSize];
+      const maskBuffer = await buildMaskFromCells(rawBuffer, user.customEraserSelectedCells!, cfg.cols, cfg.rows);
 
       const { removeCustomAreaAI } = await import('../../services/imageService');
       const resultBuffer = await removeCustomAreaAI(rawBuffer, maskBuffer);
@@ -2306,10 +2329,7 @@ async function buildMaskFromCells(
 
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
 
-      const sentMsg = await ctx.replyWithDocument(
-        new InputFile(resultBuffer, 'custom_erased.jpg')
-      );
-
+      const sentMsg = await ctx.replyWithDocument(new InputFile(resultBuffer, 'custom_erased.jpg'));
       await User.updateOne({ telegramId: userId }, { $set: { lastEraserResultMsgId: sentMsg.message_id } });
 
       const { InlineKeyboard } = await import('grammy');
@@ -2344,6 +2364,109 @@ async function buildMaskFromCells(
     return;
   }
 
+  if (data.startsWith('cgz_size_')) {
+    const newSize = parseInt(data.replace('cgz_size_', ''));
+    if (![40, 50, 60].includes(newSize)) return;
+
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const userId = ctx.from!.id.toString();
+    const user = await User.findOne({ telegramId: userId });
+    if (!user || !user.awaitingCustomEraserZone || !user.customEraserFileId) {
+      await ctx.reply('❌ انتهت الجلسة، ابدأ من جديد.');
+      return;
+    }
+
+    await User.updateOne(
+      { telegramId: userId },
+      {
+        $set: {
+          customEraserSelectedCells: [],
+          customEraserGridSize: newSize,
+        }
+      }
+    );
+
+    const tgFile = await ctx.api.getFile(user.customEraserFileId);
+    const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+    const res = await fetch(imageUrl);
+    const rawBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
+
+    const cfg = GRID_CONFIGS[newSize];
+    const gridImageBuffer = await drawGridOnImage(rawBuffer, cfg.cols, cfg.rows);
+
+    if (user.customEraserBtnMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+    }
+
+    await ctx.replyWithPhoto(new InputFile(gridImageBuffer), {
+      caption: `🔢 تم تغيير التقسيم إلى <b>${newSize} مربع</b> — اختر مربعاتك:`,
+      parse_mode: 'HTML',
+    });
+
+    const { InlineKeyboard } = await import('grammy');
+    const kb = buildCellKeyboard(newSize, [], newSize, InlineKeyboard);
+    const btnMsg = await ctx.reply(
+      `📍 <b>اختر المربعات (تقسيم ${newSize}):</b>\n(الحد الأقصى 6 مربعات)`,
+      { parse_mode: 'HTML', reply_markup: kb }
+    );
+
+    await User.updateOne(
+      { telegramId: userId },
+      { $set: { customEraserBtnMsgId: btnMsg.message_id } }
+    );
+    return;
+  }
+
+  if (data.startsWith('cgz_') && data !== 'cgz_more' && data !== 'cgz_process') {
+    const N = parseInt(data.replace('cgz_', ''));
+    if (isNaN(N)) return;
+
+    const userId = ctx.from!.id.toString();
+    const user = await User.findOne({ telegramId: userId });
+    
+    if (!user || !user.awaitingCustomEraserZone) return;
+
+    if (user.customEraserSelectedCells?.includes(N)) {
+      await ctx.answerCallbackQuery({ text: 'هذا المربع محدد مسبقاً ✅', show_alert: false }).catch(() => {});
+      return;
+    }
+
+    if ((user.customEraserSelectedCells?.length || 0) >= 6) {
+      await ctx.answerCallbackQuery({
+        text: '⚠️ وصلت للحد الأقصى (6 مربعات). اضغط "عالج الصورة" للمتابعة.',
+        show_alert: true
+      }).catch(() => {});
+      return;
+    }
+
+    const selectedCells = user.customEraserSelectedCells || [];
+    selectedCells.push(N);
+    user.customEraserSelectedCells = selectedCells;
+    await user.save();
+
+    await ctx.answerCallbackQuery({ text: `✅ تم إضافة المربع ${N}`, show_alert: false }).catch(() => {});
+
+    if (user.customEraserBtnMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+    }
+
+    const count = selectedCells.length;
+    const list = selectedCells.join(', ');
+
+    const { InlineKeyboard } = await import('grammy');
+    const gridSize = user.customEraserGridSize || 30;
+    const kb = buildCellKeyboard(gridSize, selectedCells, gridSize, InlineKeyboard);
+
+    const newBtnMsg = await ctx.reply(
+      `✅ <b>تم اختيار ${count} مربع/مربعات:</b> ${list}\n\nهل تريد إضافة مربع آخر أم تبدأ المعالجة؟`,
+      { parse_mode: 'HTML', reply_markup: kb }
+    );
+    user.customEraserBtnMsgId = newBtnMsg.message_id;
+    await user.save();
+    return;
+  }
+
   if (data === 'cancel_custom_eraser') {
     await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
     const user = await User.findOne({ telegramId: ctx.from!.id.toString() });
@@ -2352,7 +2475,7 @@ async function buildMaskFromCells(
     }
     await User.updateOne(
       { telegramId: ctx.from!.id.toString() },
-      { $set: { awaitingCustomEraserImage: false, awaitingCustomEraserZone: false, customEraserFileId: '', customEraserSelectedCells: [], customEraserBtnMsgId: null } }
+      { $set: { awaitingCustomEraserImage: false, awaitingCustomEraserZone: false, customEraserFileId: '', customEraserSelectedCells: [], customEraserBtnMsgId: null, customEraserGridSize: 30 } }
     );
     await ctx.reply('تم الإلغاء ❌');
     return;

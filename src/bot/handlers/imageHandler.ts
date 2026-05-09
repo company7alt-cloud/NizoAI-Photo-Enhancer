@@ -10,44 +10,49 @@ import {
   getQueuePosition,
 } from '../../services/onnxEnhanceService';
 
-async function drawGridOnImage(inputBuffer: Buffer): Promise<Buffer> {
+const GRID_CONFIGS: Record<number, { cols: number; rows: number }> = {
+  30: { cols: 5, rows: 6  },
+  40: { cols: 5, rows: 8  },
+  50: { cols: 5, rows: 10 },
+  60: { cols: 6, rows: 10 },
+};
+
+async function drawGridOnImage(
+  inputBuffer: Buffer,
+  cols: number = 5,
+  rows: number = 6
+): Promise<Buffer> {
   const meta = await sharp(inputBuffer).metadata();
   const W = meta.width!;
   const H = meta.height!;
-  const cellW = Math.floor(W / 5);
-  const cellH = Math.floor(H / 6);
+  const cellW = Math.floor(W / cols);
+  const cellH = Math.floor(H / rows);
 
-  // Build SVG overlay with grid lines + cell numbers
   const lineThickness = Math.max(2, Math.round(W / 300));
   const fontSize = Math.max(18, Math.round(cellW / 4));
 
   let svgLines = '';
-  // Vertical lines (4 internal)
-  for (let c = 1; c < 5; c++) {
+  for (let c = 1; c < cols; c++) {
     const x = c * cellW;
     svgLines += `<line x1="${x}" y1="0" x2="${x}" y2="${H}"
       stroke="white" stroke-width="${lineThickness}" opacity="0.85"/>`;
   }
-  // Horizontal lines (5 internal)
-  for (let r = 1; r < 6; r++) {
+  for (let r = 1; r < rows; r++) {
     const y = r * cellH;
     svgLines += `<line x1="0" y1="${y}" x2="${W}" y2="${y}"
       stroke="white" stroke-width="${lineThickness}" opacity="0.85"/>`;
   }
 
-  // Cell numbers
   let svgNumbers = '';
-  for (let r = 0; r < 6; r++) {
-    for (let c = 0; c < 5; c++) {
-      const num = r * 5 + c + 1;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const num = r * cols + c + 1;
       const cx = c * cellW + Math.round(cellW / 2);
       const cy = r * cellH + Math.round(cellH / 2);
-      // Shadow
       svgNumbers += `<text x="${cx+2}" y="${cy+2}" font-family="Arial"
         font-size="${fontSize}" font-weight="bold"
         text-anchor="middle" dominant-baseline="middle"
         fill="black" opacity="0.6">${num}</text>`;
-      // White number
       svgNumbers += `<text x="${cx}" y="${cy}" font-family="Arial"
         font-size="${fontSize}" font-weight="bold"
         text-anchor="middle" dominant-baseline="middle"
@@ -64,6 +69,32 @@ async function drawGridOnImage(inputBuffer: Buffer): Promise<Buffer> {
     .composite([{ input: Buffer.from(svg), gravity: 'northwest' }])
     .jpeg({ quality: 90 })
     .toBuffer();
+}
+
+function buildCellKeyboard(
+  totalCells: number,
+  selectedCells: number[],
+  currentGridSize: number
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  const cols = 5;
+
+  for (let i = 1; i <= totalCells; i++) {
+    const isSelected = selectedCells.includes(i);
+    const label = isSelected ? `✅${i}` : String(i);
+    kb.text(label, `cgz_${i}`);
+    if (i % cols === 0) kb.row();
+  }
+
+  kb.row();
+  const sizes = [40, 50, 60];
+  for (const s of sizes) {
+    const isActive = currentGridSize === s;
+    kb.text(isActive ? `✅ تقسيم ${s}` : `تقسيم ${s}`, `cgz_size_${s}`);
+  }
+
+  kb.row().text('❌ إلغاء', 'cancel_custom_eraser');
+  return kb;
 }
 
 export async function imageHandler(ctx: BotContext): Promise<void> {
@@ -196,32 +227,25 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       return;
     }
     const inputBuffer = Buffer.from(await fetchRes.arrayBuffer());
-    const gridBuffer = await drawGridOnImage(inputBuffer);
+    const cfg = GRID_CONFIGS[30];
+    const gridBuffer = await drawGridOnImage(inputBuffer, cfg.cols, cfg.rows);
 
     user.customEraserFileId = fileId;
     user.customEraserGridBuffer = gridBuffer.toString('base64');
     user.awaitingCustomEraserImage = false;
     user.awaitingCustomEraserZone = true;
     user.customEraserSelectedCells = [];
+    user.customEraserGridSize = 30;
     
     await ctx.replyWithPhoto(new InputFile(gridBuffer), { caption: "🖼 صورة الشبكة" });
 
-    const keyboard = new InlineKeyboard();
-    let btnCount = 1;
-    for (let r = 0; r < 6; r++) {
-      for (let c = 0; c < 5; c++) {
-        keyboard.text(`${btnCount}`, `cgz_${btnCount}`);
-        btnCount++;
-      }
-      keyboard.row();
-    }
-    keyboard.text('❌ إلغاء', 'cancel_custom_eraser');
+    const kb = buildCellKeyboard(30, [], 30);
 
     const btnMsg = await ctx.reply(
       "📍 <b>اضغط على أرقام المربعات التي تحتوي العنصر المراد إزالته:</b>\n(الحد الأقصى 6 مربعات)",
       {
         parse_mode: 'HTML',
-        reply_markup: keyboard
+        reply_markup: kb
       }
     );
     

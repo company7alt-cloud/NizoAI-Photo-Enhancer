@@ -41,6 +41,7 @@ export interface IUser extends Document {
   customEraserSelectedCells?: number[];
   customEraserBtnMsgId?: number | null;
   customEraserGridBuffer?: string;
+  customEraserGridSize?: number;
   eraserCoords?: {
     minX: number | null;
     minY: number | null;
@@ -212,6 +213,7 @@ const UserSchema = new Schema<IUser>(
     customEraserSelectedCells: { type: [Number], default: [] },
     customEraserBtnMsgId: { type: Number, default: null },
     customEraserGridBuffer: { type: String, default: '' },
+    customEraserGridSize: { type: Number, default: 30 },
     eraserCoords: {
       type: {
         minX:   { type: Number, default: null },
