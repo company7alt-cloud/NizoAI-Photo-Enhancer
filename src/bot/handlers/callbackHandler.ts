@@ -2094,9 +2094,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const customUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
     if (!customUser) return;
 
-    if (customUser.dailyQuota < 2 && !isAdminUser) {
+    if (customUser.dailyQuota < 4 && !isAdminUser) {
       await ctx.reply(
-        "⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>2 محاولات</b> لتفعيل هذه الأداة.",
+        "⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>4 محاولات</b> لتفعيل هذه الأداة.",
         { parse_mode: 'HTML' }
       );
       await ctx.answerCallbackQuery().catch(() => {});

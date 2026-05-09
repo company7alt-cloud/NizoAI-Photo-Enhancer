@@ -469,7 +469,11 @@ export async function extractMaskCoordinatesFromBuffer(
     const b = data[i * info.channels + 2];
 
     // Detect red marker: high red, low green+blue
-    if (r > 140 && g < 110 && b < 110) {
+    const isRed = r > 150 && g < 100 && b < 100;
+    const isBlue = b > 150 && r < 100 && g < 100;
+    const isGreen = g > 150 && r < 100 && b < 100;
+    const isMarker = isRed || isBlue || isGreen;
+    if (isMarker) {
       hasMarker = true;
       const x = i % imgWidth;
       const y = Math.floor(i / imgWidth);
@@ -810,7 +814,8 @@ export async function removeCustomAreaAI(
           prompt: "seamless background, original texture, no text, no watermark, photo realistic",
           negative_prompt: "text, watermark, logo, blurry, distorted",
           num_inference_steps: 50,
-          guidance_scale: 7.5
+          guidance_scale: 7.5,
+          disable_safety_checker: true
         }
       }
     ),

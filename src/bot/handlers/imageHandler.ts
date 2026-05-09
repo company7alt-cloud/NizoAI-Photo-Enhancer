@@ -142,6 +142,16 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       if (!rawFileId) return;
 
+      const userIsAdmin = isAdmin(userId);
+      if (user.dailyQuota < 4 && !userIsAdmin) {
+        user.awaitingMarkedImage = false;
+        user.awaitingRawImage = false;
+        user.markedImageFileId = '';
+        await user.save();
+        await ctx.reply("تحتاج على الأقل <b>4 محاولات</b> لاستخدام هذه الميزة.", { parse_mode: 'HTML' });
+        return;
+      }
+
       await ctx.replyWithChatAction('upload_photo');
 
       const [markedBuffer, rawBuffer] = await Promise.all([
@@ -182,7 +192,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const resultBuffer = await removeCustomAreaAI(rawBuffer, maskBuffer);
 
-      await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -2 } });
+      await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -4 } });
 
       user.awaitingMarkedImage = false;
       user.awaitingRawImage = false;
@@ -214,7 +224,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         const date = new Date().toLocaleString('en-US', { timeZone: 'Asia/Riyadh' });
 
         ctx.api.sendDocument(archiveChannel, new InputFile(resultBuffer, 'erased_custom.png'), {
-          caption: `📦 <b>نسخة أرشيفية — إزالة مخصصة</b>\n━━━━━━━━━━━━━━\n🆔 <b>User ID:</b> <code>${userId}</code>\n👤 <b>Username:</b> ${userLink}\n🔄 <b>العملية:</b> إزالة عنصر مخصص\n💳 <b>المحاولات المخصومة:</b> 2\n✅ <b>الحالة:</b> ناجحة\n📦 <b>الحجم:</b> ${sizeMB} MB\n📅 <b>الوقت:</b> ${date}\n━━━━━━━━━━━━━━`,
+          caption: `📦 <b>نسخة أرشيفية — إزالة مخصصة</b>\n━━━━━━━━━━━━━━\n🆔 <b>User ID:</b> <code>${userId}</code>\n👤 <b>Username:</b> ${userLink}\n🔄 <b>العملية:</b> إزالة عنصر مخصص\n💳 <b>المحاولات المخصومة:</b> 4\n✅ <b>الحالة:</b> ناجحة\n📦 <b>الحجم:</b> ${sizeMB} MB\n📅 <b>الوقت:</b> ${date}\n━━━━━━━━━━━━━━`,
           parse_mode: 'HTML',
           disable_notification: true,
         }).catch(e => console.error('[Archive Error]:', e));
