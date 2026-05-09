@@ -456,7 +456,8 @@ export async function extractMaskCoordinatesFromBuffer(
   const imgWidth  = metadata.width!;
   const imgHeight = metadata.height!;
 
-  const { data, info } = await sharp(rawBuffer)
+  const { data } = await sharp(rawBuffer)
+    .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
 
@@ -464,15 +465,16 @@ export async function extractMaskCoordinatesFromBuffer(
   let hasMarker = false;
 
   for (let i = 0; i < imgWidth * imgHeight; i++) {
-    const r = data[i * info.channels];
-    const g = data[i * info.channels + 1];
-    const b = data[i * info.channels + 2];
+    const idx = i * 3;
+    const r = data[idx];
+    const g = data[idx + 1];
+    const b = data[idx + 2];
 
-    // Detect red marker: high red, low green+blue
-    const isRed = r > 150 && g < 100 && b < 100;
-    const isBlue = b > 150 && r < 100 && g < 100;
-    const isGreen = g > 150 && r < 100 && b < 100;
-    const isMarker = isRed || isBlue || isGreen;
+    const maxChannel = Math.max(r, g, b);
+    const minChannel = Math.min(r, g, b);
+    const saturation = maxChannel - minChannel;
+    const isMarker = saturation > 80 && maxChannel > 120;
+
     if (isMarker) {
       hasMarker = true;
       const x = i % imgWidth;
@@ -486,11 +488,11 @@ export async function extractMaskCoordinatesFromBuffer(
 
   if (!hasMarker) return null;
 
-  // Add 15px padding for seamless blending
-  minX = Math.max(0, minX - 15);
-  minY = Math.max(0, minY - 15);
-  maxX = Math.min(imgWidth  - 1, maxX + 15);
-  maxY = Math.min(imgHeight - 1, maxY + 15);
+  // Add 20px padding for seamless blending
+  minX = Math.max(0, minX - 20);
+  minY = Math.max(0, minY - 20);
+  maxX = Math.min(imgWidth  - 1, maxX + 20);
+  maxY = Math.min(imgHeight - 1, maxY + 20);
 
   return {
     minX,

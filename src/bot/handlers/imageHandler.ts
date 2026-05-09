@@ -1,8 +1,8 @@
 // src/bot/handlers/imageHandler.ts
 import { InlineKeyboard } from 'grammy';
 import { InputFile } from 'grammy';
-
-import { getFileBuffer, removeCustomAreaAI, generateMaskFromDiff } from '../../services/imageService';
+import sharp from 'sharp';
+import { getFileBuffer, removeCustomAreaAI, extractMaskCoordinatesFromBuffer } from '../../services/imageService';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
 import { getSettings } from '../../services/settingsService';
@@ -159,7 +159,31 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         getFileBuffer(rawFileId, ctx)
       ]);
 
-      const { maskBuffer } = await generateMaskFromDiff(markedBuffer, rawBuffer);
+      const coords = await extractMaskCoordinatesFromBuffer(markedBuffer);
+      if (!coords) {
+        await ctx.reply(
+          "لم أتمكن من تحديد العلامة. تأكد من رسم علامة ملونة واضحة"
+        );
+        return;
+      }
+
+      const rawMetadata = await sharp(rawBuffer).metadata();
+      const rawWidth = rawMetadata.width || 1024;
+      const rawHeight = rawMetadata.height || 1024;
+
+      const baseMask = await sharp({
+        create: { width: rawWidth, height: rawHeight, channels: 3, background: { r: 0, g: 0, b: 0 } }
+      }).png().toBuffer();
+
+      const whiteBox = await sharp({
+        create: { width: coords.width, height: coords.height, channels: 3, background: { r: 255, g: 255, b: 255 } }
+      }).png().toBuffer();
+
+      const maskBuffer = await sharp(baseMask)
+        .composite([{ input: whiteBox, left: coords.minX, top: coords.minY }])
+        .blur(4)
+        .png()
+        .toBuffer();
 
       await ctx.reply(
         "⚙️ <b>جارٍ المعالجة...</b>\nتم استلام الصورتين بنجاح. الذكاء الاصطناعي يعمل الآن على تحليل وإزالة العنصر المحدد. قد يستغرق ذلك 30-60 ثانية.",
