@@ -22,12 +22,16 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     const doc = ctx.message?.document;
 
     if (!doc) {
-      await ctx.reply(
-        '⚠️ أرسل الصورة كـ <b>مستند (ملف)</b> وليس كصورة عادية.\n' +
-        'اضغط 📎 ← اختر "ملف" ← اختر صورتك',
-        { parse_mode: 'HTML' }
-      );
-      return; // STRICT RETURN — prevent double menu
+      if (userRecord.awaitingMarkedImage || userRecord.awaitingRawImage) {
+        // User is in custom eraser flow — skip format conversion interceptor
+      } else {
+        await ctx.reply(
+          '⚠️ أرسل الصورة كـ <b>مستند (ملف)</b> وليس كصورة عادية.\n' +
+          'اضغط 📎 ← اختر "ملف" ← اختر صورتك',
+          { parse_mode: 'HTML' }
+        );
+        return; // STRICT RETURN — prevent double menu
+      }
     }
 
     const mimeType = doc.mime_type || '';
