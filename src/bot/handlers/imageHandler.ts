@@ -167,18 +167,6 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const rawWidth = rawMetadata.width || 1024;
       const rawHeight = rawMetadata.height || 1024;
 
-      // 2. Extract patch from RAW image around masked area to understand background texture
-      const expandBy = 50;
-      const left = Math.max(0, Math.abs(trimInfo.trimOffsetLeft || 0) - expandBy);
-      const top = Math.max(0, Math.abs(trimInfo.trimOffsetTop || 0) - expandBy);
-      const patchWidth = Math.min(rawWidth - left, trimInfo.width + expandBy * 2);
-      const patchHeight = Math.min(rawHeight - top, trimInfo.height + expandBy * 2);
-
-      const texturePatchBuffer = await sharp(rawBuffer)
-        .extract({ left, top, width: patchWidth, height: patchHeight })
-        .toBuffer();
-      console.log(`[Eraser] Extracted background texture patch of size ${patchWidth}x${patchHeight}`);
-
       // 3. Use Replicate inpainting with EXACT input parameters
       const resizedRawBuffer = await sharp(rawBuffer)
         .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
