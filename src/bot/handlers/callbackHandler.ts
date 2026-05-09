@@ -27,6 +27,7 @@ const GRID_CONFIGS: Record<number, { cols: number; rows: number }> = {
   40: { cols: 5, rows: 8  },
   50: { cols: 5, rows: 10 },
   60: { cols: 6, rows: 10 },
+  100: { cols: 10, rows: 10 },
 };
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
@@ -2240,7 +2241,7 @@ function buildCellKeyboard(
 
   // Grid size switcher row
   kb.row();
-  const sizes = [40, 50, 60];
+  const sizes = [40, 50, 60, 100];
   for (const s of sizes) {
     const isActive = currentGridSize === s;
     kb.text(isActive ? `✅ تقسيم ${s}` : `تقسيم ${s}`, `cgz_size_${s}`);
@@ -2279,8 +2280,9 @@ function buildCellKeyboard(
     const gridSize = user.customEraserGridSize || 30;
     const kb = buildCellKeyboard(gridSize, selectedCells, gridSize, InlineKeyboard);
 
+    const MAX_CELLS = gridSize === 100 ? 10 : 6;
     const newBtnMsg = await ctx.reply(
-      `📍 <b>اختر مربعاً إضافياً:</b>\nالمحدد حالياً: ${list}\n(المتبقي: ${6 - count} مربعات)`,
+      `📍 <b>اختر مربعاً إضافياً:</b>\nالمحدد حالياً: ${list}\n(المتبقي: ${MAX_CELLS - count} مربعات)`,
       { parse_mode: 'HTML', reply_markup: kb }
     );
     user.customEraserBtnMsgId = newBtnMsg.message_id;
@@ -2385,7 +2387,7 @@ function buildCellKeyboard(
 
   if (data.startsWith('cgz_size_')) {
     const newSize = parseInt(data.replace('cgz_size_', ''));
-    if (![40, 50, 60].includes(newSize)) return;
+    if (![40, 50, 60, 100].includes(newSize)) return;
 
     await ctx.answerCallbackQuery().catch(() => {});
 
@@ -2425,8 +2427,9 @@ function buildCellKeyboard(
 
     const { InlineKeyboard } = await import('grammy');
     const kb = buildCellKeyboard(newSize, [], newSize, InlineKeyboard);
+    const MAX_CELLS = newSize === 100 ? 10 : 6;
     const btnMsg = await ctx.reply(
-      `📍 <b>اختر المربعات (تقسيم ${newSize}):</b>\n(الحد الأقصى 6 مربعات)`,
+      `📍 <b>اختر المربعات (تقسيم ${newSize}):</b>\n(الحد الأقصى ${MAX_CELLS} مربعات)`,
       { parse_mode: 'HTML', reply_markup: kb }
     );
 
@@ -2451,9 +2454,10 @@ function buildCellKeyboard(
       return;
     }
 
-    if ((user.customEraserSelectedCells?.length || 0) >= 6) {
+    const MAX_CELLS = user.customEraserGridSize === 100 ? 10 : 6;
+    if ((user.customEraserSelectedCells?.length || 0) >= MAX_CELLS) {
       await ctx.answerCallbackQuery({
-        text: '⚠️ وصلت للحد الأقصى (6 مربعات). اضغط "عالج الصورة" للمتابعة.',
+        text: `⚠️ وصلت للحد الأقصى (${MAX_CELLS} مربعات). اضغط "عالج الصورة" للمتابعة.`,
         show_alert: true
       }).catch(() => {});
       return;

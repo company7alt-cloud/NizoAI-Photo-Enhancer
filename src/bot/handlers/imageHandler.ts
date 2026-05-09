@@ -15,6 +15,7 @@ const GRID_CONFIGS: Record<number, { cols: number; rows: number }> = {
   40: { cols: 5, rows: 8  },
   50: { cols: 5, rows: 10 },
   60: { cols: 6, rows: 10 },
+  100: { cols: 10, rows: 10 },
 };
 
 async function drawGridOnImage(
