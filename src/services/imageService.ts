@@ -802,7 +802,7 @@ export async function removeCustomAreaAI(
 
   const replicateOutput = await Promise.race<unknown>([
     replicate.run(
-      "cjwbw/lama:a4b26df6e69e069c9048e787ff80760ebb3d1d90e0e00c9d60be67e52427c9c7",
+      "allenhooo/lama" as any,
       {
         input: {
           image: imageBase64,
