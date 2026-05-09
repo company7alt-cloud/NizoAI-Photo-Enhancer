@@ -2238,6 +2238,7 @@ function buildCellKeyboard(
     if (i % cols === 0) kb.row();
   }
 
+  // Grid size switcher row
   kb.row();
   const sizes = [40, 50, 60];
   for (const s of sizes) {
@@ -2245,7 +2246,17 @@ function buildCellKeyboard(
     kb.text(isActive ? `✅ تقسيم ${s}` : `تقسيم ${s}`, `cgz_size_${s}`);
   }
 
+  // Process button — ALWAYS visible, regardless of selection count
+  kb.row().text(
+    selectedCells.length > 0
+      ? `🚀 عالج الصورة (${selectedCells.length} مربع)`
+      : '🚀 عالج الصورة',
+    'cgz_process'
+  );
+
+  // Cancel row
   kb.row().text('❌ إلغاء', 'cancel_custom_eraser');
+
   return kb;
 }
 
@@ -2282,8 +2293,16 @@ function buildCellKeyboard(
     const userId = ctx.from!.id.toString();
     const user = await User.findOne({ telegramId: userId });
     
-    if (!user || !user.awaitingCustomEraserZone || !user.customEraserFileId || (user.customEraserSelectedCells?.length || 0) < 1) {
+    if (!user || !user.awaitingCustomEraserZone || !user.customEraserFileId) {
       await ctx.reply("❌ انتهت صلاحية الجلسة، ابدأ من جديد.");
+      return;
+    }
+
+    if (!user.customEraserSelectedCells || user.customEraserSelectedCells.length === 0) {
+      await ctx.answerCallbackQuery({
+        text: '⚠️ لم تحدد أي مربع بعد! اضغط على الأرقام أولاً.',
+        show_alert: true,
+      });
       return;
     }
 
