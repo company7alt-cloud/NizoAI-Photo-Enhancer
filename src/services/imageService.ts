@@ -448,6 +448,54 @@ export async function extractMaskCoordinates(
   };
 }
 
+// FUNCTION 1.5: Extract red-marked region coordinates from Buffer
+export async function extractMaskCoordinatesFromBuffer(
+  rawBuffer: Buffer
+): Promise<{ minX: number; minY: number; width: number; height: number } | null> {
+  const metadata = await sharp(rawBuffer).metadata();
+  const imgWidth  = metadata.width!;
+  const imgHeight = metadata.height!;
+
+  const { data, info } = await sharp(rawBuffer)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  let minX = imgWidth, minY = imgHeight, maxX = 0, maxY = 0;
+  let hasMarker = false;
+
+  for (let i = 0; i < imgWidth * imgHeight; i++) {
+    const r = data[i * info.channels];
+    const g = data[i * info.channels + 1];
+    const b = data[i * info.channels + 2];
+
+    // Detect red marker: high red, low green+blue
+    if (r > 140 && g < 110 && b < 110) {
+      hasMarker = true;
+      const x = i % imgWidth;
+      const y = Math.floor(i / imgWidth);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  if (!hasMarker) return null;
+
+  // Add 15px padding for seamless blending
+  minX = Math.max(0, minX - 15);
+  minY = Math.max(0, minY - 15);
+  maxX = Math.min(imgWidth  - 1, maxX + 15);
+  maxY = Math.min(imgHeight - 1, maxY + 15);
+
+  return {
+    minX,
+    minY,
+    width:  maxX - minX,
+    height: maxY - minY,
+  };
+}
+
 // FUNCTION 2: Generate mask and send to Replicate inpainting
 export async function processTwoStepInpainting(
   cleanImageUrl: string,
