@@ -152,13 +152,50 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const { maskBuffer } = await generateMaskFromDiff(markedBuffer, rawBuffer);
 
+      // 1. Use mask buffer to find bounding box of the white region
+      let trimInfo;
+      try {
+        const trimResult = await sharp(maskBuffer)
+          .trim({ threshold: 10 })
+          .toBuffer({ resolveWithObject: true });
+        trimInfo = trimResult.info;
+      } catch (e) {
+        trimInfo = { trimOffsetLeft: 0, trimOffsetTop: 0, width: 100, height: 100 };
+      }
+
+      const rawMetadata = await sharp(rawBuffer).metadata();
+      const rawWidth = rawMetadata.width || 1024;
+      const rawHeight = rawMetadata.height || 1024;
+
+      // 2. Extract patch from RAW image around masked area to understand background texture
+      const expandBy = 50;
+      const left = Math.max(0, Math.abs(trimInfo.trimOffsetLeft || 0) - expandBy);
+      const top = Math.max(0, Math.abs(trimInfo.trimOffsetTop || 0) - expandBy);
+      const patchWidth = Math.min(rawWidth - left, trimInfo.width + expandBy * 2);
+      const patchHeight = Math.min(rawHeight - top, trimInfo.height + expandBy * 2);
+
+      const texturePatchBuffer = await sharp(rawBuffer)
+        .extract({ left, top, width: patchWidth, height: patchHeight })
+        .toBuffer();
+      console.log(`[Eraser] Extracted background texture patch of size ${patchWidth}x${patchHeight}`);
+
+      // 3. Use Replicate inpainting with EXACT input parameters
       const resizedRawBuffer = await sharp(rawBuffer)
         .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
         .jpeg()
         .toBuffer();
 
+      const { width: resizedWidth, height: resizedHeight } = await sharp(resizedRawBuffer).metadata();
+
+      const dilatedMaskBuffer = await sharp(maskBuffer)
+        .resize(resizedWidth, resizedHeight, { fit: 'fill' })
+        .blur(5)
+        .threshold(20)
+        .png()
+        .toBuffer();
+
       const rawBase64 = `data:image/jpeg;base64,${resizedRawBuffer.toString('base64')}`;
-      const maskBase64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
+      const maskBase64 = `data:image/png;base64,${dilatedMaskBuffer.toString('base64')}`;
 
       const replicate = new Replicate({
         auth: process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY,
@@ -173,8 +210,10 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
             input: {
               image: rawBase64,
               mask: maskBase64,
-              prompt: "clean background, seamless texture, photo realistic",
-              negative_prompt: "artifacts, blurry, watermark, text, logo"
+              prompt: "seamless background, same texture, no text, no watermark, photo realistic, clean surface",
+              negative_prompt: "text, watermark, logo, signature, blurry, distorted, artifacts, different color",
+              num_inference_steps: 50,
+              guidance_scale: 7.5
             }
           }
         ),
@@ -193,7 +232,28 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const resultRes = await fetch(outputUrl);
       if (!resultRes.ok) throw new Error("Failed to fetch generated image.");
-      const resultBuffer = Buffer.from(await resultRes.arrayBuffer());
+      const aiResultBuffer = Buffer.from(await resultRes.arrayBuffer());
+
+      // 4 & 5. Restore original dimensions and NEVER upscale original parts
+      const upscaledAiBuffer = await sharp(aiResultBuffer)
+        .resize(rawWidth, rawHeight, { fit: 'fill' })
+        .toBuffer();
+
+      const blendMaskBuffer = await sharp(maskBuffer)
+        .toColorspace('b-w')
+        .blur(15)
+        .toBuffer();
+
+      const aiWithAlpha = await sharp(upscaledAiBuffer)
+        .removeAlpha()
+        .joinChannel(blendMaskBuffer)
+        .png()
+        .toBuffer();
+
+      const resultBuffer = await sharp(rawBuffer)
+        .composite([{ input: aiWithAlpha }])
+        .png()
+        .toBuffer();
 
       await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -2 } });
 
