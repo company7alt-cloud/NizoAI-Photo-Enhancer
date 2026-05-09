@@ -806,16 +806,16 @@ export async function removeCustomAreaAI(
 
   const replicateOutput = await Promise.race<unknown>([
     replicate.run(
-      "andreasjansson/stable-diffusion-inpainting:e490d072a34a94a11e9711ed5a6ba621c3fab884eda1665d9d3a282d65a21180",
+      "lucataco/sdxl-inpainting:a5b13068cc81a89a4fbeefeccc774869fcb34df4dbc92c1555e0f2771d49dde7",
       {
         input: {
           image: imageBase64,
           mask: maskBase64,
-          prompt: "seamless background, original texture, no text, no watermark, photo realistic",
-          negative_prompt: "text, watermark, logo, blurry, distorted",
-          num_inference_steps: 50,
-          guidance_scale: 7.5,
-          disable_safety_checker: true
+          prompt: "seamless background continuation, matching texture and lighting, photorealistic, no watermark, no logo, no text, 8k quality",
+          negative_prompt: "watermark, logo, text, blur, distortion, artifact, low quality",
+          num_inference_steps: 40,
+          guidance_scale: 8,
+          strength: 0.99,
         }
       }
     ),
@@ -827,13 +827,15 @@ export async function removeCustomAreaAI(
   const outputUrl = Array.isArray(replicateOutput)
     ? String(replicateOutput[0])
     : String(replicateOutput);
-  if (!outputUrl || outputUrl === 'undefined') throw new Error('Inpainting API returned no image.');
 
-  const res = await fetch(outputUrl);
-  if (!res.ok) throw new Error('Failed to fetch result');
-  const resultBuffer = Buffer.from(await res.arrayBuffer());
+  if (!outputUrl || outputUrl === 'undefined') throw new Error('No output from AI');
+
+  const replicateResponse = await fetch(outputUrl);
+  const resultArrayBuffer = await replicateResponse.arrayBuffer();
+  const resultBuffer = Buffer.from(resultArrayBuffer);
 
   return await sharp(resultBuffer)
-    .resize(originalWidth, originalHeight, { fit: 'fill' })
+    .resize(originalWidth, originalHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+    .jpeg({ quality: 100 })
     .toBuffer();
 }
