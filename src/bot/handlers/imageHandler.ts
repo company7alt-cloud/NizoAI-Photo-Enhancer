@@ -2,7 +2,7 @@
 import { InlineKeyboard } from 'grammy';
 import { InputFile } from 'grammy';
 import sharp from 'sharp';
-import { getFileBuffer, removeCustomAreaAI, extractMaskCoordinatesFromBuffer } from '../../services/imageService';
+import { getFileBuffer, removeCustomAreaAI } from '../../services/imageService';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
 import { getSettings } from '../../services/settingsService';
@@ -19,12 +19,11 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   const userRecord = reportUser;
 
   if (userRecord?.awaitingFormatConversion &&
-    !userRecord.awaitingMarkedImage &&
-    !userRecord.awaitingRawImage) {
+    !userRecord.awaitingCustomEraserImage) {
     const doc = ctx.message?.document;
 
     if (!doc) {
-      if ((userRecord as any).awaitingMarkedImage || (userRecord as any).awaitingRawImage) {
+      if ((userRecord as any).awaitingCustomEraserImage) {
         // fall through — do NOT return, let custom eraser handlers below take over
       } else {
         await ctx.reply(
@@ -124,146 +123,32 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  if (user?.awaitingMarkedImage) {
+  if (user?.awaitingCustomEraserImage) {
     const photo = ctx.message?.photo;
     const document = ctx.message?.document;
     const fileId = photo ? photo[photo.length - 1].file_id : document?.file_id;
 
-    if (!fileId) return;
-
-    user.markedImageFileId = fileId;
-    user.awaitingMarkedImage = false;
-    user.awaitingRawImage = true;
-    await user.save();
-
-    await ctx.reply(
-      `✅ <b>تم تحديد منطقة الإزالة بنجاح!</b>\n\n📸 <b>الخطوة 2 من 2 — الصورة الأصلية</b>\n\nأرسل لي الآن <b>نفس الصورة بدون أي شخبطة أو تعديل</b>\n(الصورة الخام الأصلية). سأقوم بمقارنة الصورتين لتحديد\nموقع العنصر بدقة واستخدام الذكاء الاصطناعي لإزالته\nبشكل احترافي دون المساس بباقي الصورة.`,
-      { parse_mode: 'HTML' }
-    );
-    return;
-  }
-
-  if (user?.awaitingRawImage) {
-    try {
-      const photo = ctx.message?.photo;
-      const document = ctx.message?.document;
-      const rawFileId = photo ? photo[photo.length - 1].file_id : document?.file_id;
-
-      if (!rawFileId) return;
-
-      const userIsAdmin = isAdmin(userId);
-      if (user.dailyQuota < 4 && !userIsAdmin) {
-        user.awaitingMarkedImage = false;
-        user.awaitingRawImage = false;
-        user.markedImageFileId = '';
-        await user.save();
-        await ctx.reply("تحتاج على الأقل <b>4 محاولات</b> لاستخدام هذه الميزة.", { parse_mode: 'HTML' });
-        return;
-      }
-
-      await ctx.replyWithChatAction('upload_photo');
-
-      const [markedBuffer, rawBuffer] = await Promise.all([
-        getFileBuffer(user.markedImageFileId ?? '', ctx),
-        getFileBuffer(rawFileId, ctx)
-      ]);
-
-      const coords = await extractMaskCoordinatesFromBuffer(markedBuffer);
-      console.log('[CustomEraser] Coords:', JSON.stringify(coords));
-      console.log('[CustomEraser] Raw image size:', rawBuffer.length);
-      if (!coords) {
-        await ctx.reply(
-          "لم أتمكن من تحديد العلامة. تأكد من رسم علامة ملونة واضحة"
-        );
-        return;
-      }
-
-      const rawMetadata = await sharp(rawBuffer).metadata();
-      const rawWidth = rawMetadata.width || 1024;
-      const rawHeight = rawMetadata.height || 1024;
-
-      const baseMask = await sharp({
-        create: { width: rawWidth, height: rawHeight, channels: 3, background: { r: 0, g: 0, b: 0 } }
-      }).png().toBuffer();
-
-      const whiteBox = await sharp({
-        create: { width: coords.width, height: coords.height, channels: 3, background: { r: 255, g: 255, b: 255 } }
-      }).png().toBuffer();
-
-      const maskBuffer = await sharp(baseMask)
-        .composite([{ input: whiteBox, left: coords.minX, top: coords.minY }])
-        .blur(4)
-        .png()
-        .toBuffer();
-
-      const maskMeta = await sharp(maskBuffer).metadata();
-      console.log('[CustomEraser] Mask dimensions:', maskMeta.width, 'x', maskMeta.height);
-
-      await ctx.reply(
-        "⚙️ <b>جارٍ المعالجة...</b>\nتم استلام الصورتين بنجاح. الذكاء الاصطناعي يعمل الآن على تحليل وإزالة العنصر المحدد. قد يستغرق ذلك 30-60 ثانية.",
-        { parse_mode: 'HTML' }
-      );
-
-      const resultBuffer = await removeCustomAreaAI(rawBuffer, maskBuffer);
-      console.log('[CustomEraser] Result size:', resultBuffer.length);
-
-      await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -4 } });
-
-      user.awaitingMarkedImage = false;
-      user.awaitingRawImage = false;
-      user.markedImageFileId = '';
-      user.lastEraserResultBuffer = resultBuffer.toString('base64');
-      await user.save();
-
-      const sentMsg = await ctx.replyWithDocument(
-        new InputFile(resultBuffer, 'erased_custom.png'),
-        {
-          reply_markup: new InlineKeyboard()
-            .text('JPG', 'eraser_fmt_jpg')
-            .text('PNG', 'eraser_fmt_png')
-            .text('WEBP', 'eraser_fmt_webp')
-            .row()
-            .text('GIF', 'eraser_fmt_gif')
-            .text('TIFF', 'eraser_fmt_tiff')
-        }
-      );
-
-      user.lastEraserResultMsgId = sentMsg.message_id;
-      await user.save();
-
-      const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.ARCHIVE_CHANNEL || process.env.CHANNEL_ID;
-      if (archiveChannel) {
-        const userId = ctx.from!.id;
-        const userLink = ctx.from!.username ? `@${ctx.from!.username}` : ctx.from!.first_name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const sizeMB = (resultBuffer.length / (1024 * 1024)).toFixed(2);
-        const date = new Date().toLocaleString('en-US', { timeZone: 'Asia/Riyadh' });
-
-        ctx.api.sendDocument(archiveChannel, new InputFile(resultBuffer, 'erased_custom.png'), {
-          caption: `📦 <b>نسخة أرشيفية — إزالة مخصصة</b>\n━━━━━━━━━━━━━━\n🆔 <b>User ID:</b> <code>${userId}</code>\n👤 <b>Username:</b> ${userLink}\n🔄 <b>العملية:</b> إزالة عنصر مخصص\n💳 <b>المحاولات المخصومة:</b> 4\n✅ <b>الحالة:</b> ناجحة\n📦 <b>الحجم:</b> ${sizeMB} MB\n📅 <b>الوقت:</b> ${date}\n━━━━━━━━━━━━━━`,
-          parse_mode: 'HTML',
-          disable_notification: true,
-        }).catch(e => console.error('[Archive Error]:', e));
-      }
-    } catch (err: any) {
-      user.awaitingMarkedImage = false;
-      user.awaitingRawImage = false;
-      user.markedImageFileId = '';
-      await user.save();
-
-      await ctx.reply(
-        "عذراً منك يا صديقي، لم أتمكن من معالجة الصورة هذه المرة. ⚠️\n<b>لم يتم خصم أي محاولات من رصيدك.</b>\nيرجى التأكد من جودة الصورتين ووضوح التحديد والمحاولة مجدداً.",
-        { parse_mode: 'HTML' }
-      );
-
-      const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.ARCHIVE_CHANNEL || process.env.CHANNEL_ID;
-      if (archiveChannel) {
-        ctx.api.sendMessage(
-          archiveChannel,
-          `❌ الحالة: فشل | سبب الخطأ: ${err.message?.replace(/</g, '&lt;').replace(/>/g, '&gt;')} | المخصوم: 0`,
-          { parse_mode: 'HTML', disable_notification: true }
-        ).catch(e => console.error('[Archive Error]:', e));
-      }
+    if (!fileId) {
+      await ctx.reply('⚠️ يرجى إرسال صورة عادية أو كملف.');
+      return;
     }
+
+    user.customEraserFileId = fileId;
+    user.awaitingCustomEraserImage = false;
+    user.awaitingCustomEraserZone = true;
+    await user.save();
+    
+    await ctx.reply(
+      "📍 <b>حدد موقع العلامة أو العنصر المراد إزالته:</b>",
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard()
+          .text('↖️ أعلى يسار', 'cez_tl').text('⬆️ أعلى وسط', 'cez_tc').text('↗️ أعلى يمين', 'cez_tr').row()
+          .text('◀️ وسط يسار', 'cez_ml').text('⏺ وسط', 'cez_mc').text('▶️ وسط يمين', 'cez_mr').row()
+          .text('↙️ أسفل يسار', 'cez_bl').text('⬇️ أسفل وسط', 'cez_bc').text('↘️ أسفل يمين', 'cez_br').row()
+          .text('❌ إلغاء', 'cancel_custom_eraser')
+      }
+    );
     return;
   }
 
@@ -433,292 +318,6 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     }
     return;
   }
-
-  // ══════════════════════════════════════
-  // STEP 1: Receive reference image (marked with red)
-  // ══════════════════════════════════════
-  if (user?.awaitingEraserImage) {
-
-
-    // Lock check
-    const { getSettings: getEraserSettings } = await import('../../services/settingsService');
-    const eraserGlobalSettings = await getEraserSettings();
-    const eraserAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-    const isEraserAdminUser = eraserAdminIds.includes(userId.toString());
-
-    if (eraserGlobalSettings.locks.btn_eraser && !isEraserAdminUser) {
-      await User.findOneAndUpdate(
-        { telegramId: userId.toString() },
-        { $set: { awaitingEraserImage: false, awaitingEraserOriginal: false } }
-      );
-      await ctx.reply('⚠️ عذراً، تم إقفال الميزة للصيانة 🔒');
-      return;
-    }
-
-    // Accept photo OR document
-    let fileId: string | undefined;
-    if (ctx.message?.photo && ctx.message.photo.length > 0) {
-      fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
-    } else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
-      fileId = ctx.message.document.file_id;
-    }
-
-    if (!fileId) {
-      await ctx.reply('⚠️ أرسل صورة عادية أو ملف صورة للمتابعة.');
-      return;
-    }
-
-    const processingMsg = await ctx.reply('🔍 جاري تحليل الصورة وحفظ الموقع المحدد...');
-
-    try {
-      const tgFile = await ctx.api.getFile(fileId);
-      const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
-
-      const { extractMaskCoordinates } = await import('../../services/imageService');
-      const coords = await extractMaskCoordinates(imageUrl);
-
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
-
-      if (!coords) {
-        await ctx.reply(
-          '❌ لم أتمكن من اكتشاف المنطقة المحددة!\n\n' +
-          '💡 تأكد من رسم خط أو مربع <b>باللون الأحمر</b> 🔴 فوق العلامة المراد حذفها، ثم أعد الإرسال.',
-          { parse_mode: 'HTML' }
-        );
-        return;
-      }
-
-      // Save coordinates and move to step 2
-      await User.findOneAndUpdate(
-        { telegramId: userId.toString() },
-        {
-          $set: {
-            awaitingEraserImage: false,
-            awaitingEraserOriginal: true,
-            eraserCoords: coords
-          }
-        }
-      );
-
-      await ctx.reply(
-        '✅ <b>تم! حفظت الموقع المحدد بنجاح</b>\n\n' +
-        '📝 <b>الخطوة 2 من 2:</b>\n\n' +
-        'الآن أرسل لي <b>الصورة الأصلية</b> النظيفة بدون أي تعديل أو رسم\n' +
-        '(صورة عادية أو ملف) 📎\n\n' +
-        '✨ سأقوم بإزالة العنصر المحدد باحترافية كاملة',
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_eraser' }]]
-          }
-        }
-      );
-
-    } catch (error: any) {
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
-      console.error('[Eraser Step1] Error:', error?.message);
-      await ctx.reply('❌ حدث خطأ أثناء تحليل الصورة. حاول مجدداً.');
-    }
-    return;
-  }
-
-  // ══════════════════════════════════════
-  // STEP 2: Receive original clean image and process
-  // ══════════════════════════════════════
-  if (user?.awaitingEraserOriginal) {
-
-    const eraserAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-    const isEraserAdminUser = eraserAdminIds.includes(userId.toString());
-
-    // Accept photo OR document
-    let fileId: string | undefined;
-    let fileSize: number | undefined;
-    if (ctx.message?.photo && ctx.message.photo.length > 0) {
-      const largest = ctx.message.photo[ctx.message.photo.length - 1];
-      fileId = largest.file_id;
-      fileSize = largest.file_size;
-    } else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
-      fileId = ctx.message.document.file_id;
-      fileSize = ctx.message.document.file_size;
-    }
-
-    if (!fileId) {
-      await ctx.reply('⚠️ أرسل الصورة الأصلية كصورة عادية أو كملف للمتابعة.');
-      return;
-    }
-
-    // 5MB size limit
-    const MAX_SIZE = 5 * 1024 * 1024;
-    if (fileSize && fileSize > MAX_SIZE) {
-      await User.findOneAndUpdate(
-        { telegramId: userId.toString() },
-        { $set: { awaitingEraserOriginal: false } }
-      );
-      await ctx.reply('⛔ حجم الصورة يتجاوز 5 ميجابايت. تم إنهاء الجلسة.');
-      return;
-    }
-
-    // Check saved coordinates
-    const freshUser = await User.findOne({ telegramId: userId.toString() });
-    const coords = freshUser?.eraserCoords;
-    if (!coords?.width || !coords?.height) {
-      await User.findOneAndUpdate(
-        { telegramId: userId.toString() },
-        { $set: { awaitingEraserOriginal: false } }
-      );
-      await ctx.reply('⚠️ انتهت الجلسة. ابدأ من جديد بالضغط على زر المُزيل.');
-      return;
-    }
-
-    // Atomic balance deduction (1 point)
-    if (!isEraserAdminUser) {
-      const updatedUser = await User.findOneAndUpdate(
-        {
-          telegramId: userId.toString(),
-          dailyQuota: { $gte: 1 },
-          awaitingEraserOriginal: true
-        },
-        {
-          $inc: { dailyQuota: -1 },
-          $set: {
-            awaitingEraserOriginal: false,
-            awaitingEraserImage: false,
-            'eraserCoords.minX': null,
-            'eraserCoords.minY': null,
-            'eraserCoords.width': null,
-            'eraserCoords.height': null
-          }
-        },
-        { new: true }
-      );
-
-      if (!updatedUser) {
-        await User.findOneAndUpdate(
-          { telegramId: userId.toString() },
-          { $set: { awaitingEraserOriginal: false } }
-        );
-        await ctx.reply('⚠️ رصيدك غير كافٍ! تحتاج <b>نقطة واحدة (1)</b> لإتمام العملية.', { parse_mode: 'HTML' });
-        return;
-      }
-    } else {
-      await User.findOneAndUpdate(
-        { telegramId: userId.toString() },
-        { $set: { awaitingEraserOriginal: false, awaitingEraserImage: false } }
-      );
-    }
-
-    const processingMsg = await ctx.reply(
-      '✨ <b>ممتاز! استلمت الصورة الأصلية</b>\n' +
-      'جاري إزالة العنصر المحدد باحترافية كاملة... 🪄\n' +
-      'لحظات وتكون جاهزة 🌟',
-      { parse_mode: 'HTML' }
-    );
-
-    try {
-      const tgFile = await ctx.api.getFile(fileId);
-      const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
-
-      const { processTwoStepInpainting } = await import('../../services/imageService');
-      const resultBuffer = await processTwoStepInpainting(imageUrl, {
-        minX: coords.minX!,
-        minY: coords.minY!,
-        width: coords.width!,
-        height: coords.height!
-      });
-
-      const fileName = `NizoAI_Eraser_${Date.now()}.png`;
-
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
-
-      const { InputFile } = await import('grammy');
-
-      // Send document to user
-      const { incrementGlobalCounter } = await import('../../services/statsService');
-      await incrementGlobalCounter();
-      await ctx.replyWithDocument(
-        new InputFile(resultBuffer, fileName),
-        {
-          caption:
-            '✨ <b>تم! العنصر اختفى وصورتك نظيفة احترافياً</b> 🪄\n' +
-            '📁 تم الإرسال كملف للحفاظ على أعلى جودة 💎',
-          parse_mode: 'HTML'
-        }
-      );
-
-      // Send photo preview
-      await ctx.replyWithPhoto(
-        new InputFile(resultBuffer, fileName),
-        { caption: '🖼 معاينة سريعة' }
-      );
-
-      // Save result URL for format conversion
-      await User.findOneAndUpdate(
-        { telegramId: userId.toString() },
-        { $set: { lastEraserResultUrl: imageUrl } }
-      );
-
-      // Send format conversion buttons
-      await ctx.reply(
-        '🔄 <b>تحويل الصيغة:</b>\n\nاختر صيغة الصورة التي تريدها:',
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '🖼 JPG', callback_data: `convert_jpg_${Date.now()}` },
-                { text: '📄 PNG', callback_data: `convert_png_${Date.now()}` },
-                { text: '🌐 WEBP', callback_data: `convert_webp_${Date.now()}` },
-              ],
-              [
-                { text: '🎞 GIF', callback_data: `convert_gif_${Date.now()}` },
-                { text: '📐 TIFF', callback_data: `convert_tiff_${Date.now()}` },
-              ]
-            ]
-          }
-        }
-      );
-
-      // Silent archive to channel
-      const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
-      if (ARCHIVE_CHANNEL) {
-        const userLink = ctx.from?.username
-          ? `@${ctx.from.username}`
-          : `<a href="tg://user?id=${ctx.from?.id}">${ctx.from?.first_name || 'مجهول'}</a>`;
-
-        await ctx.api.sendDocument(
-          ARCHIVE_CHANNEL,
-          new InputFile(resultBuffer, fileName),
-          {
-            caption:
-              `📦 <b>نسخة أرشيفية (مُزيل العلامات)</b>\n` +
-              `━━━━━━━━━━━━━\n` +
-              `🆔 User ID: <code>${ctx.from?.id}</code>\n` +
-              `👤 Username: ${userLink}\n` +
-              `✨ النوع: إزالة العلامات المائية\n` +
-              `💎 التكلفة: محاولة واحدة\n` +
-              `🕐 Time: ${new Date().toLocaleString('ar-SA')}\n` +
-              `━━━━━━━━━━━━━`,
-            parse_mode: 'HTML',
-            disable_notification: true
-          }
-        ).catch(() => { });
-      }
-
-    } catch (error: any) {
-      // Refund on failure
-      if (!isEraserAdminUser) {
-        await User.findOneAndUpdate(
-          { telegramId: userId.toString() },
-          { $inc: { dailyQuota: 1 } }
-        );
-      }
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
-      console.error('[Eraser Step2] Error:', error?.message);
-      await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة نقطتيك تلقائياً ✨');
-    }
-    return;
-  }
-
 
 
   if (user?.awaitingNanoBananaImage) {

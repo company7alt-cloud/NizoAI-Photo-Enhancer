@@ -2088,6 +2088,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'watermark_custom_start') {
+    await ctx.answerCallbackQuery().catch(() => {});
     const adminIds = process.env.ADMIN_IDS?.split(',') || [];
     const isAdminUser = adminIds.includes(ctx.from!.id.toString());
 
@@ -2099,20 +2100,143 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         "⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>4 محاولات</b> لتفعيل هذه الأداة.",
         { parse_mode: 'HTML' }
       );
-      await ctx.answerCallbackQuery().catch(() => {});
       return;
     }
 
-    customUser.awaitingMarkedImage = true;
-    customUser.awaitingRawImage = false;
-    customUser.markedImageFileId = '';
-    await customUser.save();
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingCustomEraserImage: true } }
+    );
 
     await ctx.reply(
-      `🖌️ <b>الخطوة 1 من 2 — تحديد منطقة الإزالة</b>\n\nافتح الصورة التي تريد تعديلها، ثم استخدم <b>قلم تيليجرام المدمج</b>\nلرسم دائرة أو خط واضح باللون الأحمر (أو أي لون بارز) فوق العنصر\nأو النص الذي تريد إزالته. ثم أرسل لي الصورة المشخبطة.\n\n💡 <i>كلما كانت الشخبطة أوضح وأكثر تغطيةً للعنصر، كانت النتيجة أدق.</i>`,
+      `🖌️ <b>إزالة عنصر مخصص</b>\n\n📸 أرسل لي الصورة التي تريد تعديلها الآن.`,
       { parse_mode: 'HTML' }
     );
+    return;
+  }
+
+  if (data.startsWith('cez_')) {
     await ctx.answerCallbackQuery().catch(() => {});
+    
+    const userId = ctx.from!.id.toString();
+    const user = await User.findOne({ telegramId: userId });
+    if (!user || !user.awaitingCustomEraserZone || !user.customEraserFileId) {
+      await ctx.reply("❌ انتهت صلاحية الجلسة، ابدأ من جديد.");
+      return;
+    }
+
+    const adminIds = process.env.ADMIN_IDS?.split(',') || [];
+    const isAdminUser = adminIds.includes(userId);
+
+    if (user.dailyQuota < 4 && !isAdminUser) {
+      await ctx.reply("⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>4 محاولات</b> لتفعيل هذه الأداة.", { parse_mode: 'HTML' });
+      return;
+    }
+
+    await User.updateOne({ telegramId: userId }, { $set: { awaitingCustomEraserZone: false } });
+
+    const processingMsg = await ctx.reply("⚙️ <b>جارٍ المعالجة...</b> قد يستغرق 30-60 ثانية ⏳", { parse_mode: 'HTML' });
+
+    try {
+      const tgFile = await ctx.api.getFile(user.customEraserFileId);
+      const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+      const res = await fetch(imageUrl);
+      if (!res.ok) throw new Error('Failed to download image');
+      const rawBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
+
+      const metadata = await sharp(rawBuffer).metadata();
+      const W = metadata.width || 1024;
+      const H = metadata.height || 1024;
+
+      const zones: Record<string, {x: number, y: number, w: number, h: number}> = {
+        cez_tl: { x: 0,        y: 0,        w: W*0.45, h: H*0.45 },
+        cez_tc: { x: W*0.275,  y: 0,        w: W*0.45, h: H*0.45 },
+        cez_tr: { x: W*0.55,   y: 0,        w: W*0.45, h: H*0.45 },
+        cez_ml: { x: 0,        y: H*0.275,  w: W*0.45, h: H*0.45 },
+        cez_mc: { x: W*0.275,  y: H*0.275,  w: W*0.45, h: H*0.45 },
+        cez_mr: { x: W*0.55,   y: H*0.275,  w: W*0.45, h: H*0.45 },
+        cez_bl: { x: 0,        y: H*0.55,   w: W*0.45, h: H*0.45 },
+        cez_bc: { x: W*0.275,  y: H*0.55,   w: W*0.45, h: H*0.45 },
+        cez_br: { x: W*0.55,   y: H*0.55,   w: W*0.45, h: H*0.45 },
+      };
+
+      const zone = zones[data];
+      if (!zone) throw new Error("Invalid zone");
+
+      const zoneX = Math.round(zone.x);
+      const zoneY = Math.round(zone.y);
+      const zoneW = Math.round(zone.w);
+      const zoneH = Math.round(zone.h);
+
+      const whiteBox = await sharp({
+        create: { width: zoneW, height: zoneH, channels: 3, background: { r: 255, g: 255, b: 255 } }
+      }).png().toBuffer();
+
+      const maskBuffer = await sharp({
+        create: { width: W, height: H, channels: 3, background: { r: 0, g: 0, b: 0 } }
+      })
+      .composite([{ input: whiteBox, left: zoneX, top: zoneY }])
+      .blur(4)
+      .png()
+      .toBuffer();
+
+      const { removeCustomAreaAI } = await import('../../services/imageService');
+      const resultBuffer = await removeCustomAreaAI(rawBuffer, maskBuffer);
+
+      if (!isAdminUser) {
+        await User.updateOne({ telegramId: userId }, { $inc: { dailyQuota: -4 } });
+      }
+
+      await User.updateOne(
+        { telegramId: userId },
+        { $set: { lastEraserResultBuffer: resultBuffer.toString('base64') } }
+      );
+
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+
+      const { InlineKeyboard } = await import('grammy');
+      const sentMsg = await ctx.replyWithDocument(
+        new InputFile(resultBuffer, 'custom_erased.png'),
+        {
+          reply_markup: new InlineKeyboard()
+            .text('JPG', 'eraser_fmt_jpg')
+            .text('PNG', 'eraser_fmt_png')
+            .text('WEBP', 'eraser_fmt_webp')
+            .row()
+            .text('GIF', 'eraser_fmt_gif')
+            .text('TIFF', 'eraser_fmt_tiff')
+        }
+      );
+
+      await User.updateOne({ telegramId: userId }, { $set: { lastEraserResultMsgId: sentMsg.message_id, customEraserFileId: '' } });
+
+      const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+      if (archiveChannel) {
+        const userLink = ctx.from!.username ? `@${ctx.from!.username}` : ctx.from!.first_name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const date = new Date().toLocaleString('ar-SA');
+        ctx.api.sendDocument(archiveChannel, new InputFile(resultBuffer, 'custom_erased.png'), {
+          caption: `📦 <b>نسخة أرشيفية — إزالة مخصصة</b>\n━━━━━━━━━━━━━━\n🆔 User ID: <code>${userId}</code>\n👤 Username: ${userLink}\n🔄 العملية: إزالة عنصر مخصص\n📍 المنطقة: ${data}\n💳 المخصوم: 4\n✅ الحالة: ناجحة\n📅 ${date}\n━━━━━━━━━━━━━━`,
+          parse_mode: 'HTML',
+          disable_notification: true,
+        }).catch(e => console.error('[Archive Error]:', e));
+      }
+
+    } catch (err: any) {
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      console.error('[CustomEraserZone] Error:', err);
+      await ctx.reply("❌ عذراً، لم أتمكن من معالجة الصورة هذه المرة. لم يتم خصم أي محاولات.");
+    }
+    return;
+  }
+
+  if (data === 'cancel_custom_eraser') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.updateOne(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingCustomEraserImage: false, awaitingCustomEraserZone: false, customEraserFileId: '' } }
+    );
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.reply('تم الإلغاء ❌');
     return;
   }
 
