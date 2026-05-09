@@ -744,8 +744,8 @@ export async function generateMaskFromDiff(
     .png()
     .toBuffer();
 
-  const markedRaw = await sharp(markedResized).removeAlpha().raw().toBuffer();
-  const rawRaw = await sharp(rawResizedExact).removeAlpha().raw().toBuffer();
+  const markedRaw = await sharp(markedResized).ensureAlpha().raw().toBuffer();
+  const rawRaw = await sharp(rawResizedExact).ensureAlpha().raw().toBuffer();
 
   const diffPixels = new Uint8ClampedArray(W * H * 4);
   pixelmatch(markedRaw, rawRaw, diffPixels, W, H, { threshold: 0.1, includeAA: true });
