@@ -473,7 +473,15 @@ export async function extractMaskCoordinatesFromBuffer(
     const maxChannel = Math.max(r, g, b);
     const minChannel = Math.min(r, g, b);
     const saturation = maxChannel - minChannel;
-    const isMarker = saturation > 50 && maxChannel > 100;
+
+    const isRed = r > 180 && g < 80 && b < 80;
+    const isBlue = b > 180 && r < 80 && g < 80;
+    const isGreen = g > 180 && r < 80 && b < 80;
+    const isYellow = r > 200 && g > 200 && b < 80;
+    const isMagenta = r > 180 && b > 180 && g < 80;
+    const isCyan = g > 180 && b > 180 && r < 80;
+
+    const isMarker = (isRed || isBlue || isGreen || isYellow || isMagenta || isCyan) && saturation > 120;
 
     if (isMarker) {
       hasMarker = true;
