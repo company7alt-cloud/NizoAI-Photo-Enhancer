@@ -23,15 +23,16 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
     if (!doc) {
       if ((userRecord as any).awaitingMarkedImage || (userRecord as any).awaitingRawImage) {
-        // User is in custom eraser flow — skip format conversion interceptor
+        // fall through — do NOT return, let custom eraser handlers below take over
       } else {
         await ctx.reply(
           '⚠️ أرسل الصورة كـ <b>مستند (ملف)</b> وليس كصورة عادية.\n' +
           'اضغط 📎 ← اختر "ملف" ← اختر صورتك',
           { parse_mode: 'HTML' }
         );
-        return; // STRICT RETURN — prevent double menu
+        return;
       }
+      return; // exit format conversion block entirely — custom eraser handles below
     }
 
     if (doc) {
@@ -332,13 +333,13 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
 
 
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       const { InputFile } = await import('grammy');
 
       // Send document first WITHOUT buttons
-const { incrementGlobalCounter } = await import('../../services/statsService');
-await incrementGlobalCounter();
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
       const sentDoc = await ctx.replyWithDocument(
         new InputFile(resultBuffer, `watermark_removed_${Date.now()}.jpg`),
         {
@@ -383,7 +384,7 @@ await incrementGlobalCounter();
           }
         ).catch((e: unknown) => console.error('[Archive Error]:', e))
       }
-      
+
       // Save resultBuffer to user record for conversion use
       await User.updateOne(
         { telegramId: userId.toString() },
@@ -392,18 +393,18 @@ await incrementGlobalCounter();
           lastEraserResultMsgId: sentDoc.message_id,
         }
       );
-      
+
       // Send format conversion buttons as a SEPARATE message immediately after
       await ctx.reply(
         "🔄 *تحويل الصيغة:*",
         {
           parse_mode: "Markdown",
           reply_markup: new InlineKeyboard()
-            .text("🖼 JPG",  "eraser_fmt_jpg")
-            .text("🗋 PNG",  "eraser_fmt_png")
+            .text("🖼 JPG", "eraser_fmt_jpg")
+            .text("🗋 PNG", "eraser_fmt_png")
             .text("🌐 WEBP", "eraser_fmt_webp")
             .row()
-            .text("🎞 GIF",  "eraser_fmt_gif")
+            .text("🎞 GIF", "eraser_fmt_gif")
             .text("📄 TIFF", "eraser_fmt_tiff")
         }
       );
@@ -418,7 +419,7 @@ await incrementGlobalCounter();
           { $inc: { dailyQuota: 1, totalEnhancements: -1 } }
         );
       }
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
       console.error('[AutoEraser] Error:', error?.message);
       await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة نقطتيك تلقائياً ✨');
     }
@@ -468,7 +469,7 @@ await incrementGlobalCounter();
       const { extractMaskCoordinates } = await import('../../services/imageService');
       const coords = await extractMaskCoordinates(imageUrl);
 
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       if (!coords) {
         await ctx.reply(
@@ -506,7 +507,7 @@ await incrementGlobalCounter();
       );
 
     } catch (error: any) {
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
       console.error('[Eraser Step1] Error:', error?.message);
       await ctx.reply('❌ حدث خطأ أثناء تحليل الصورة. حاول مجدداً.');
     }
@@ -526,10 +527,10 @@ await incrementGlobalCounter();
     let fileSize: number | undefined;
     if (ctx.message?.photo && ctx.message.photo.length > 0) {
       const largest = ctx.message.photo[ctx.message.photo.length - 1];
-      fileId   = largest.file_id;
+      fileId = largest.file_id;
       fileSize = largest.file_size;
     } else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
-      fileId   = ctx.message.document.file_id;
+      fileId = ctx.message.document.file_id;
       fileSize = ctx.message.document.file_size;
     }
 
@@ -611,21 +612,21 @@ await incrementGlobalCounter();
 
       const { processTwoStepInpainting } = await import('../../services/imageService');
       const resultBuffer = await processTwoStepInpainting(imageUrl, {
-        minX:   coords.minX!,
-        minY:   coords.minY!,
-        width:  coords.width!,
+        minX: coords.minX!,
+        minY: coords.minY!,
+        width: coords.width!,
         height: coords.height!
       });
 
       const fileName = `NizoAI_Eraser_${Date.now()}.png`;
 
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       const { InputFile } = await import('grammy');
 
       // Send document to user
-const { incrementGlobalCounter } = await import('../../services/statsService');
-await incrementGlobalCounter();
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
         {
@@ -656,12 +657,12 @@ await incrementGlobalCounter();
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '🖼 JPG',  callback_data: `convert_jpg_${Date.now()}` },
-                { text: '📄 PNG',  callback_data: `convert_png_${Date.now()}` },
+                { text: '🖼 JPG', callback_data: `convert_jpg_${Date.now()}` },
+                { text: '📄 PNG', callback_data: `convert_png_${Date.now()}` },
                 { text: '🌐 WEBP', callback_data: `convert_webp_${Date.now()}` },
               ],
               [
-                { text: '🎞 GIF',  callback_data: `convert_gif_${Date.now()}` },
+                { text: '🎞 GIF', callback_data: `convert_gif_${Date.now()}` },
                 { text: '📐 TIFF', callback_data: `convert_tiff_${Date.now()}` },
               ]
             ]
@@ -692,7 +693,7 @@ await incrementGlobalCounter();
             parse_mode: 'HTML',
             disable_notification: true
           }
-        ).catch(() => {});
+        ).catch(() => { });
       }
 
     } catch (error: any) {
@@ -703,7 +704,7 @@ await incrementGlobalCounter();
           { $inc: { dailyQuota: 1 } }
         );
       }
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
       console.error('[Eraser Step2] Error:', error?.message);
       await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة نقطتيك تلقائياً ✨');
     }
@@ -736,10 +737,10 @@ await incrementGlobalCounter();
 
     if (ctx.message?.photo && ctx.message.photo.length > 0) {
       const largest = ctx.message.photo[ctx.message.photo.length - 1];
-      fileId   = largest.file_id;
+      fileId = largest.file_id;
       fileSize = largest.file_size ?? 0;
     } else if (ctx.message?.document?.mime_type?.startsWith('image/')) {
-      fileId   = ctx.message.document.file_id;
+      fileId = ctx.message.document.file_id;
       fileSize = ctx.message.document.file_size ?? 0;
     }
 
@@ -766,8 +767,8 @@ await incrementGlobalCounter();
     if (!isNanoAdminUser) {
       const lockedUser = await User.findOneAndUpdate(
         {
-          telegramId:        userId.toString(),
-          dailyQuota:        { $gte: 2 },          // must have 2 points
+          telegramId: userId.toString(),
+          dailyQuota: { $gte: 2 },          // must have 2 points
           awaitingNanoBananaImage: true,            // still in waiting state
           isProcessingImage: { $ne: true },         // not already processing
         },
@@ -823,7 +824,7 @@ await incrementGlobalCounter();
 
     try {
       // ── STEP: Download image as Buffer (no temp files) ────────────────────
-      const tgFile  = await ctx.api.getFile(fileId);
+      const tgFile = await ctx.api.getFile(fileId);
       const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
 
       const fetchRes = await fetch(fileUrl);
@@ -838,18 +839,18 @@ await incrementGlobalCounter();
           processingMsg.message_id,
           '⚡ الذكاء الاصطناعي يعمل الآن...\nجاري رفع الدقة وتحسين التفاصيل ✨'
         )
-        .catch(() => {});
+        .catch(() => { });
 
       // ── STEP: Run local AI enhancement ───────────────────────────────────
       const resultBuffer = await enhanceWithONNX(inputBuffer);
-      const fileName     = `NizoAI_Enhanced_${Date.now()}.jpg`;
+      const fileName = `NizoAI_Enhanced_${Date.now()}.jpg`;
 
       // Delete processing message
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       // ── STEP: Deliver to user ─────────────────────────────────────────────
-const { incrementGlobalCounter } = await import('../../services/statsService');
-await incrementGlobalCounter();
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
         {
@@ -857,8 +858,8 @@ await incrementGlobalCounter();
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '🖼 PNG',  callback_data: 'conv_png' },
-                { text: '🖼 JPG',  callback_data: 'conv_jpg' },
+                { text: '🖼 PNG', callback_data: 'conv_png' },
+                { text: '🖼 JPG', callback_data: 'conv_jpg' },
                 { text: '🖼 WEBP', callback_data: 'conv_webp' },
               ],
               [
@@ -897,7 +898,7 @@ await incrementGlobalCounter();
             parse_mode: 'HTML',
             disable_notification: true,
           }
-        ).catch(() => {});
+        ).catch(() => { });
       }
 
     } catch (error: unknown) {
@@ -908,7 +909,7 @@ await incrementGlobalCounter();
           { $inc: { dailyQuota: 2 } }
         );
       }
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
       console.error('[NanoAI] Error:', error instanceof Error ? error.message : error);
       await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 2 من محاولات  تلقائياً ✨');
 
@@ -918,7 +919,7 @@ await incrementGlobalCounter();
         await User.findOneAndUpdate(
           { telegramId: userId.toString() },
           { $set: { isProcessingImage: false } }
-        ).catch(() => {});
+        ).catch(() => { });
       }
     }
     return;
@@ -951,7 +952,7 @@ await incrementGlobalCounter();
 
     await User.findOneAndUpdate(
       { telegramId: userId.toString() },
-      { 
+      {
         $set: { 'proEnhanceSettings.isAwaitingImage': false },
         $inc: { dailyQuota: isAdmin ? 0 : -enhanceCost }
       }
@@ -980,14 +981,14 @@ await incrementGlobalCounter();
       const { v4: uuidv4 } = await import('uuid');
       const jobId = uuidv4().substring(0, 8).toUpperCase();
 
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       // Refresh user to get updated quota
       const freshUser = await User.findOne({ telegramId: userId.toString() });
 
       const { InputFile } = await import('grammy');
-const { incrementGlobalCounter } = await import('../../services/statsService');
-await incrementGlobalCounter();
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
       await ctx.replyWithDocument(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
         caption: `💎 صورتك جاهزة بتقنية Pro Enhance! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${freshUser?.dailyQuota}`,
         reply_markup: {
@@ -1023,8 +1024,8 @@ await incrementGlobalCounter();
         await User.findOneAndUpdate({ telegramId: userId.toString() }, { $inc: { dailyQuota: enhanceCost } });
       }
 
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
-      
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+
       const { sendAdminAlert } = await import('../../utils/adminAlert');
       await sendAdminAlert(ctx as any, `Pro Enhance Error: ${(error as Error).message}`);
 
@@ -1064,9 +1065,9 @@ await incrementGlobalCounter();
 
       await ctx.reply(
         `🌙 عذراً، انتهت محاولاتك اليومية 🥺\n` +
-          `⏳ الوقت المتبقي للتجديد: ${timeLeftMsg}\n` +
-          `🎁 ستحصل على 5 محاولات جديدة تلقائياً بعد انتهاء الوقت ✨` +
-          debtNote
+        `⏳ الوقت المتبقي للتجديد: ${timeLeftMsg}\n` +
+        `🎁 ستحصل على 5 محاولات جديدة تلقائياً بعد انتهاء الوقت ✨` +
+        debtNote
       );
       return;
     }
