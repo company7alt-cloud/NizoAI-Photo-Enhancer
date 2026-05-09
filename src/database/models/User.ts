@@ -38,6 +38,9 @@ export interface IUser extends Document {
   awaitingCustomEraserImage?: boolean;
   awaitingCustomEraserZone?: boolean;
   customEraserFileId?: string;
+  customEraserSelectedCells?: number[];
+  customEraserBtnMsgId?: number | null;
+  customEraserGridBuffer?: string;
   eraserCoords?: {
     minX: number | null;
     minY: number | null;
@@ -206,6 +209,9 @@ const UserSchema = new Schema<IUser>(
     awaitingCustomEraserImage: { type: Boolean, default: false },
     awaitingCustomEraserZone: { type: Boolean, default: false },
     customEraserFileId: { type: String, default: '' },
+    customEraserSelectedCells: { type: [Number], default: [] },
+    customEraserBtnMsgId: { type: Number, default: null },
+    customEraserGridBuffer: { type: String, default: '' },
     eraserCoords: {
       type: {
         minX:   { type: Number, default: null },

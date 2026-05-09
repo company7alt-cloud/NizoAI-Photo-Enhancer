@@ -2095,9 +2095,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const customUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
     if (!customUser) return;
 
-    if (customUser.dailyQuota < 4 && !isAdminUser) {
+    if (customUser.dailyQuota < 2 && !isAdminUser) {
       await ctx.reply(
-        "⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>4 محاولات</b> لتفعيل هذه الأداة.",
+        "⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>2 محاولات</b> لتفعيل هذه الأداة.",
         { parse_mode: 'HTML' }
       );
       return;
@@ -2115,12 +2115,153 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  if (data.startsWith('cez_')) {
-    await ctx.answerCallbackQuery().catch(() => {});
-    
+async function buildMaskFromCells(
+  rawBuffer: Buffer,
+  selectedCells: number[]
+): Promise<Buffer> {
+  const meta = await sharp(rawBuffer).metadata();
+  const W = meta.width!;
+  const H = meta.height!;
+  const cellW = Math.floor(W / 5);
+  const cellH = Math.floor(H / 6);
+
+  let maskPipeline = sharp({
+    create: { width: W, height: H, channels: 3,
+      background: { r: 0, g: 0, b: 0 } }
+  });
+
+  const composites: sharp.OverlayOptions[] = [];
+
+  for (const cellNum of selectedCells) {
+    const idx = cellNum - 1;
+    const col = idx % 5;
+    const row = Math.floor(idx / 5);
+
+    const x = Math.max(0, col * cellW - Math.round(cellW * 0.1));
+    const y = Math.max(0, row * cellH - Math.round(cellH * 0.1));
+    const w = Math.min(W - x, cellW + Math.round(cellW * 0.2));
+    const h = Math.min(H - y, cellH + Math.round(cellH * 0.2));
+
+    const whiteRect = await sharp({
+      create: { width: w, height: h, channels: 3,
+        background: { r: 255, g: 255, b: 255 } }
+    }).png().toBuffer();
+
+    composites.push({ input: whiteRect, left: x, top: y });
+  }
+
+  const maskBuffer = await maskPipeline
+    .composite(composites)
+    .blur(6)
+    .png()
+    .toBuffer();
+
+  return maskBuffer;
+}
+
+  if (data.startsWith('cgz_') && data !== 'cgz_more' && data !== 'cgz_process') {
+    const N = parseInt(data.replace('cgz_', ''));
+    if (isNaN(N)) return;
+
     const userId = ctx.from!.id.toString();
     const user = await User.findOne({ telegramId: userId });
-    if (!user || !user.awaitingCustomEraserZone || !user.customEraserFileId) {
+    
+    if (!user || !user.awaitingCustomEraserZone) return;
+
+    if (user.customEraserSelectedCells?.includes(N)) {
+      await ctx.answerCallbackQuery({ text: 'هذا المربع محدد مسبقاً ✅', show_alert: false }).catch(() => {});
+      return;
+    }
+
+    if ((user.customEraserSelectedCells?.length || 0) >= 6) {
+      await ctx.answerCallbackQuery({
+        text: '⚠️ وصلت للحد الأقصى (6 مربعات). اضغط "عالج الصورة" للمتابعة.',
+        show_alert: true
+      }).catch(() => {});
+      return;
+    }
+
+    const selectedCells = user.customEraserSelectedCells || [];
+    selectedCells.push(N);
+    user.customEraserSelectedCells = selectedCells;
+    await user.save();
+
+    await ctx.answerCallbackQuery({ text: `✅ تم إضافة المربع ${N}`, show_alert: false }).catch(() => {});
+
+    if (user.customEraserBtnMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+    }
+
+    const count = selectedCells.length;
+    const list = selectedCells.join(', ');
+
+    const { InlineKeyboard } = await import('grammy');
+    const keyboard = new InlineKeyboard();
+    
+    if (count < 6) {
+      keyboard.text('➕ أضف مربعاً آخر', 'cgz_more').row();
+    }
+    keyboard.text('🚀 عالج الصورة الآن', 'cgz_process').row();
+    keyboard.text('❌ إلغاء', 'cancel_custom_eraser');
+
+    const newBtnMsg = await ctx.reply(
+      `✅ <b>تم اختيار ${count} مربع/مربعات:</b> ${list}\n\nهل تريد إضافة مربع آخر أم تبدأ المعالجة؟`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: keyboard
+      }
+    );
+    user.customEraserBtnMsgId = newBtnMsg.message_id;
+    await user.save();
+    return;
+  }
+
+  if (data === 'cgz_more') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const userId = ctx.from!.id.toString();
+    const user = await User.findOne({ telegramId: userId });
+    
+    if (!user || !user.awaitingCustomEraserZone) return;
+
+    if (user.customEraserBtnMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+    }
+
+    const selectedCells = user.customEraserSelectedCells || [];
+    const count = selectedCells.length;
+    const list = selectedCells.join(', ');
+
+    const { InlineKeyboard } = await import('grammy');
+    const keyboard = new InlineKeyboard();
+    let btnCount = 1;
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 5; c++) {
+        const text = selectedCells.includes(btnCount) ? `✅${btnCount}` : `${btnCount}`;
+        keyboard.text(text, `cgz_${btnCount}`);
+        btnCount++;
+      }
+      keyboard.row();
+    }
+    keyboard.text('❌ إلغاء', 'cancel_custom_eraser');
+
+    const newBtnMsg = await ctx.reply(
+      `📍 <b>اختر مربعاً إضافياً:</b>\nالمحدد حالياً: ${list}\n(المتبقي: ${6 - count} مربعات)`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: keyboard
+      }
+    );
+    user.customEraserBtnMsgId = newBtnMsg.message_id;
+    await user.save();
+    return;
+  }
+
+  if (data === 'cgz_process') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const userId = ctx.from!.id.toString();
+    const user = await User.findOne({ telegramId: userId });
+    
+    if (!user || !user.awaitingCustomEraserZone || !user.customEraserFileId || (user.customEraserSelectedCells?.length || 0) < 1) {
       await ctx.reply("❌ انتهت صلاحية الجلسة، ابدأ من جديد.");
       return;
     }
@@ -2128,12 +2269,17 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const adminIds = process.env.ADMIN_IDS?.split(',') || [];
     const isAdminUser = adminIds.includes(userId);
 
-    if (user.dailyQuota < 4 && !isAdminUser) {
-      await ctx.reply("⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>4 محاولات</b> لتفعيل هذه الأداة.", { parse_mode: 'HTML' });
+    if (user.dailyQuota < 3 && !isAdminUser) {
+      await ctx.reply("⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>3 محاولات</b>.", { parse_mode: 'HTML' });
       return;
     }
 
-    await User.updateOne({ telegramId: userId }, { $set: { awaitingCustomEraserZone: false } });
+    user.awaitingCustomEraserZone = false;
+    await user.save();
+
+    if (user.customEraserBtnMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+    }
 
     const processingMsg = await ctx.reply("⚙️ <b>جارٍ المعالجة...</b> قد يستغرق 30-60 ثانية ⏳", { parse_mode: 'HTML' });
 
@@ -2144,78 +2290,47 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       if (!res.ok) throw new Error('Failed to download image');
       const rawBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
 
-      const metadata = await sharp(rawBuffer).metadata();
-      const W = metadata.width || 1024;
-      const H = metadata.height || 1024;
-
-      const zones: Record<string, {x: number, y: number, w: number, h: number}> = {
-        cez_tl: { x: 0,        y: 0,        w: W*0.45, h: H*0.45 },
-        cez_tc: { x: W*0.275,  y: 0,        w: W*0.45, h: H*0.45 },
-        cez_tr: { x: W*0.55,   y: 0,        w: W*0.45, h: H*0.45 },
-        cez_ml: { x: 0,        y: H*0.275,  w: W*0.45, h: H*0.45 },
-        cez_mc: { x: W*0.275,  y: H*0.275,  w: W*0.45, h: H*0.45 },
-        cez_mr: { x: W*0.55,   y: H*0.275,  w: W*0.45, h: H*0.45 },
-        cez_bl: { x: 0,        y: H*0.55,   w: W*0.45, h: H*0.45 },
-        cez_bc: { x: W*0.275,  y: H*0.55,   w: W*0.45, h: H*0.45 },
-        cez_br: { x: W*0.55,   y: H*0.55,   w: W*0.45, h: H*0.45 },
-      };
-
-      const zone = zones[data];
-      if (!zone) throw new Error("Invalid zone");
-
-      const zoneX = Math.round(zone.x);
-      const zoneY = Math.round(zone.y);
-      const zoneW = Math.round(zone.w);
-      const zoneH = Math.round(zone.h);
-
-      const whiteBox = await sharp({
-        create: { width: zoneW, height: zoneH, channels: 3, background: { r: 255, g: 255, b: 255 } }
-      }).png().toBuffer();
-
-      const maskBuffer = await sharp({
-        create: { width: W, height: H, channels: 3, background: { r: 0, g: 0, b: 0 } }
-      })
-      .composite([{ input: whiteBox, left: zoneX, top: zoneY }])
-      .blur(4)
-      .png()
-      .toBuffer();
+      const maskBuffer = await buildMaskFromCells(rawBuffer, user.customEraserSelectedCells!);
 
       const { removeCustomAreaAI } = await import('../../services/imageService');
       const resultBuffer = await removeCustomAreaAI(rawBuffer, maskBuffer);
 
       if (!isAdminUser) {
-        await User.updateOne({ telegramId: userId }, { $inc: { dailyQuota: -4 } });
+        await User.updateOne({ telegramId: userId }, { $inc: { dailyQuota: -3 } });
       }
 
       await User.updateOne(
         { telegramId: userId },
-        { $set: { lastEraserResultBuffer: resultBuffer.toString('base64') } }
+        { $set: { lastEraserResultBuffer: resultBuffer.toString('base64'), customEraserFileId: '' } }
       );
 
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
 
-      const { InlineKeyboard } = await import('grammy');
       const sentMsg = await ctx.replyWithDocument(
-        new InputFile(resultBuffer, 'custom_erased.png'),
-        {
-          reply_markup: new InlineKeyboard()
-            .text('JPG', 'eraser_fmt_jpg')
-            .text('PNG', 'eraser_fmt_png')
-            .text('WEBP', 'eraser_fmt_webp')
-            .row()
-            .text('GIF', 'eraser_fmt_gif')
-            .text('TIFF', 'eraser_fmt_tiff')
-        }
+        new InputFile(resultBuffer, 'custom_erased.jpg')
       );
 
-      await User.updateOne({ telegramId: userId }, { $set: { lastEraserResultMsgId: sentMsg.message_id, customEraserFileId: '' } });
+      await User.updateOne({ telegramId: userId }, { $set: { lastEraserResultMsgId: sentMsg.message_id } });
+
+      const { InlineKeyboard } = await import('grammy');
+      await ctx.reply("🔄 <b>تحويل الصيغة:</b>", {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard()
+          .text('JPG', 'eraser_fmt_jpg')
+          .text('PNG', 'eraser_fmt_png')
+          .text('WEBP', 'eraser_fmt_webp')
+          .row()
+          .text('GIF', 'eraser_fmt_gif')
+          .text('TIFF', 'eraser_fmt_tiff')
+      });
 
       const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
       if (archiveChannel) {
-        const userLink = ctx.from!.username ? `@${ctx.from!.username}` : ctx.from!.first_name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const userLink = ctx.from!.username ? `@${ctx.from!.username}` : `<a href="tg://user?id=${ctx.from!.id}">${ctx.from!.first_name}</a>`;
         const date = new Date().toLocaleString('ar-SA');
-        ctx.api.sendDocument(archiveChannel, new InputFile(resultBuffer, 'custom_erased.png'), {
-          caption: `📦 <b>نسخة أرشيفية — إزالة مخصصة</b>\n━━━━━━━━━━━━━━\n🆔 User ID: <code>${userId}</code>\n👤 Username: ${userLink}\n🔄 العملية: إزالة عنصر مخصص\n📍 المنطقة: ${data}\n💳 المخصوم: 4\n✅ الحالة: ناجحة\n📅 ${date}\n━━━━━━━━━━━━━━`,
+        const cellsList = user.customEraserSelectedCells!.join(', ');
+        ctx.api.sendDocument(archiveChannel, new InputFile(resultBuffer, 'custom_erased.jpg'), {
+          caption: `📦 <b>نسخة أرشيفية — إزالة مخصصة</b>\n━━━━━━━━━━━━━━\n🆔 User ID: <code>${userId}</code>\n👤 Username: ${userLink}\n🔄 العملية: إزالة عنصر مخصص (شبكة)\n📍 المربعات المحددة: ${cellsList}\n💳 المخصوم: 3\n✅ الحالة: ناجحة\n📅 ${date}\n━━━━━━━━━━━━━━`,
           parse_mode: 'HTML',
           disable_notification: true,
         }).catch(e => console.error('[Archive Error]:', e));
@@ -2230,12 +2345,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'cancel_custom_eraser') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    const user = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (user?.customEraserBtnMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+    }
     await User.updateOne(
       { telegramId: ctx.from!.id.toString() },
-      { $set: { awaitingCustomEraserImage: false, awaitingCustomEraserZone: false, customEraserFileId: '' } }
+      { $set: { awaitingCustomEraserImage: false, awaitingCustomEraserZone: false, customEraserFileId: '', customEraserSelectedCells: [], customEraserBtnMsgId: null } }
     );
-    await ctx.deleteMessage().catch(() => {});
     await ctx.reply('تم الإلغاء ❌');
     return;
   }

@@ -1,6 +1,7 @@
 // src/bot/handlers/imageHandler.ts
 import { InlineKeyboard } from 'grammy';
 import { InputFile } from 'grammy';
+import sharp from 'sharp';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
 import { getSettings } from '../../services/settingsService';
@@ -8,6 +9,62 @@ import {
   enhanceWithONNX,
   getQueuePosition,
 } from '../../services/onnxEnhanceService';
+
+async function drawGridOnImage(inputBuffer: Buffer): Promise<Buffer> {
+  const meta = await sharp(inputBuffer).metadata();
+  const W = meta.width!;
+  const H = meta.height!;
+  const cellW = Math.floor(W / 5);
+  const cellH = Math.floor(H / 6);
+
+  // Build SVG overlay with grid lines + cell numbers
+  const lineThickness = Math.max(2, Math.round(W / 300));
+  const fontSize = Math.max(18, Math.round(cellW / 4));
+
+  let svgLines = '';
+  // Vertical lines (4 internal)
+  for (let c = 1; c < 5; c++) {
+    const x = c * cellW;
+    svgLines += `<line x1="${x}" y1="0" x2="${x}" y2="${H}"
+      stroke="white" stroke-width="${lineThickness}" opacity="0.85"/>`;
+  }
+  // Horizontal lines (5 internal)
+  for (let r = 1; r < 6; r++) {
+    const y = r * cellH;
+    svgLines += `<line x1="0" y1="${y}" x2="${W}" y2="${y}"
+      stroke="white" stroke-width="${lineThickness}" opacity="0.85"/>`;
+  }
+
+  // Cell numbers
+  let svgNumbers = '';
+  for (let r = 0; r < 6; r++) {
+    for (let c = 0; c < 5; c++) {
+      const num = r * 5 + c + 1;
+      const cx = c * cellW + Math.round(cellW / 2);
+      const cy = r * cellH + Math.round(cellH / 2);
+      // Shadow
+      svgNumbers += `<text x="${cx+2}" y="${cy+2}" font-family="Arial"
+        font-size="${fontSize}" font-weight="bold"
+        text-anchor="middle" dominant-baseline="middle"
+        fill="black" opacity="0.6">${num}</text>`;
+      // White number
+      svgNumbers += `<text x="${cx}" y="${cy}" font-family="Arial"
+        font-size="${fontSize}" font-weight="bold"
+        text-anchor="middle" dominant-baseline="middle"
+        fill="white" opacity="0.95">${num}</text>`;
+    }
+  }
+
+  const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+    ${svgLines}
+    ${svgNumbers}
+  </svg>`;
+
+  return sharp(inputBuffer)
+    .composite([{ input: Buffer.from(svg), gravity: 'northwest' }])
+    .jpeg({ quality: 90 })
+    .toBuffer();
+}
 
 export async function imageHandler(ctx: BotContext): Promise<void> {
   const telegramId = ctx.from?.id.toString();
@@ -131,22 +188,45 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
+    const tgFile = await ctx.api.getFile(fileId);
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+    const fetchRes = await fetch(fileUrl);
+    if (!fetchRes.ok) {
+      await ctx.reply('❌ فشل تحميل الصورة.');
+      return;
+    }
+    const inputBuffer = Buffer.from(await fetchRes.arrayBuffer());
+    const gridBuffer = await drawGridOnImage(inputBuffer);
+
     user.customEraserFileId = fileId;
+    user.customEraserGridBuffer = gridBuffer.toString('base64');
     user.awaitingCustomEraserImage = false;
     user.awaitingCustomEraserZone = true;
-    await user.save();
+    user.customEraserSelectedCells = [];
     
-    await ctx.reply(
-      "📍 <b>حدد موقع العلامة أو العنصر المراد إزالته:</b>",
+    await ctx.replyWithPhoto(new InputFile(gridBuffer), { caption: "🖼 صورة الشبكة" });
+
+    const keyboard = new InlineKeyboard();
+    let btnCount = 1;
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 5; c++) {
+        keyboard.text(`${btnCount}`, `cgz_${btnCount}`);
+        btnCount++;
+      }
+      keyboard.row();
+    }
+    keyboard.text('❌ إلغاء', 'cancel_custom_eraser');
+
+    const btnMsg = await ctx.reply(
+      "📍 <b>اضغط على أرقام المربعات التي تحتوي العنصر المراد إزالته:</b>\n(الحد الأقصى 6 مربعات)",
       {
         parse_mode: 'HTML',
-        reply_markup: new InlineKeyboard()
-          .text('↖️ أعلى يسار', 'cez_tl').text('⬆️ أعلى وسط', 'cez_tc').text('↗️ أعلى يمين', 'cez_tr').row()
-          .text('◀️ وسط يسار', 'cez_ml').text('⏺ وسط', 'cez_mc').text('▶️ وسط يمين', 'cez_mr').row()
-          .text('↙️ أسفل يسار', 'cez_bl').text('⬇️ أسفل وسط', 'cez_bc').text('↘️ أسفل يمين', 'cez_br').row()
-          .text('❌ إلغاء', 'cancel_custom_eraser')
+        reply_markup: keyboard
       }
     );
+    
+    user.customEraserBtnMsgId = btnMsg.message_id;
+    await user.save();
     return;
   }
 
