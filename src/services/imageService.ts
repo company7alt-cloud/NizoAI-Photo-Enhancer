@@ -473,7 +473,7 @@ export async function extractMaskCoordinatesFromBuffer(
     const maxChannel = Math.max(r, g, b);
     const minChannel = Math.min(r, g, b);
     const saturation = maxChannel - minChannel;
-    const isMarker = saturation > 80 && maxChannel > 120;
+    const isMarker = saturation > 50 && maxChannel > 100;
 
     if (isMarker) {
       hasMarker = true;
@@ -790,8 +790,6 @@ export async function removeCustomAreaAI(
   const resizedMask = await sharp(maskBuffer)
     .resize(rW, rH, { fit: 'fill' })
     .grayscale()
-    .blur(3)
-    .threshold(128)
     .png()
     .toBuffer();
 
