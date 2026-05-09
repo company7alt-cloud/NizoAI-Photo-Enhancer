@@ -1,7 +1,6 @@
 // src/bot/handlers/imageHandler.ts
 import { InlineKeyboard } from 'grammy';
 import { InputFile } from 'grammy';
-import sharp from 'sharp';
 import { getFileBuffer, generateMaskFromDiff, removeCustomAreaAI } from '../../services/imageService';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin, isFileSizeValid } from '../../utils/validators';
