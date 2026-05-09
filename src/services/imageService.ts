@@ -4,7 +4,7 @@ import pixelmatch from "pixelmatch";
 import { Context } from "grammy";
 
 const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_KEY || '',
+  auth: process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY || '',
 });
 
 async function enhance2K(inputBuffer: Buffer): Promise<Buffer> {
@@ -788,13 +788,13 @@ export async function removeCustomAreaAI(
 
   const resizedRaw = await sharp(rawBuffer)
     .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-    .jpeg()
+    .jpeg({ quality: 95 })
     .toBuffer();
 
-  const { width: resizedWidth, height: resizedHeight } = await sharp(resizedRaw).metadata();
+  const { width: rW, height: rH } = await sharp(resizedRaw).metadata() as { width: number; height: number };
 
   const resizedMask = await sharp(maskBuffer)
-    .resize(resizedWidth, resizedHeight, { fit: 'fill' })
+    .resize(rW, rH, { fit: 'fill' })
     .grayscale()
     .blur(3)
     .threshold(128)
@@ -804,30 +804,25 @@ export async function removeCustomAreaAI(
   const imageBase64 = `data:image/jpeg;base64,${resizedRaw.toString('base64')}`;
   const maskBase64 = `data:image/png;base64,${resizedMask.toString('base64')}`;
 
-  const replicateOutput = await Promise.race<unknown>([
+  const output = await Promise.race<any>([
     replicate.run(
-      "allenhooo/lama:cdac78a1b8b9a43fab7b4e77f5e5c5c7f14aba4a15c7b92f35b12b10f1e95fd1",
-      {
-        input: {
-          image: imageBase64,
-          mask: maskBase64,
-        }
-      }
+      "allenhooo/lama:cdac78a1bec5b23c07fd29692fb70baa513ea403a39e643c48ec5edadb15fe72",
+      { input: { image: imageBase64, mask: maskBase64 } }
     ),
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Replicate timeout after 120 s')), 120_000)
+      setTimeout(() => reject(new Error('Timeout after 120s')), 120_000)
     )
   ]);
 
-  const outputUrl = Array.isArray(replicateOutput)
-    ? String(replicateOutput[0])
-    : String(replicateOutput);
+  const outputUrl = typeof output?.url === 'function'
+    ? output.url().toString()
+    : Array.isArray(output) ? String(output[0]) : String(output);
 
-  if (!outputUrl || outputUrl === 'undefined') throw new Error('No output from AI');
+  if (!outputUrl || outputUrl === 'undefined') throw new Error('No output from LaMa');
 
-  const replicateResponse = await fetch(outputUrl);
-  const resultArrayBuffer = await replicateResponse.arrayBuffer();
-  const resultBuffer = Buffer.from(resultArrayBuffer);
+  const res = await fetch(outputUrl);
+  if (!res.ok) throw new Error('Failed to fetch result');
+  const resultBuffer = Buffer.from(await res.arrayBuffer());
 
   return await sharp(resultBuffer)
     .resize(originalWidth, originalHeight, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
