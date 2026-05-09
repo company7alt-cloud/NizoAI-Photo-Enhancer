@@ -730,7 +730,7 @@ export async function generateMaskFromDiff(
 ): Promise<{ maskBuffer: Buffer; width: number; height: number }> {
   const resizeOpts = { width: 1024, height: 1024, fit: 'inside' as const, withoutEnlargement: true };
 
-  const [markedResized, rawResized] = await Promise.all([
+  const [markedResized] = await Promise.all([
     sharp(markedBuf).resize(resizeOpts).png().toBuffer(),
     sharp(rawBuf).resize(resizeOpts).png().toBuffer()
   ]);
