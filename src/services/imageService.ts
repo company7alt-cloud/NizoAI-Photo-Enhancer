@@ -800,25 +800,32 @@ export async function removeCustomAreaAI(
   const imageBase64 = `data:image/jpeg;base64,${resizedRaw.toString('base64')}`;
   const maskBase64 = `data:image/png;base64,${resizedMask.toString('base64')}`;
 
-  const output = await replicate.run(
-    "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd58bf",
-    {
-      input: {
-        image: imageBase64,
-        mask: maskBase64,
-        prompt: "remove the element in the masked area completely, fill seamlessly with the surrounding background texture and lighting",
-        negative_prompt: "watermark, text, logo, blur, distortion, artifacts",
-        disable_safety_checker: true,
-        num_inference_steps: 30,
-        guidance_scale: 7.5
+  const replicateOutput = await Promise.race<unknown>([
+    replicate.run(
+      "lucataco/sdxl-inpainting:a5b13068cc81a89a4fbeefeccc774869fcb34df4dbc92c1555e0f2771d49dde7",
+      {
+        input: {
+          image:                imageBase64,
+          mask:                 maskBase64,
+          prompt:               "seamless background continuation, matching texture and lighting, photorealistic, no watermark, no logo, no text, 8k quality",
+          negative_prompt:      "watermark, logo, text, star, mark, signature, blur, distortion, artifact, smear, low quality",
+          num_inference_steps:  40,
+          guidance_scale:       8,
+          strength:             0.99,
+        }
       }
-    }
-  );
+    ),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Replicate timeout after 120 s')), 120_000)
+    )
+  ]);
 
-  const resultUrl = Array.isArray(output) ? String(output[0]) : String(output);
-  if (!resultUrl || resultUrl === 'undefined') throw new Error('Inpainting API returned no image.');
+  const outputUrl = Array.isArray(replicateOutput)
+    ? String(replicateOutput[0])
+    : String(replicateOutput);
+  if (!outputUrl || outputUrl === 'undefined') throw new Error('Inpainting API returned no image.');
 
-  const res = await fetch(resultUrl);
+  const res = await fetch(outputUrl);
   if (!res.ok) throw new Error('Failed to fetch result');
   const resultBuffer = Buffer.from(await res.arrayBuffer());
 
