@@ -18,7 +18,9 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   // ── Format Conversion Interceptor ──
   const userRecord = reportUser;
 
-  if (userRecord?.awaitingFormatConversion) {
+  if (userRecord?.awaitingFormatConversion &&
+    !userRecord.awaitingMarkedImage &&
+    !userRecord.awaitingRawImage) {
     const doc = ctx.message?.document;
 
     if (!doc) {
