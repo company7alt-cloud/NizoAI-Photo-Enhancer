@@ -22,7 +22,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     const doc = ctx.message?.document;
 
     if (!doc) {
-      if (userRecord.awaitingMarkedImage || userRecord.awaitingRawImage) {
+      if ((userRecord as any).awaitingMarkedImage || (userRecord as any).awaitingRawImage) {
         // User is in custom eraser flow — skip format conversion interceptor
       } else {
         await ctx.reply(
@@ -34,77 +34,79 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       }
     }
 
-    const mimeType = doc.mime_type || '';
-    const isImage = mimeType.startsWith('image/') ||
-      doc.file_name?.match(/\.(jpg|jpeg|png|webp|avif|tiff|tif|bmp|gif|heic|heif)$/i);
+    if (doc) {
+      const mimeType = doc.mime_type || '';
+      const isImage = mimeType.startsWith('image/') ||
+        doc.file_name?.match(/\.(jpg|jpeg|png|webp|avif|tiff|tif|bmp|gif|heic|heif)$/i);
 
-    if (!isImage) {
-      await ctx.reply('❌ الملف ليس صورة. أرسل ملف صورة صحيح.');
-      return; // STRICT RETURN
-    }
+      if (!isImage) {
+        await ctx.reply('❌ الملف ليس صورة. أرسل ملف صورة صحيح.');
+        return; // STRICT RETURN
+      }
 
-    const mimeToFormat: Record<string, string> = {
-      'image/jpeg': 'JPG', 'image/jpg': 'JPG',
-      'image/png': 'PNG', 'image/webp': 'WEBP',
-      'image/avif': 'AVIF', 'image/tiff': 'TIFF',
-      'image/gif': 'GIF', 'image/bmp': 'BMP',
-      'image/heic': 'HEIC', 'image/heif': 'HEIF',
-    };
-    const detectedFormat = mimeToFormat[mimeType] ||
-      doc.file_name?.split('.').pop()?.toUpperCase() || 'غير معروف';
+      const mimeToFormat: Record<string, string> = {
+        'image/jpeg': 'JPG', 'image/jpg': 'JPG',
+        'image/png': 'PNG', 'image/webp': 'WEBP',
+        'image/avif': 'AVIF', 'image/tiff': 'TIFF',
+        'image/gif': 'GIF', 'image/bmp': 'BMP',
+        'image/heic': 'HEIC', 'image/heif': 'HEIF',
+      };
+      const detectedFormat = mimeToFormat[mimeType] ||
+        doc.file_name?.split('.').pop()?.toUpperCase() || 'غير معروف';
 
-    // Save file_id and pause awaiting state
-    const updatedUser = await User.findOneAndUpdate(
-      { telegramId },
-      {
-        $push: { pendingConversionFiles: doc.file_id },
-        $set: { awaitingFormatConversion: false },
-      },
-      { new: true }
-    );
-
-    const count = updatedUser?.pendingConversionFiles?.length || 1;
-
-    if (count >= 5) {
-      // Max reached — force format selection
-      await ctx.reply(
-        `✅ تم استلام الصورة <b>${count}</b>\n\n` +
-        `⚠️ <b>تنبيه:</b> وصلت للحد الأقصى المسموح به (5 صور).\n\n` +
-        `🔓 للحصول على حد أعلى، تواصل مع المطور.\n\n` +
-        `اختر الآن ما تريد:`,
+      // Save file_id and pause awaiting state
+      const updatedUser = await User.findOneAndUpdate(
+        { telegramId },
         {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish' }],
-              [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}` }],
-              [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
-            ],
-          },
-        }
+          $push: { pendingConversionFiles: doc.file_id },
+          $set: { awaitingFormatConversion: false },
+        },
+        { new: true }
       );
-    } else {
-      // Under limit — ask if more
-      await ctx.reply(
-        `✅ تم استلام الصورة <b>${count}</b>\n` +
-        `📋 <b>الصيغة الحالية:</b> ${detectedFormat}\n\n` +
-        `هل توجد صور أخرى تريد تحويلها أيضاً؟\n` +
-        `<i>المتبقي: ${5 - count} صورة</i>`,
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: `✅ نعم (${5 - count} متبقي)`, callback_data: 'conv_batch_add' },
-                { text: '❌ لا، اختر الصيغة', callback_data: 'conv_batch_finish' },
+
+      const count = updatedUser?.pendingConversionFiles?.length || 1;
+
+      if (count >= 5) {
+        // Max reached — force format selection
+        await ctx.reply(
+          `✅ تم استلام الصورة <b>${count}</b>\n\n` +
+          `⚠️ <b>تنبيه:</b> وصلت للحد الأقصى المسموح به (5 صور).\n\n` +
+          `🔓 للحصول على حد أعلى، تواصل مع المطور.\n\n` +
+          `اختر الآن ما تريد:`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish' }],
+                [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}` }],
+                [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
               ],
-              [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' }],
-            ],
-          },
-        }
-      );
+            },
+          }
+        );
+      } else {
+        // Under limit — ask if more
+        await ctx.reply(
+          `✅ تم استلام الصورة <b>${count}</b>\n` +
+          `📋 <b>الصيغة الحالية:</b> ${detectedFormat}\n\n` +
+          `هل توجد صور أخرى تريد تحويلها أيضاً؟\n` +
+          `<i>المتبقي: ${5 - count} صورة</i>`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: `✅ نعم (${5 - count} متبقي)`, callback_data: 'conv_batch_add' },
+                  { text: '❌ لا، اختر الصيغة', callback_data: 'conv_batch_finish' },
+                ],
+                [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' }],
+              ],
+            },
+          }
+        );
+      }
+      return; // STRICT RETURN — stop all other processing
     }
-    return; // STRICT RETURN — stop all other processing
   }
 
 
