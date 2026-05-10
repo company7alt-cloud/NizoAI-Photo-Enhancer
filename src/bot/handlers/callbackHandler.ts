@@ -2175,70 +2175,78 @@ async function drawGridOnImage(
   cols: number,
   rows: number
 ): Promise<Buffer> {
-  const { createCanvas, loadImage } = await import('canvas');
-
-  // Load image into canvas
-  const img = await loadImage(inputBuffer);
-  const W = img.width;
-  const H = img.height;
-
-  const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext('2d');
-
-  // Draw original image
-  ctx.drawImage(img, 0, 0, W, H);
+  const meta = await sharp(inputBuffer).metadata();
+  const W = meta.width!;
+  const H = meta.height!;
 
   const cellW = W / cols;
   const cellH = H / rows;
-  const lineThickness = Math.max(1, Math.round(W / 400));
-  const fontSize = Math.max(12, Math.min(Math.round(cellW / 3.5), Math.round(cellH / 2.5), 32));
+  const lineW = Math.max(1, Math.round(W / 500));
+  const fontSize = Math.max(14, Math.min(
+    Math.floor(cellW * 0.35),
+    Math.floor(cellH * 0.45),
+    40
+  ));
 
-  // Draw grid lines
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-  ctx.lineWidth = lineThickness;
+  // Build SVG string — lines + numbers
+  let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
 
-  // Vertical lines
+  // Grid lines — vertical
   for (let c = 1; c < cols; c++) {
     const x = Math.round(c * cellW);
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, H);
-    ctx.stroke();
+    svg += `<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="white" stroke-width="${lineW}" opacity="0.8"/>`;
   }
 
-  // Horizontal lines
+  // Grid lines — horizontal
   for (let r = 1; r < rows; r++) {
     const y = Math.round(r * cellH);
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
+    svg += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="white" stroke-width="${lineW}" opacity="0.8"/>`;
   }
 
-  // Draw cell numbers
-  ctx.font = `bold ${fontSize}px Arial`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
+  // Cell numbers
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const num = r * cols + c + 1;
       const cx = Math.round(c * cellW + cellW / 2);
       const cy = Math.round(r * cellH + cellH / 2);
 
-      // Shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillText(String(num), cx + 2, cy + 2);
+      // Black shadow
+      svg += `<text
+        x="${cx + 2}" y="${cy + 2}"
+        font-family="Arial, sans-serif"
+        font-size="${fontSize}"
+        font-weight="bold"
+        text-anchor="middle"
+        dominant-baseline="middle"
+        fill="black"
+        opacity="0.6">${num}</text>`;
 
       // White number
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-      ctx.fillText(String(num), cx, cy);
+      svg += `<text
+        x="${cx}" y="${cy}"
+        font-family="Arial, sans-serif"
+        font-size="${fontSize}"
+        font-weight="bold"
+        text-anchor="middle"
+        dominant-baseline="middle"
+        fill="white"
+        opacity="0.95">${num}</text>`;
     }
   }
 
-  // Export to Buffer
-  const outputBuffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
-  return outputBuffer;
+  svg += `</svg>`;
+
+  // KEY FIX: convert SVG string to Buffer explicitly before passing to composite
+  const svgBuffer = Buffer.from(svg, 'utf-8');
+
+  return sharp(inputBuffer)
+    .composite([{
+      input: svgBuffer,
+      top: 0,
+      left: 0,
+    }])
+    .jpeg({ quality: 88 })
+    .toBuffer();
 }
 
 function buildCellKeyboard(
