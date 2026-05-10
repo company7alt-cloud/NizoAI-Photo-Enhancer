@@ -222,18 +222,24 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
     await ctx.answerCallbackQuery({ text: 'تم تحديث حالة العداد الوهمي 🔄' }).catch(() => {});
     
-    // Update the inline keyboard
-    const replyMarkup = ctx.callbackQuery?.message?.reply_markup;
-    if (replyMarkup && 'inline_keyboard' in replyMarkup) {
-      for (const row of replyMarkup.inline_keyboard) {
-        for (const btn of row) {
-          if ('callback_data' in btn && btn.callback_data === 'toggle_fake_counter') {
-            btn.text = `📈 العداد الوهمي: ${newState ? '✅ شغال' : '❌ متوقف'}`;
-          }
-        }
-      }
-      await ctx.editMessageReplyMarkup(replyMarkup).catch(() => {});
-    }
+    // Rebuild the admin keyboard correctly using InlineKeyboard
+    const adminKeyboard = new InlineKeyboard()
+      .text(`📈 العداد الوهمي: ${newState ? '✅ شغال' : '❌ متوقف'}`, 'toggle_fake_counter').row()
+      .text('✏️ تعديل رسالة الترحيب', 'admin_edit_welcome').row()
+      .text('🎁 تعديل عدد المحاولات اليومية', 'admin_edit_daily').row()
+      .text('⚠️ تعديل رسالة انتهاء المحاولات', 'admin_edit_low').row()
+      .text('📊 إحصائيات البوت', 'admin_stats').row()
+      .text('🔍 البحث عن مستخدم', 'admin_search_user').row()
+      .text('📢 إرسال إشعار لجميع المستخدمين', 'admin_broadcast').row()
+      .text('🔧 وضع الصيانة', 'admin_maintenance').row()
+      .text('📢 تمويل أعضاء قناة', 'start_fund_campaign').row()
+      .text('⚙️ إدارة أزرار البوت (قفل/فتح)', 'admin_panel').row()
+      .text('🔄 إعدادات زر تحويل الصيغة', 'admin_edit_convert_msg').row()
+      .text('✏️ تعديل نصوص البوت', 'admin_edit_texts').row()
+      .text('🎯 إدارة المحاولات', 'admin_manage_attempts').row()
+      .text('🔗 إنشاء رابط مكافأة', 'admin_create_magic_link');
+
+    await ctx.editMessageReplyMarkup(adminKeyboard as any).catch(() => {});
     return;
   }
   // ── STEP 1: Fetch FRESH user ──────────────────────────────────────────────────
