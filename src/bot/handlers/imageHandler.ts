@@ -159,10 +159,6 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
               { text: '80 تقسيم', callback_data: 'cgz_size_80' },
               { text: '100 تقسيم', callback_data: 'cgz_size_100' },
             ],
-            [
-              { text: '150 تقسيم', callback_data: 'cgz_size_150' },
-              { text: '200 تقسيم', callback_data: 'cgz_size_200' },
-            ],
             [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
           ]
         }

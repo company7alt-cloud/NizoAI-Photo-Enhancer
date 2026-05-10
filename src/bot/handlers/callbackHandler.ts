@@ -29,8 +29,6 @@ const GRID_CONFIGS: Record<number, { cols: number; rows: number }> = {
   70:  { cols: 7,  rows: 10 },
   80:  { cols: 8,  rows: 10 },
   100: { cols: 10, rows: 10 },
-  150: { cols: 10, rows: 15 },
-  200: { cols: 10, rows: 20 },
 };
 
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
@@ -2420,10 +2418,6 @@ function buildCellKeyboard(
               { text: '80 تقسيم', callback_data: 'cgz_size_80' },
               { text: '100 تقسيم', callback_data: 'cgz_size_100' },
             ],
-            [
-              { text: '150 تقسيم', callback_data: 'cgz_size_150' },
-              { text: '200 تقسيم', callback_data: 'cgz_size_200' },
-            ],
             [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
           ]
         }
@@ -2438,7 +2432,7 @@ function buildCellKeyboard(
 
   if (data.startsWith('cgz_size_')) {
     const newSize = parseInt(data.replace('cgz_size_', ''));
-    const validSizes = [30, 40, 50, 70, 80, 100, 150, 200];
+    const validSizes = [30, 40, 50, 70, 80, 100];
     if (!validSizes.includes(newSize)) return;
 
     await ctx.answerCallbackQuery().catch(() => {});
