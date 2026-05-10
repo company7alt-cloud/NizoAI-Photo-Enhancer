@@ -2172,56 +2172,73 @@ async function buildMaskFromCells(
 
 async function drawGridOnImage(
   inputBuffer: Buffer,
-  cols: number = 5,
-  rows: number = 6
+  cols: number,
+  rows: number
 ): Promise<Buffer> {
-  const meta = await sharp(inputBuffer).metadata();
-  const W = meta.width!;
-  const H = meta.height!;
-  const cellW = Math.floor(W / cols);
-  const cellH = Math.floor(H / rows);
+  const { createCanvas, loadImage } = await import('canvas');
 
-  const lineThickness = Math.max(2, Math.round(W / 300));
-  const fontSize = Math.max(18, Math.round(cellW / 4));
+  // Load image into canvas
+  const img = await loadImage(inputBuffer);
+  const W = img.width;
+  const H = img.height;
 
-  let svgLines = '';
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext('2d');
+
+  // Draw original image
+  ctx.drawImage(img, 0, 0, W, H);
+
+  const cellW = W / cols;
+  const cellH = H / rows;
+  const lineThickness = Math.max(1, Math.round(W / 400));
+  const fontSize = Math.max(12, Math.min(Math.round(cellW / 3.5), Math.round(cellH / 2.5), 32));
+
+  // Draw grid lines
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.lineWidth = lineThickness;
+
+  // Vertical lines
   for (let c = 1; c < cols; c++) {
-    const x = c * cellW;
-    svgLines += `<line x1="${x}" y1="0" x2="${x}" y2="${H}"
-      stroke="white" stroke-width="${lineThickness}" opacity="0.85"/>`;
-  }
-  for (let r = 1; r < rows; r++) {
-    const y = r * cellH;
-    svgLines += `<line x1="0" y1="${y}" x2="${W}" y2="${y}"
-      stroke="white" stroke-width="${lineThickness}" opacity="0.85"/>`;
+    const x = Math.round(c * cellW);
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
   }
 
-  let svgNumbers = '';
+  // Horizontal lines
+  for (let r = 1; r < rows; r++) {
+    const y = Math.round(r * cellH);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+  }
+
+  // Draw cell numbers
+  ctx.font = `bold ${fontSize}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const num = r * cols + c + 1;
-      const cx = c * cellW + Math.round(cellW / 2);
-      const cy = r * cellH + Math.round(cellH / 2);
-      svgNumbers += `<text x="${cx+2}" y="${cy+2}" font-family="Arial"
-        font-size="${fontSize}" font-weight="bold"
-        text-anchor="middle" dominant-baseline="middle"
-        fill="black" opacity="0.6">${num}</text>`;
-      svgNumbers += `<text x="${cx}" y="${cy}" font-family="Arial"
-        font-size="${fontSize}" font-weight="bold"
-        text-anchor="middle" dominant-baseline="middle"
-        fill="white" opacity="0.95">${num}</text>`;
+      const cx = Math.round(c * cellW + cellW / 2);
+      const cy = Math.round(r * cellH + cellH / 2);
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillText(String(num), cx + 2, cy + 2);
+
+      // White number
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.fillText(String(num), cx, cy);
     }
   }
 
-  const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-    ${svgLines}
-    ${svgNumbers}
-  </svg>`;
-
-  return sharp(inputBuffer)
-    .composite([{ input: Buffer.from(svg), gravity: 'northwest' }])
-    .jpeg({ quality: 90 })
-    .toBuffer();
+  // Export to Buffer
+  const outputBuffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
+  return outputBuffer;
 }
 
 function buildCellKeyboard(
@@ -2416,7 +2433,7 @@ function buildCellKeyboard(
             ],
             [
               { text: '80 تقسيم', callback_data: 'cgz_size_80' },
-              { text: '100 تقسيم', callback_data: 'cgz_size_100' },
+              { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100' },
             ],
             [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
           ]
@@ -2434,6 +2451,18 @@ function buildCellKeyboard(
     const newSize = parseInt(data.replace('cgz_size_', ''));
     const validSizes = [30, 40, 50, 70, 80, 100];
     if (!validSizes.includes(newSize)) return;
+
+    if (newSize === 100) {
+      const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+      const isAdminUser = adminIds.includes(ctx.from!.id.toString());
+      if (!isAdminUser) {
+        await ctx.answerCallbackQuery({
+          text: '🔒 هذا الخيار مقفل من قبل المطور\nللفتح تواصل معه مباشرة',
+          show_alert: true,
+        });
+        return;
+      }
+    }
 
     await ctx.answerCallbackQuery().catch(() => {});
 

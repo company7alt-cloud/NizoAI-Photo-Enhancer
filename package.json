@@ -16,6 +16,7 @@
     "arabic-reshaper": "^1.1.0",
     "axios": "^1.15.2",
     "bidi-js": "^1.0.3",
+    "canvas": "^3.2.3",
     "dotenv": "^16.4.5",
     "grammy": "^1.31.0",
     "mongoose": "^8.5.0",
