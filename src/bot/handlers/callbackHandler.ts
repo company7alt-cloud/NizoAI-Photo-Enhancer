@@ -1,5 +1,5 @@
 // src/bot/handlers/callbackHandler.ts
-import { InputFile } from 'grammy';
+import { InputFile, InlineKeyboard } from 'grammy';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import AdmZip from 'adm-zip';
@@ -2228,12 +2228,9 @@ async function drawGridOnImage(
 
 function buildCellKeyboard(
   totalCells: number,
-  selectedCells: number[],
-  currentGridSize: number,
-  maxCells: number,
-  InlineKeyboardClass: any
-): any {
-  const kb = new InlineKeyboardClass();
+  selectedCells: number[]
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
   const BTNS_PER_ROW = totalCells <= 100 ? 5 : 10;
 
   for (let i = 1; i <= totalCells; i++) {
@@ -2275,10 +2272,9 @@ function buildCellKeyboard(
     const count = selectedCells.length;
     const list = selectedCells.join(', ');
 
-    const { InlineKeyboard } = await import('grammy');
     const gridSize = user.customEraserGridSize || 30;
     const MAX_CELLS = gridSize >= 100 ? 10 : 6;
-    const kb = buildCellKeyboard(gridSize, selectedCells, gridSize, MAX_CELLS, InlineKeyboard);
+    const kb = buildCellKeyboard(gridSize, selectedCells);
 
     const newBtnMsg = await ctx.reply(
       `📍 <b>اختر مربعاً إضافياً:</b>\nالمحدد حالياً: ${list}\n(المتبقي: ${MAX_CELLS - count} مربعات)`,
@@ -2482,9 +2478,8 @@ function buildCellKeyboard(
       parse_mode: 'HTML',
     });
 
-    const { InlineKeyboard } = await import('grammy');
     const MAX_CELLS = newSize >= 100 ? 10 : 6;
-    const kb = buildCellKeyboard(newSize, [], newSize, MAX_CELLS, InlineKeyboard);
+    const kb = buildCellKeyboard(newSize, []);
     const btnMsg = await ctx.reply(
       `📍 <b>حدد المربعات:</b>\n(الحد الأقصى ${MAX_CELLS} مربعات)`,
       { parse_mode: 'HTML', reply_markup: kb }
@@ -2511,7 +2506,7 @@ function buildCellKeyboard(
       return;
     }
 
-    const MAX_CELLS = user.customEraserGridSize >= 100 ? 10 : 6;
+    const MAX_CELLS = (user.customEraserGridSize ?? 0) >= 100 ? 10 : 6;
     if ((user.customEraserSelectedCells?.length || 0) >= MAX_CELLS) {
       await ctx.answerCallbackQuery({
         text: `⚠️ وصلت للحد الأقصى (${MAX_CELLS} مربعات). اضغط "عالج الصورة" للمتابعة.`,
@@ -2534,10 +2529,8 @@ function buildCellKeyboard(
     const count = selectedCells.length;
     const list = selectedCells.join(', ');
 
-    const { InlineKeyboard } = await import('grammy');
     const gridSize = user.customEraserGridSize || 30;
-    const MAX_CELLS_KB = gridSize >= 100 ? 10 : 6;
-    const kb = buildCellKeyboard(gridSize, selectedCells, gridSize, MAX_CELLS_KB, InlineKeyboard);
+    const kb = buildCellKeyboard(gridSize, selectedCells);
 
     const newBtnMsg = await ctx.reply(
       `✅ <b>تم اختيار ${count} مربع/مربعات:</b> ${list}\n\nهل تريد إضافة مربع آخر أم تبدأ المعالجة؟`,
