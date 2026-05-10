@@ -11,11 +11,14 @@ import {
 } from '../../services/onnxEnhanceService';
 
 const GRID_CONFIGS: Record<number, { cols: number; rows: number }> = {
-  30: { cols: 5, rows: 6  },
-  40: { cols: 5, rows: 8  },
-  50: { cols: 5, rows: 10 },
-  60: { cols: 6, rows: 10 },
+  30:  { cols: 5,  rows: 6  },
+  40:  { cols: 5,  rows: 8  },
+  50:  { cols: 5,  rows: 10 },
+  70:  { cols: 7,  rows: 10 },
+  80:  { cols: 8,  rows: 10 },
   100: { cols: 10, rows: 10 },
+  150: { cols: 10, rows: 15 },
+  200: { cols: 10, rows: 20 },
 };
 
 async function drawGridOnImage(
@@ -220,33 +223,39 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    const tgFile = await ctx.api.getFile(fileId);
-    const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
-    const fetchRes = await fetch(fileUrl);
-    if (!fetchRes.ok) {
-      await ctx.reply('❌ فشل تحميل الصورة.');
-      return;
-    }
-    const inputBuffer = Buffer.from(await fetchRes.arrayBuffer());
-    const cfg = GRID_CONFIGS[30];
-    const gridBuffer = await drawGridOnImage(inputBuffer, cfg.cols, cfg.rows);
-
     user.customEraserFileId = fileId;
-    user.customEraserGridBuffer = gridBuffer.toString('base64');
     user.awaitingCustomEraserImage = false;
-    user.awaitingCustomEraserZone = true;
+    user.awaitingCustomEraserZone = false;
     user.customEraserSelectedCells = [];
-    user.customEraserGridSize = 30;
+    user.customEraserGridSize = 0;
     
-    await ctx.replyWithPhoto(new InputFile(gridBuffer), { caption: "🖼 صورة الشبكة" });
-
-    const kb = buildCellKeyboard(30, [], 30);
-
     const btnMsg = await ctx.reply(
-      "📍 <b>اضغط على أرقام المربعات التي تحتوي العنصر المراد إزالته:</b>\n(الحد الأقصى 6 مربعات)",
+      "🖼️ <b>تم استلام صورتك!</b>\n\n" +
+      "📐 <b>اختر حجم الشبكة:</b>\n" +
+      "كلما زاد التقسيم، زادت دقة التحديد",
       {
         parse_mode: 'HTML',
-        reply_markup: kb
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '30 تقسيم', callback_data: 'cgz_size_30' },
+              { text: '40 تقسيم', callback_data: 'cgz_size_40' },
+            ],
+            [
+              { text: '50 تقسيم', callback_data: 'cgz_size_50' },
+              { text: '70 تقسيم', callback_data: 'cgz_size_70' },
+            ],
+            [
+              { text: '80 تقسيم', callback_data: 'cgz_size_80' },
+              { text: '100 تقسيم', callback_data: 'cgz_size_100' },
+            ],
+            [
+              { text: '150 تقسيم', callback_data: 'cgz_size_150' },
+              { text: '200 تقسيم', callback_data: 'cgz_size_200' },
+            ],
+            [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
+          ]
+        }
       }
     );
     

@@ -213,12 +213,12 @@ const UserSchema = new Schema<IUser>(
     customEraserSelectedCells: { type: [Number], default: [] },
     customEraserBtnMsgId: { type: Number, default: null },
     customEraserGridBuffer: { type: String, default: '' },
-    customEraserGridSize: { type: Number, default: 30 },
+    customEraserGridSize: { type: Number, default: 0 },
     eraserCoords: {
       type: {
-        minX:   { type: Number, default: null },
-        minY:   { type: Number, default: null },
-        width:  { type: Number, default: null },
+        minX: { type: Number, default: null },
+        minY: { type: Number, default: null },
+        width: { type: Number, default: null },
         height: { type: Number, default: null },
       },
       default: () => ({ minX: null, minY: null, width: null, height: null }),
@@ -257,31 +257,31 @@ const UserSchema = new Schema<IUser>(
     },
     docWizard: {
       type: {
-        step:               { type: Number, default: 0 },
-        docType:            { type: String, default: null },
-        pageSize:           { type: String, default: null },
+        step: { type: Number, default: 0 },
+        docType: { type: String, default: null },
+        pageSize: { type: String, default: null },
         customSize: {
           type: { width: { type: Number }, height: { type: Number } },
           default: null,
         },
-        templateId:         { type: Number, default: null },
-        currentPageIndex:   { type: Number, default: 0 },
-        currentLineIndex:   { type: Number, default: 0 },
-        lineCapacity:       { type: Number, default: 10 },
+        templateId: { type: Number, default: null },
+        currentPageIndex: { type: Number, default: 0 },
+        currentLineIndex: { type: Number, default: 0 },
+        lineCapacity: { type: Number, default: 10 },
         awaitingCustomSize: { type: Boolean, default: false },
-        awaitingLineText:   { type: Boolean, default: false },
-        awaitingAlignment:  { type: Boolean, default: false },
-        tempLine:           { type: String, default: null },
+        awaitingLineText: { type: Boolean, default: false },
+        awaitingAlignment: { type: Boolean, default: false },
+        tempLine: { type: String, default: null },
         awaitingImagePhoto: { type: Boolean, default: false },
         awaitingOverlayText: { type: Boolean, default: false },
         awaitingCaptionText: { type: Boolean, default: false },
-        pendingLongText:    { type: String, default: null },
+        pendingLongText: { type: String, default: null },
         pages: {
           type: [{
-            type:        { type: String },
-            lines:       {
+            type: { type: String },
+            lines: {
               type: [{
-                text:  { type: String },
+                text: { type: String },
                 align: { type: String, default: 'right' },
               }],
               default: [],
