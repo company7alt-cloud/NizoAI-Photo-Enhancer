@@ -928,6 +928,10 @@ async function bootstrap(): Promise<void> {
       drop_pending_updates: true,
       onStart: (info) => {
         console.log(`[Bot] 🚀 Polling started for @${info.username}`);
+        // Preload ONNX model in background (non-blocking)
+        import('./services/onnxEnhanceService')
+          .then(({ warmupONNX }) => warmupONNX?.())
+          .catch(() => {});
       },
     });
   } catch (error: unknown) {

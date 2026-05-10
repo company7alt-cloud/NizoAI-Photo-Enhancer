@@ -180,3 +180,19 @@ export async function enhanceWithONNX(inputBuffer: Buffer): Promise<Buffer> {
     releaseSlot();
   }
 }
+
+export async function warmupONNX(): Promise<void> {
+  try {
+    console.log('[ONNX] Preloading model...');
+    // Create a tiny 64x64 black image buffer
+    const { default: sharp } = await import('sharp');
+    const dummyBuffer = await sharp({
+      create: { width: 64, height: 64, channels: 3,
+        background: { r: 0, g: 0, b: 0 } }
+    }).jpeg().toBuffer();
+    await enhanceWithONNX(dummyBuffer);
+    console.log('[ONNX] ✅ Model preloaded and ready');
+  } catch (e) {
+    console.log('[ONNX] Preload skipped:', e);
+  }
+}
