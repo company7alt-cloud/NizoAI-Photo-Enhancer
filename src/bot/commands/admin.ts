@@ -10,12 +10,17 @@ export function registerAdminCommands(bot: any) {
   // ── /admin — Main Panel ──
   bot.command('admin', async (ctx: Context) => {
     if (!isAdmin(ctx)) return;
+    const { GlobalStat } = await import('../../database/models/GlobalStat');
+    const config = await GlobalStat.findOne({ key: 'total_processed' });
+    const isActive = config?.isFakeCounterActive || false;
+
     await ctx.reply(
       '🛠 <b>لوحة تحكم المدير</b>\n\nاختر ما تريد إدارته:',
       {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
+            [{ text: `📈 العداد الوهمي: ${isActive ? '✅ شغال' : '❌ متوقف'}`, callback_data: 'toggle_fake_counter' }],
             [{ text: '✏️ تعديل رسالة الترحيب', callback_data: 'admin_edit_welcome' }],
             [{ text: '🎁 تعديل عدد المحاولات اليومية', callback_data: 'admin_edit_daily' }],
             [{ text: '⚠️ تعديل رسالة انتهاء المحاولات', callback_data: 'admin_edit_low' }],

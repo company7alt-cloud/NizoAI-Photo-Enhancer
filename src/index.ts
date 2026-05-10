@@ -932,6 +932,10 @@ async function bootstrap(): Promise<void> {
         import('./services/onnxEnhanceService')
           .then(({ warmupONNX }) => warmupONNX?.())
           .catch(() => {});
+        // Start fake counter engine
+        import('./services/fakeCounterService')
+          .then(({ startFakeCounterEngine }) => startFakeCounterEngine())
+          .catch(err => console.error('[Bot] Failed to start fake counter engine', err));
       },
     });
   } catch (error: unknown) {

@@ -1,6 +1,15 @@
-import mongoose from 'mongoose';
-const globalStatSchema = new mongoose.Schema({
+import mongoose, { Document, Model } from 'mongoose';
+
+export interface IGlobalStat extends Document {
+  key: string;
+  count: number;
+  isFakeCounterActive: boolean;
+}
+
+const globalStatSchema = new mongoose.Schema<IGlobalStat>({
   key: { type: String, required: true, unique: true },
-  count: { type: Number, default: 5000 }
+  count: { type: Number, default: 5000 },
+  isFakeCounterActive: { type: Boolean, default: false }
 });
-export const GlobalStat = mongoose.models.GlobalStat || mongoose.model('GlobalStat', globalStatSchema);
+
+export const GlobalStat = mongoose.models.GlobalStat || mongoose.model<IGlobalStat>('GlobalStat', globalStatSchema);

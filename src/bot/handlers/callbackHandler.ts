@@ -209,6 +209,33 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // Admin callbacks are now handled at the bottom of this file
 
+  if (data === 'toggle_fake_counter') {
+    if (!isAdminUser) return;
+    const { GlobalStat } = await import('../../database/models/GlobalStat');
+    const config = await GlobalStat.findOne({ key: 'total_processed' });
+    const newState = !(config?.isFakeCounterActive || false);
+    
+    await GlobalStat.updateOne(
+      { key: 'total_processed' },
+      { $set: { isFakeCounterActive: newState } },
+      { upsert: true }
+    );
+    await ctx.answerCallbackQuery({ text: 'تم تحديث حالة العداد الوهمي 🔄' }).catch(() => {});
+    
+    // Update the inline keyboard
+    const replyMarkup = ctx.callbackQuery?.message?.reply_markup;
+    if (replyMarkup && 'inline_keyboard' in replyMarkup) {
+      for (const row of replyMarkup.inline_keyboard) {
+        for (const btn of row) {
+          if ('callback_data' in btn && btn.callback_data === 'toggle_fake_counter') {
+            btn.text = `📈 العداد الوهمي: ${newState ? '✅ شغال' : '❌ متوقف'}`;
+          }
+        }
+      }
+      await ctx.editMessageReplyMarkup({ inline_keyboard: replyMarkup.inline_keyboard }).catch(() => {});
+    }
+    return;
+  }
   // ── STEP 1: Fetch FRESH user ──────────────────────────────────────────────────
   let user = await User.findOne({ telegramId: ctx.from.id });
   if (!user) {
