@@ -27,3 +27,11 @@ export async function startFakeCounterEngine() {
 
   runLoop();
 }
+
+export function stopFakeCounterEngine() {
+  if (fakeCounterTimer) {
+    clearTimeout(fakeCounterTimer);
+    fakeCounterTimer = null;
+  }
+  isEngineRunning = false;
+}

@@ -232,7 +232,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           }
         }
       }
-      await ctx.editMessageReplyMarkup({ inline_keyboard: replyMarkup.inline_keyboard }).catch(() => {});
+      await ctx.editMessageReplyMarkup(replyMarkup).catch(() => {});
     }
     return;
   }
