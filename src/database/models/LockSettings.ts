@@ -10,6 +10,7 @@ export interface ILockSettings extends Document {
     btn_nano: boolean;
     btn_eraser: boolean;
     btn_doc_maker: boolean;
+    btn_filters: boolean;
   };
 }
 
@@ -23,6 +24,7 @@ const LockSettingsSchema = new Schema<ILockSettings>({
     btn_nano:      { type: Boolean, default: false },
     btn_eraser:    { type: Boolean, default: false },
     btn_doc_maker: { type: Boolean, default: false },
+    btn_filters:   { type: Boolean, default: false },
   }
 }, { collection: 'lock_settings' });
 

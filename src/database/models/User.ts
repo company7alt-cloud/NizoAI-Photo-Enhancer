@@ -64,6 +64,8 @@ export interface IUser extends Document {
   lastEraserResultBuffer?: string;
   lastEraserResultMsgId?: number;
   awaitingAutoEraserImage?: boolean;
+  awaitingFilterImage?: boolean;
+  selectedFilterType?: string;
   vipSizeBypass: boolean;
   successfulReferrals: number;
   canBypassLocks: boolean;
@@ -242,6 +244,8 @@ const UserSchema = new Schema<IUser>(
     lastEraserResultBuffer: { type: String, default: null },
     lastEraserResultMsgId: { type: Number, default: null },
     awaitingAutoEraserImage: { type: Boolean, default: false },
+    awaitingFilterImage: { type: Boolean, default: false },
+    selectedFilterType: { type: String, default: '' },
     vipSizeBypass: { type: Boolean, default: false },
     successfulReferrals: { type: Number, default: 0 },
     canBypassLocks: { type: Boolean, default: false },

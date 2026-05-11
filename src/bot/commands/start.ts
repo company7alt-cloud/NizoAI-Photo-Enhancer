@@ -241,6 +241,10 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     keyboard.row().text('📝 صانع المستندات والكتب', 'doc_maker_start');
     keyboard.row().text(`📈 إحصائيات المعالجة (${totalStats})`, 'show_global_stats');
     keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
+    keyboard.row().text(
+      nanoLocks.btn_filters ? '🔒 فلاتر الصور — مقفل' : '🎨 فلاتر الصور',
+      'open_filters_menu'
+    );
 
     await ctx.reply(greeting, {
       parse_mode: undefined,

@@ -338,6 +338,138 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   }
 
 
+  if (user?.awaitingFilterImage) {
+    const photo = ctx.message?.photo;
+    const document = ctx.message?.document;
+    const fileId = photo ? photo[photo.length - 1].file_id : document?.file_id;
+    if (!fileId) return;
+
+    const filterType = user.selectedFilterType || 'face';
+    const cost = ['anime','ghibli'].includes(filterType) ? 3 : 2;
+
+    const filterNames: Record<string,string> = {
+      face: '👤 تصفية الوجه',
+      color: '🎨 تلوين الصور',
+      anime: '🌸 أنمي',
+      ghibli: '✨ جيبلي فني'
+    };
+
+    const processingMsg = await ctx.reply(
+      `⚙️ <b>جارٍ تطبيق فلتر ${filterNames[filterType]}...</b>\n` +
+      `يعمل الذكاء الاصطناعي على صورتك الآن ✨\n` +
+      `⏳ قد يستغرق 30-60 ثانية، يرجى الانتظار.`,
+      { parse_mode: 'HTML' }
+    );
+
+    try {
+      const tgFile = await ctx.api.getFile(fileId);
+      const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+
+      const { processImageFilter } = await import('../../services/imageService');
+      const resultBuffer = await processImageFilter(fileUrl, filterType);
+
+      const updatedUser = await User.findOneAndUpdate(
+        { telegramId: ctx.from!.id.toString() },
+        {
+          $inc: { dailyQuota: -cost },
+          $set: {
+            awaitingFilterImage: false,
+            selectedFilterType: '',
+            lastEraserResultBuffer: resultBuffer.toString('base64')
+          }
+        },
+        { new: true }
+      );
+
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
+
+      await ctx.replyWithDocument(
+        new InputFile(resultBuffer, `NizoAI_Filter_${Date.now()}.jpg`),
+        {
+          caption:
+            `✅ <b>تم تطبيق ${filterNames[filterType]} بنجاح!</b> 🎨\n` +
+            `⚡ المحاولات المستخدمة: ${cost}\n` +
+            `💎 رصيدك المتبقي: ${updatedUser?.dailyQuota ?? 0}`,
+          parse_mode: 'HTML',
+          reply_markup: new InlineKeyboard()
+            .text('JPG', 'eraser_fmt_jpg')
+            .text('PNG', 'eraser_fmt_png')
+            .text('WEBP', 'eraser_fmt_webp')
+            .row()
+            .text('GIF', 'eraser_fmt_gif')
+            .text('TIFF', 'eraser_fmt_tiff')
+        }
+      );
+
+      // Archive — fire-and-forget
+      const archiveChannel = process.env.ARCHIVE_GROUP_ID
+        || process.env.ARCHIVE_CHANNEL
+        || process.env.CHANNEL_ID;
+      if (archiveChannel) {
+        const archiveUserId = ctx.from!.id;
+        const userLink = ctx.from!.username
+          ? `@${ctx.from!.username}`
+          : ctx.from!.first_name.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const sizeMB = (resultBuffer.length / (1024 * 1024)).toFixed(2);
+        const date = new Date().toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
+
+        ctx.api.sendDocument(
+          archiveChannel,
+          new InputFile(resultBuffer, `filter_${filterType}_${Date.now()}.jpg`),
+          {
+            caption:
+              `📦 <b>أرشيف — فلاتر الصور</b>\n` +
+              `━━━━━━━━━━━━━━\n` +
+              `🆔 <b>User ID:</b> <code>${archiveUserId}</code>\n` +
+              `👤 <b>Username:</b> ${userLink}\n` +
+              `🎨 <b>الفلتر:</b> ${filterNames[filterType]}\n` +
+              `💳 <b>المخصوم:</b> ${cost}\n` +
+              `✅ <b>الحالة:</b> ناجحة\n` +
+              `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
+              `📅 <b>الوقت:</b> ${date}\n` +
+              `━━━━━━━━━━━━━━`,
+            parse_mode: 'HTML',
+            disable_notification: true
+          }
+        ).catch((e: any) => console.error('[FilterArchive]:', e));
+      }
+
+    } catch (err: any) {
+      await User.updateOne(
+        { telegramId: ctx.from!.id.toString() },
+        { $set: { awaitingFilterImage: false, selectedFilterType: '' } }
+      );
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+      await ctx.reply(
+        'عذراً، حدث خطأ أثناء المعالجة ⚠️\n' +
+        '<b>لم يتم خصم أي محاولات من رصيدك.</b>\n' +
+        'يرجى المحاولة مجدداً.',
+        { parse_mode: 'HTML' }
+      );
+      console.error('[FilterHandler]:', err.message);
+
+      // Archive failure — fire-and-forget
+      const archiveChannel = process.env.ARCHIVE_GROUP_ID
+        || process.env.ARCHIVE_CHANNEL
+        || process.env.CHANNEL_ID;
+      if (archiveChannel) {
+        const filterNames2: Record<string,string> = {
+          face: '👤 تصفية الوجه', color: '🎨 تلوين الصور',
+          anime: '🌸 أنمي', ghibli: '✨ جيبلي فني'
+        };
+        ctx.api.sendMessage(
+          archiveChannel,
+          `❌ فلتر فشل | نوع: ${filterNames2[filterType] || filterType} | خطأ: ${err.message?.replace(/</g,'&lt;').replace(/>/g,'&gt;')} | مخصوم: 0`,
+          { parse_mode: 'HTML', disable_notification: true }
+        ).catch(() => {});
+      }
+    }
+    return;
+  }
+
   if (user?.awaitingNanoBananaImage) {
 
     // ── SECURITY: Check if feature was locked after user started ──────────────

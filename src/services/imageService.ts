@@ -665,3 +665,128 @@ export async function removeCustomAreaAI(
     .jpeg({ quality: 100 })
     .toBuffer();
 }
+
+export async function processImageFilter(
+  imageUrl: string,
+  filterType: string
+): Promise<Buffer> {
+  const imageResponse = await fetch(imageUrl);
+  if (!imageResponse.ok) throw new Error('Download failed');
+  const inputBuffer = Buffer.from(await imageResponse.arrayBuffer());
+
+  const metadata = await sharp(inputBuffer).metadata();
+  const originalWidth  = metadata.width  || 1024;
+  const originalHeight = metadata.height || 1024;
+
+  // Resize to max 1024px for AI processing
+  const processedBuffer = await sharp(inputBuffer)
+    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 92 })
+    .toBuffer();
+
+  const procMeta = await sharp(processedBuffer).metadata();
+  const procW = procMeta.width  || 1024;
+  const procH = procMeta.height || 1024;
+
+  // CRITICAL: SD models require dimensions as multiples of 8
+  const aiWidth  = Math.round(procW / 8) * 8;
+  const aiHeight = Math.round(procH / 8) * 8;
+
+  const base64Image = `data:image/jpeg;base64,${processedBuffer.toString('base64')}`;
+
+  let prediction: any;
+
+  switch (filterType) {
+    case 'face':
+      prediction = await replicate.predictions.create({
+        version: "7de2ea26c616d5bf2245ad0d5e24f0ff9a6204578a5c876db53142edd9d2cd56",
+        input: {
+          image: base64Image,
+          codeformer_fidelity: 0.7,
+          background_enhance: true,
+          face_upsample: true,
+          upscale: 2
+        }
+      });
+      break;
+
+    case 'color':
+      prediction = await replicate.predictions.create({
+        version: "0da600fab0c45a66211339f1c16b71345d22f26ef5fea3dca1bb90bb5711e950",
+        input: { input_image: base64Image }
+      });
+      break;
+
+    case 'anime':
+      prediction = await replicate.predictions.create({
+        version: "42a996d39a96aedc57b2e0aa8105dea39c9c89d9d266caf6bb4327a1c191b061",
+        input: {
+          init_image: base64Image,
+          prompt: "masterpiece, best quality, anime style, highly detailed, colorful",
+          negative_prompt: "realistic, photo, ugly, blurry, deformed, text",
+          prompt_strength: 0.65,
+          num_inference_steps: 30,
+          width: aiWidth,
+          height: aiHeight
+        }
+      });
+      break;
+
+    case 'ghibli':
+      prediction = await replicate.predictions.create({
+        version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+        input: {
+          image: base64Image,
+          prompt: "studio ghibli art style, watercolor painting, magical atmosphere, highly detailed",
+          negative_prompt: "realistic, photographic, dark, horror, text, watermark",
+          prompt_strength: 0.60,
+          num_inference_steps: 35,
+          width: aiWidth,
+          height: aiHeight
+        }
+      });
+      break;
+
+    default:
+      throw new Error(`Unknown filter type: ${filterType}`);
+  }
+
+  // Polling loop — 90 second timeout
+  const startTime = Date.now();
+  while (!['succeeded','failed','canceled'].includes(prediction.status)) {
+    if (Date.now() - startTime > 90_000) throw new Error('Filter timeout after 90s');
+    await new Promise(r => setTimeout(r, 2000));
+    prediction = await replicate.predictions.get(prediction.id);
+    console.log(`[Filter:${filterType}] Status: ${prediction.status}`);
+  }
+
+  if (prediction.status !== 'succeeded') {
+    throw new Error(`Filter failed: ${prediction.error}`);
+  }
+
+  // Extract output URL safely
+  const output = prediction.output;
+  const outputUrl: string = typeof output === 'string'
+    ? output
+    : Array.isArray(output) && output.length > 0
+      ? String(output[0])
+      : (() => { throw new Error('No output URL from Replicate'); })();
+
+  // Download result
+  const resultResponse = await fetch(outputUrl);
+  if (!resultResponse.ok) throw new Error('Result download failed');
+  const resultBuffer = Buffer.from(await resultResponse.arrayBuffer());
+
+  // face/color preserve dimensions — anime/ghibli resize back to original
+  if (filterType === 'face' || filterType === 'color') {
+    return resultBuffer;
+  } else {
+    return await sharp(resultBuffer)
+      .resize(originalWidth, originalHeight, {
+        fit: 'fill',
+        kernel: sharp.kernel.lanczos3
+      })
+      .jpeg({ quality: 95 })
+      .toBuffer();
+  }
+}

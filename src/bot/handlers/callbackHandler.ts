@@ -73,6 +73,98 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
   if (!data || !ctx.from) return;
 
+  // ── Handle open_filters_menu (inline button from start menu) ────────────────
+  if (data === 'open_filters_menu') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const filterMenuSettings = await getSettings();
+    const filterMenuAdminIds = (process.env.ADMIN_IDS || '').split(',');
+    const isFilterMenuAdmin = filterMenuAdminIds.includes(ctx.from!.id.toString());
+
+    if (filterMenuSettings.locks.btn_filters && !isFilterMenuAdmin) {
+      await ctx.answerCallbackQuery({ text: '🔒 قسم الفلاتر مغلق مؤقتاً', show_alert: true }).catch(() => {});
+      return;
+    }
+
+    await ctx.reply(
+      '🎨 <b>فلاتر ومعالجة الصور الاحترافية</b>\n\n' +
+      'اختر الفلتر الذي تريد تطبيقه على صورتك:\n\n' +
+      '👤 <b>تصفية الوجه</b> — يحسن الملامح ويزيل التشويش\n' +
+      '🎨 <b>تلوين الصور القديمة</b> — يلون الأبيض والأسود\n' +
+      '🌸 <b>تحويل إلى أنمي</b> — يحول صورتك لأنمي احترافي\n' +
+      '✨ <b>تأثير جيبلي فني</b> — فن رقمي ساحر',
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard()
+          .text('👤 تصفية الوجه — 2 نقاط', 'filter_face').row()
+          .text('🎨 تلوين الصور — 2 نقاط', 'filter_color').row()
+          .text('🌸 تحويل إلى أنمي — 3 نقاط', 'filter_anime').row()
+          .text('✨ تأثير جيبلي — 3 نقاط', 'filter_ghibli').row()
+          .text('❌ إلغاء', 'cancel_filter')
+      }
+    );
+    return;
+  }
+
+  // ── Handle filter selection ───────────────────────────────────────────────────
+  if (['filter_face','filter_color','filter_anime','filter_ghibli'].includes(data)) {
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const costMap: Record<string,number> = {
+      face: 2, color: 2, anime: 3, ghibli: 3
+    };
+    const filterType = data.replace('filter_','');
+    const cost = costMap[filterType];
+
+    const filterUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (!filterUser) return;
+
+    const filterAdminIds = (process.env.ADMIN_IDS||'').split(',');
+    const isFilterAdmin = filterAdminIds.includes(ctx.from!.id.toString());
+
+    if (!isFilterAdmin && filterUser.dailyQuota < cost) {
+      await ctx.reply(
+        `⚠️ رصيدك غير كافٍ!\nتحتاج <b>${cost} محاولات</b> لهذا الفلتر.\nرصيدك الحالي: <b>${filterUser.dailyQuota}</b>`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    await User.updateOne(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: {
+          awaitingFilterImage: true,
+          selectedFilterType: filterType,
+          awaitingCustomEraserImage: false,
+          awaitingCustomEraserZone: false,
+          awaitingNanoBananaImage: false,
+          awaitingAutoEraserImage: false
+      }}
+    );
+
+    await ctx.editMessageText(
+      `🖼️ <b>أرسل الصورة الآن</b>\n\n` +
+      `سيتم تطبيق الفلتر خلال 30-60 ثانية ✨\n` +
+      `⚡ <b>التكلفة: ${cost} محاولات</b>\n` +
+      `💡 <i>تُخصم عند النجاح فقط</i>`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard().text('❌ إلغاء', 'cancel_filter')
+      }
+    ).catch(() => {});
+    return;
+  }
+
+  // ── Handle cancel_filter ──────────────────────────────────────────────────────
+  if (data === 'cancel_filter') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.updateOne(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingFilterImage: false, selectedFilterType: '' } }
+    );
+    await ctx.editMessageText('تم الإلغاء ❌').catch(() => {});
+    return;
+  }
+
   if (data === 'show_global_stats') {
     const { getGlobalCounter } = await import('../../services/statsService');
     const total = await getGlobalCounter();
@@ -1320,6 +1412,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
         [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
         [{ text: `${l.btn_doc_maker ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
+        [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' }],
         [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
         [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
@@ -1361,6 +1454,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
         [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
         [{ text: `${l.btn_doc_maker ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
+        [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' }],
         [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
         [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],

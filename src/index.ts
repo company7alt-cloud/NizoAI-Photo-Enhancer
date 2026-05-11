@@ -8,7 +8,7 @@ if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is missing');
 
 
 import http from 'http';
-import { Bot, session, NextFunction } from 'grammy';
+import { Bot, session, NextFunction, InlineKeyboard } from 'grammy';
 
 import { BotContext, isAdmin, SessionData } from './utils/validators';
 import { connectDatabase, closeDatabaseConnection } from './database/connection';
@@ -23,6 +23,7 @@ import { callbackHandler } from './bot/handlers/callbackHandler';
 import { forceSubMiddleware } from './bot/middlewares/forceSubMiddleware';
 import { ForceSubChannel } from './database/models/ForceSubChannel';
 import { initBotTexts } from './services/botTextsService';
+import { getSettings } from './services/settingsService';
 
 // ─── Bot Instance ──────────────────────────────────────────────────────────────
 
@@ -96,6 +97,37 @@ bot.use(async (ctx, next) => {
 bot.command('start', startCommand);
 registerAdminCommands(bot);
 bot.command('invite', inviteCommand);
+
+// ─── 🎨 فلاتر الصور ──────────────────────────────────────────────────────────
+
+bot.hears('🎨 فلاتر الصور', async (ctx) => {
+  const settings = await getSettings();
+  const adminIds = (process.env.ADMIN_IDS || '').split(',');
+  const isAdmin = adminIds.includes(ctx.from!.id.toString());
+
+  if (settings.locks.btn_filters && !isAdmin) {
+    await ctx.reply('🔒 قسم الفلاتر مغلق مؤقتاً. تابعنا للتحديثات ✨');
+    return;
+  }
+
+  await ctx.reply(
+    '🎨 <b>فلاتر ومعالجة الصور الاحترافية</b>\n\n' +
+    'اختر الفلتر الذي تريد تطبيقه على صورتك:\n\n' +
+    '👤 <b>تصفية الوجه</b> — يحسن الملامح ويزيل التشويش\n' +
+    '🎨 <b>تلوين الصور القديمة</b> — يلون الأبيض والأسود\n' +
+    '🌸 <b>تحويل إلى أنمي</b> — يحول صورتك لأنمي احترافي\n' +
+    '✨ <b>تأثير جيبلي فني</b> — فن رقمي ساحر',
+    {
+      parse_mode: 'HTML',
+      reply_markup: new InlineKeyboard()
+        .text('👤 تصفية الوجه — 2 نقاط', 'filter_face').row()
+        .text('🎨 تلوين الصور — 2 نقاط', 'filter_color').row()
+        .text('🌸 تحويل إلى أنمي — 3 نقاط', 'filter_anime').row()
+        .text('✨ تأثير جيبلي — 3 نقاط', 'filter_ghibli').row()
+        .text('❌ إلغاء', 'cancel_filter')
+    }
+  );
+});
 
 // ─── /endchat — Admin closes the active support session ───────────────────────
 
