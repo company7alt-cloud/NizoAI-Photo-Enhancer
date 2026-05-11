@@ -95,10 +95,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         parse_mode: 'HTML',
         reply_markup: new InlineKeyboard()
-          .text('👤 تصفية الوجه — 2 نقاط', 'filter_face').row()
-          .text('🎨 تلوين الصور — 2 نقاط', 'filter_color').row()
-          .text('🌸 تحويل إلى أنمي — 3 نقاط', 'filter_anime').row()
-          .text('✨ تأثير جيبلي — 3 نقاط', 'filter_ghibli').row()
+          .text('👤 تصفية الوجه', 'filter_face').text('🎨 تلوين الصور', 'filter_color').row()
+          .text('🌸 تحويل أنمي', 'filter_anime').text('✨ تأثير جيبلي', 'filter_ghibli').row()
           .text('❌ إلغاء', 'cancel_filter')
       }
     );

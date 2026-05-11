@@ -688,9 +688,13 @@ export async function processImageFilter(
   const procW = procMeta.width  || 1024;
   const procH = procMeta.height || 1024;
 
-  // CRITICAL: SD models require dimensions as multiples of 8
-  const aiWidth  = Math.round(procW / 8) * 8;
-  const aiHeight = Math.round(procH / 8) * 8;
+  // Strict sizes required by SDXL API
+  const validSizes = [128, 256, 512, 640, 704, 768, 896, 1024];
+  const getClosestSize = (target: number) =>
+    validSizes.reduce((prev, curr) => Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev);
+
+  const aiWidth  = getClosestSize(procW);
+  const aiHeight = getClosestSize(procH);
 
   const base64Image = `data:image/jpeg;base64,${processedBuffer.toString('base64')}`;
 
@@ -719,11 +723,11 @@ export async function processImageFilter(
 
     case 'anime':
       prediction = await replicate.predictions.create({
-        version: "42a996d39a96aedc57b2e0aa8105dea39c9c89d9d266caf6bb4327a1c191b061",
+        version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
         input: {
-          init_image: base64Image,
-          prompt: "masterpiece, best quality, anime style, highly detailed, colorful",
-          negative_prompt: "realistic, photo, ugly, blurry, deformed, text",
+          image: base64Image,
+          prompt: "masterpiece, best quality, 2D anime style, studio anime, highly detailed, vibrant colors, flat shading",
+          negative_prompt: "realistic, photo, 3d, ugly, blurry, deformed, text",
           prompt_strength: 0.65,
           num_inference_steps: 30,
           width: aiWidth,
@@ -737,10 +741,10 @@ export async function processImageFilter(
         version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
         input: {
           image: base64Image,
-          prompt: "studio ghibli art style, watercolor painting, magical atmosphere, highly detailed",
+          prompt: "studio ghibli art style, watercolor painting, magical atmosphere, highly detailed, Hayao Miyazaki",
           negative_prompt: "realistic, photographic, dark, horror, text, watermark",
           prompt_strength: 0.60,
-          num_inference_steps: 35,
+          num_inference_steps: 30,
           width: aiWidth,
           height: aiHeight
         }

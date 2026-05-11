@@ -222,6 +222,10 @@ export async function startCommand(ctx: BotContext): Promise<void> {
 
     const keyboard = new InlineKeyboard();
     if (devLink) keyboard.url('المطور', devLink);
+    keyboard.row().text(
+      nanoLocks.btn_filters ? '🔒 فلاتر الصور — مقفل' : '🎨 فلاتر الصور',
+      'open_filters_menu'
+    );
 
     keyboard.row().text('⚙️ تحسين الصور (Pro)', 'pro_enhance_start');
     keyboard.row().text(nanoLocks.btn_nano ? '🔒 تحسين الصورة بالذكاء — مقفل' : '✨ تحسين الصورة بالذكاء', 'nano_banana_start');
@@ -241,10 +245,6 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     keyboard.row().text('📝 صانع المستندات والكتب', 'doc_maker_start');
     keyboard.row().text(`📈 إحصائيات المعالجة (${totalStats})`, 'show_global_stats');
     keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
-    keyboard.row().text(
-      nanoLocks.btn_filters ? '🔒 فلاتر الصور — مقفل' : '🎨 فلاتر الصور',
-      'open_filters_menu'
-    );
 
     await ctx.reply(greeting, {
       parse_mode: undefined,
