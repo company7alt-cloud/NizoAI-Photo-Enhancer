@@ -20,6 +20,7 @@ export function registerAdminCommands(bot: any) {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
+            [{ text: '👥 التحكم في العميل', callback_data: 'admin_user_control' }],
             [{ text: `📈 العداد الوهمي: ${isActive ? '✅ شغال' : '❌ متوقف'}`, callback_data: 'toggle_fake_counter' }],
             [{ text: '✏️ تعديل رسالة الترحيب', callback_data: 'admin_edit_welcome' }],
             [{ text: '🎁 تعديل عدد المحاولات اليومية', callback_data: 'admin_edit_daily' }],
