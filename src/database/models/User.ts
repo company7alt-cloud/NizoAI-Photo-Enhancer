@@ -16,6 +16,10 @@ export interface IUser extends Document {
   isVip: boolean;
   isBanned: boolean;
   isRestricted: boolean;
+  isPermBanned: boolean;
+  isAppealing: boolean;
+  adminActionState: string;
+  adminTargetId: string;
   lastRewardDate: Date | null;
   lastSeen: Date;
   joinedAt: Date;
@@ -163,6 +167,10 @@ const UserSchema = new Schema<IUser>(
     lastRewardDate: { type: Date, default: null },
     isBanned: { type: Boolean, default: false },
     isRestricted: { type: Boolean, default: false },
+    isPermBanned: { type: Boolean, default: false },
+    isAppealing: { type: Boolean, default: false },
+    adminActionState: { type: String, default: '' },
+    adminTargetId: { type: String, default: '' },
     lastSeen: {
       type: Date,
       default: () => new Date(),
