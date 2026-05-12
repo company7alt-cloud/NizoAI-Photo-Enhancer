@@ -2107,6 +2107,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       try { await ctx.api.deleteMessage(loadingMsg.chat.id, loadingMsg.message_id); } catch { }
 
       const actionUser = ctx.from;
+      // @ts-ignore — declared for potential future use; currently unused after caption refactor
       const userLink = actionUser?.username
         ? `@${actionUser.username}`
         : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
@@ -3241,7 +3242,7 @@ function buildCellKeyboard(
 
   // ── GIVEAWAY: Roll handler (user presses button in channel) ──────────────
   if (data === 'gw_roll_init') {
-    const { Giveaway } = await import('../database/models/Giveaway');
+    const { Giveaway } = await import('../../database/models/Giveaway');
 
     const messageId = ctx.callbackQuery?.message?.message_id;
     const giveaway = await Giveaway.findOne({ messageId });
