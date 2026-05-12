@@ -624,6 +624,61 @@ bot.on('message:text', async (ctx, next) => {
     return;
   }
 
+  // 3b. Admin User Control — waiting for target User ID (adminActionState)
+  const adminUser = await User.findOne({ telegramId: telegramId });
+  if (adminUser && adminUser.adminActionState && adminUser.adminActionState.startsWith('auc_')) {
+    const targetId = ctx.message?.text?.trim();
+
+    if (!targetId) {
+      await ctx.reply('❌ أرسل ID المستخدم كرقم فقط.');
+      return;
+    }
+
+    const actionState = adminUser.adminActionState; // e.g. "auc_ban"
+    const action = actionState.replace('auc_', ''); // "ban" | "restrict" | "unban" | "unrestrict" | "info"
+
+    const actionLabelMap: Record<string, string> = {
+      ban: 'حظر', restrict: 'تقييد',
+      unban: 'فك حظر', unrestrict: 'فك تقييد', info: 'استعلام عن'
+    };
+
+    if (action === 'info') {
+      const targetUser = await User.findOne({ telegramId: targetId });
+      if (!targetUser) {
+        await ctx.reply('❌ لم يتم العثور على مستخدم بهذا الـ ID.');
+      } else {
+        await ctx.reply(
+          `ℹ️ <b>معلومات العميل</b>\n\n` +
+          `🆔 ID: <code>${targetUser.telegramId}</code>\n` +
+          `👤 Username: @${targetUser.username || 'غير محدد'}\n` +
+          `⚡ المحاولات: ${targetUser.dailyQuota}\n` +
+          `🚫 محظور: ${targetUser.isBanned ? 'نعم' : 'لا'}\n` +
+          `⚠️ مقيد: ${(targetUser as any).isRestricted ? 'نعم' : 'لا'}`,
+          { parse_mode: 'HTML' }
+        );
+      }
+      await User.updateOne({ telegramId: telegramId }, { $set: { adminActionState: '' } });
+      return;
+    }
+
+    const labelMap = actionLabelMap[action] || action;
+    await ctx.reply(
+      `⚠️ <b>تأكيد الإجراء</b>\n\n` +
+      `الإجراء: <b>${labelMap}</b>\n` +
+      `العميل: <code>${targetId}</code>\n\n` +
+      `هل أنت متأكد؟`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard()
+          .text(`✅ نعم، ${labelMap}`, `auc_confirm_${action}_${targetId}`)
+          .text('❌ إلغاء', 'admin_cancel_action')
+      }
+    );
+
+    await User.updateOne({ telegramId: telegramId }, { $set: { adminActionState: '' } });
+    return;
+  }
+
   // 4. Strict Admin -> User Support Routing (Admin is sending a message during an active session)
   if (isAdm) {
     const activeUser = await User.findOne({
