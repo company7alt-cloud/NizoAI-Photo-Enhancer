@@ -73,6 +73,117 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
   if (!data || !ctx.from) return;
 
+  // ── Admin User Control Handlers ──────────────────────────────────────────
+  if (data === 'admin_user_control') {
+    const adminIds = (process.env.ADMIN_IDS || '').split(',');
+    if (!adminIds.includes(ctx.from!.id.toString())) return;
+
+    await ctx.editMessageText('👥 <b>لوحة التحكم في العملاء</b>\n\nاختر الإجراء المطلوب:', {
+      parse_mode: 'HTML',
+      reply_markup: new InlineKeyboard()
+        .text('🚫 حظر العميل', 'auc_ban').text('⚠️ تقييد العميل', 'auc_restrict').row()
+        .text('✅ فك الحظر', 'auc_unban').text('♻️ فك التقييد', 'auc_unrestrict').row()
+        .text('ℹ️ معلومات العميل', 'auc_info').row()
+        .text('🔙 رجوع', 'admin_panel')
+    }).catch(()=>{});
+    return;
+  }
+
+  if (['auc_ban', 'auc_restrict', 'auc_unban', 'auc_unrestrict', 'auc_info'].includes(data)) {
+    const adminIds = (process.env.ADMIN_IDS || '').split(',');
+    if (!adminIds.includes(ctx.from!.id.toString())) return;
+
+    const actionMap: Record<string, string> = {
+      auc_ban: 'حظر', auc_restrict: 'تقييد', auc_unban: 'فك حظر',
+      auc_unrestrict: 'فك تقييد', auc_info: 'استعلام عن'
+    };
+
+    await User.updateOne(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminActionState: data } }
+    );
+
+    await ctx.editMessageText(
+      `قم بإرسال <b>ID</b> العميل المراد <b>${actionMap[data]}</b>:\n\n(أو اضغط إلغاء)`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard().text('❌ إلغاء', 'admin_cancel_action')
+      }
+    ).catch(()=>{});
+    return;
+  }
+
+  if (data === 'admin_cancel_action') {
+    const adminIds = (process.env.ADMIN_IDS || '').split(',');
+    if (!adminIds.includes(ctx.from!.id.toString())) return;
+
+    await User.updateOne(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminActionState: '', adminTargetId: '' } }
+    );
+    await ctx.editMessageText('تم الإلغاء ❌').catch(()=>{});
+    return;
+  }
+
+  if (data.startsWith('auc_confirm_')) {
+    const adminIds = (process.env.ADMIN_IDS || '').split(',');
+    if (!adminIds.includes(ctx.from!.id.toString())) return;
+
+    const parts = data.split('_'); // auc_confirm_ban_12345
+    const action = parts[2];
+    const targetId = parts[3];
+
+    const targetUser = await User.findOne({ telegramId: targetId });
+    if (!targetUser) {
+      await ctx.answerCallbackQuery({ text: 'العميل غير موجود!' });
+      return;
+    }
+
+    let msg = '';
+    if (action === 'ban') {
+      await User.updateOne({ telegramId: targetId }, { $set: { isBanned: true, isPermBanned: false } });
+      msg = 'تم حظر العميل بنجاح 🚫';
+      await ctx.api.sendMessage(targetId,
+        "⚠️ <b>عذراً منك صديقي!</b>\n\nتم حظر حسابك من استخدام خدمات البوت.\nإذا كنت تعتقد أن هناك خطأ أو لبس في هذا الحظر، يمكنك فتح محادثة مع الإدارة لمراجعة حسابك.",
+        { parse_mode: 'HTML', reply_markup: new InlineKeyboard().text('💬 فتح محادثة مع الإدارة', 'user_appeal') }
+      ).catch(()=>{});
+    } else if (action === 'restrict') {
+      await User.updateOne({ telegramId: targetId }, { $set: { isRestricted: true } });
+      msg = 'تم تقييد العميل بنجاح ⚠️';
+    } else if (action === 'unban' || action === 'unrestrict') {
+      await User.updateOne({ telegramId: targetId }, { $set: { isBanned: false, isRestricted: false, isPermBanned: false, isAppealing: false } });
+      msg = 'تم فك القيود عن العميل ✅';
+      await ctx.api.sendMessage(targetId, "✅ <b>تم مراجعة حسابك ورفع القيود!</b>\nيمكنك الآن استخدام البوت بشكل طبيعي.", { parse_mode: 'HTML' }).catch(()=>{});
+    }
+
+    await User.updateOne(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { adminActionState: '', adminTargetId: '' } }
+    );
+    await ctx.editMessageText(msg).catch(()=>{});
+    return;
+  }
+
+  if (data === 'user_appeal') {
+    await User.updateOne(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { isAppealing: true } }
+    );
+    await ctx.editMessageText("📝 <b>تواصل مع الإدارة:</b>\n\nاكتب رسالتك أو شكواك في رسالة واحدة وسنقوم بإرسالها للإدارة فوراً.", { parse_mode: 'HTML' }).catch(()=>{});
+    return;
+  }
+
+  if (data.startsWith('auc_permban_')) {
+    const targetId = data.replace('auc_permban_', '');
+    await User.updateOne(
+      { telegramId: targetId },
+      { $set: { isPermBanned: true, isAppealing: false } }
+    );
+    const msgText = ctx.callbackQuery?.message?.text || '';
+    await ctx.editMessageText(msgText + '\n\n💀 <b>تم الحظر النهائي (لن تصلك رسائله).</b>', { entities: ctx.callbackQuery?.message?.entities }).catch(()=>{});
+    return;
+  }
+
   // ── Handle open_filters_menu (inline button from start menu) ────────────────
   if (data === 'open_filters_menu') {
     await ctx.answerCallbackQuery().catch(() => {});
