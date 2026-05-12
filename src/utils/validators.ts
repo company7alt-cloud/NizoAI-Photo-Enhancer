@@ -29,7 +29,14 @@ export interface SessionData {
   docType?: string;
   templateId?: number;
   pageSize?: string;
-  tempLine?: DocLine | null;
+  tempLine?: string | null;
+  tempFormatting?: {
+    bold: boolean;
+    italic: boolean;
+    underline: boolean;
+    size: 'small' | 'normal' | 'large';
+    style: 'normal' | 'quote' | 'divider' | 'highlight';
+  } | null;
   documentLines?: DocLine[];
   // DocMaker Edit State
   editingLineIndex?: number;

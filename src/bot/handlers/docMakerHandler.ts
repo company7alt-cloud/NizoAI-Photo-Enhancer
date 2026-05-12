@@ -5,16 +5,16 @@ import { InputFile } from 'grammy';
 import { getSettings } from '../../services/settingsService';
 import { generatePreviewPNG, TEMPLATE_NAMES } from '../../services/previewGeneratorService';
 
-function buildFormattingKeyboard(tl: DocLine): { inline_keyboard: any[][] } {
-  const b = tl.bold ? '✅𝐁' : '𝐁 عريض';
-  const it = tl.italic ? '✅𝐼' : '𝐼 مائل';
-  const ul = tl.underline ? '✅U̲' : 'U̲ تحته خط';
-  const sm = tl.size === 'small' ? '✅🔡' : '🔡 صغير';
-  const nm = (!tl.size || tl.size === 'normal') ? '✅🔤' : '🔤 عادي';
-  const lg = tl.size === 'large' ? '✅🔠' : '🔠 كبير';
-  const qt = tl.style === 'quote' ? '✅" اقتباس' : '" اقتباس';
-  const dv = tl.style === 'divider' ? '✅— فاصل' : '— فاصل';
-  const hl = tl.style === 'highlight' ? '✅★ مميز' : '★ مميز';
+function buildFormattingKeyboard(fmt: any): { inline_keyboard: any[][] } {
+  const b = fmt.bold ? '✅ عريض' : '𝐁 عريض';
+  const it = fmt.italic ? '✅ مائل' : '𝐼 مائل';
+  const ul = fmt.underline ? '✅ تحته خط' : 'U̲ تحته خط';
+  const sm = fmt.size === 'small' ? '✅ صغير' : '🔡 صغير';
+  const nm = (!fmt.size || fmt.size === 'normal') ? '✅ عادي' : '🔤 عادي';
+  const lg = fmt.size === 'large' ? '✅ كبير' : '🔠 كبير';
+  const qt = fmt.style === 'quote' ? '✅ اقتباس' : '" اقتباس';
+  const dv = fmt.style === 'divider' ? '✅ فاصل' : '— فاصل';
+  const hl = fmt.style === 'highlight' ? '✅ مميز' : '★ مميز';
   return {
     inline_keyboard: [
       [
@@ -37,6 +37,9 @@ function buildFormattingKeyboard(tl: DocLine): { inline_keyboard: any[][] } {
         { text: dv, callback_data: 'style_divider' },
         { text: hl, callback_data: 'style_highlight' },
       ],
+      [
+        { text: '🔙 رجوع', callback_data: 'doc_format_back' }
+      ]
     ],
   };
 }
@@ -148,6 +151,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     'doc_redo','doc_edit_line','doc_view','doc_edit_after','doc_new_page',
     'doc_tpl_confirm','doc_tpl_back',
     'doc_end_session','doc_confirm_end','doc_cancel_end',
+    'doc_format_back'
   ];
   const isDoc = docCallbacks.includes(data) || data.startsWith('doc_tpl_') || data.startsWith('doc_size_');
   if (!isDoc) return false;
@@ -268,6 +272,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     ctx.session.isInDocMaker = true;
     ctx.session.documentLines = [];
     ctx.session.tempLine = null;
+    ctx.session.tempFormatting = null;
 
     // Update the preview photo for correct size, remove keyboard
     if (ctx.session.previewMessageId && ctx.chat) {
@@ -297,6 +302,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     ctx.session.isInDocMaker = false;
     ctx.session.documentLines = [];
     ctx.session.tempLine = null;
+    ctx.session.tempFormatting = null;
     ctx.session.previewMessageId = undefined;
     await ctx.deleteMessage().catch(() => {});
     return true;
@@ -305,7 +311,8 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   if (data === 'align_right' || data === 'align_center' || data === 'align_left') {
     await ctx.answerCallbackQuery();
     const tempLine = ctx.session.tempLine;
-    if (!tempLine) {
+    const tempFormatting = ctx.session.tempFormatting;
+    if (!tempLine || !tempFormatting) {
       await ctx.editMessageText('⚠️ انتهت صلاحية النص. أرسل النص مجدداً.').catch(() => {});
       return true;
     }
@@ -315,7 +322,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     if (!ctx.session.documentLines) ctx.session.documentLines = [];
     const pageSize = ctx.session.pageSize || 'A4';
     const chosenAlign = alignMap[data];
-    const finalLine: DocLine = { ...tempLine, align: chosenAlign };
+    const finalLine: DocLine = { text: tempLine, align: chosenAlign, ...tempFormatting };
 
     if (ctx.session.editingLineIndex !== undefined) {
       const idx = ctx.session.editingLineIndex;
@@ -325,6 +332,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       ctx.session.editingLineIndex = undefined;
       ctx.session.awaitingLineEditText = false;
       ctx.session.tempLine = null;
+      ctx.session.tempFormatting = null;
       const lines = ctx.session.documentLines;
       const preview = lines.map((l, i) => `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`).join('\n');
       await ctx.editMessageText(`✅ تم تعديل السطر!\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() }).catch(() => {});
@@ -337,6 +345,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       ctx.session.documentLines.push({ ...finalLine, text: chunk });
     }
     ctx.session.tempLine = null;
+    ctx.session.tempFormatting = null;
 
     const lines = ctx.session.documentLines;
     const preview = lines.map((l, i) => `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`).join('\n');
@@ -397,6 +406,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     }
     ctx.session.documentLines.pop();
     ctx.session.tempLine = null;
+    ctx.session.tempFormatting = null;
     ctx.session.awaitingLineEditIndex = false;
     ctx.session.awaitingLineEditText = false;
     const lines = ctx.session.documentLines;
@@ -416,6 +426,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     if (!ctx.session.documentLines) ctx.session.documentLines = [];
     ctx.session.documentLines.push({ text: '---PAGE_BREAK---', align: 'right' });
     ctx.session.tempLine = null;
+    ctx.session.tempFormatting = null;
     await ctx.reply('✅ تم حفظ الصفحة. ابدأ كتابة الصفحة التالية:', { reply_markup: controlPanel() });
     return true;
   }
@@ -453,6 +464,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   if (data === 'doc_continue') {
     await ctx.answerCallbackQuery();
     ctx.session.tempLine = null;
+    ctx.session.tempFormatting = null;
     await ctx.editMessageReplyMarkup(undefined).catch(() => {});
     await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML', reply_markup: COMPILE_KB });
     return true;
@@ -464,6 +476,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     ctx.session.isInDocMaker = false;
     ctx.session.documentLines = [];
     ctx.session.tempLine = null;
+    ctx.session.tempFormatting = null;
     ctx.session.awaitingLineEditIndex = false;
     ctx.session.awaitingLineEditText = false;
     ctx.session.editingLineIndex = undefined;
@@ -473,29 +486,41 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   }
 
   // ── Formatting toggles ─────────────────────────────────────────────────────
-  const fmtToggles: Record<string, (tl: DocLine) => DocLine> = {
-    style_bold:       tl => ({ ...tl, bold: !tl.bold }),
-    style_italic:     tl => ({ ...tl, italic: !tl.italic }),
-    style_underline:  tl => ({ ...tl, underline: !tl.underline }),
-    size_small:       tl => ({ ...tl, size: 'small'  }),
-    size_normal:      tl => ({ ...tl, size: 'normal' }),
-    size_large:       tl => ({ ...tl, size: 'large'  }),
-    style_quote:      tl => ({ ...tl, style: tl.style === 'quote'     ? 'normal' : 'quote'     }),
-    style_divider:    tl => ({ ...tl, style: tl.style === 'divider'   ? 'normal' : 'divider'   }),
-    style_highlight:  tl => ({ ...tl, style: tl.style === 'highlight' ? 'normal' : 'highlight' }),
+  const fmtToggles: Record<string, (fmt: any) => any> = {
+    style_bold:       fmt => ({ ...fmt, bold: !fmt.bold }),
+    style_italic:     fmt => ({ ...fmt, italic: !fmt.italic }),
+    style_underline:  fmt => ({ ...fmt, underline: !fmt.underline }),
+    size_small:       fmt => ({ ...fmt, size: 'small'  }),
+    size_normal:      fmt => ({ ...fmt, size: 'normal' }),
+    size_large:       fmt => ({ ...fmt, size: 'large'  }),
+    style_quote:      fmt => ({ ...fmt, style: fmt.style === 'quote'     ? 'normal' : 'quote'     }),
+    style_divider:    fmt => ({ ...fmt, style: fmt.style === 'divider'   ? 'normal' : 'divider'   }),
+    style_highlight:  fmt => ({ ...fmt, style: fmt.style === 'highlight' ? 'normal' : 'highlight' }),
   };
   if (fmtToggles[data]) {
     try {
       await ctx.answerCallbackQuery();
-      if (!ctx.session.tempLine) {
+      if (!ctx.session.tempLine || !ctx.session.tempFormatting) {
         await ctx.answerCallbackQuery({ text: '⚠️ أرسل النص أولاً', show_alert: true }).catch(() => {});
         return true;
       }
-      ctx.session.tempLine = fmtToggles[data](ctx.session.tempLine);
-      await ctx.editMessageReplyMarkup(buildFormattingKeyboard(ctx.session.tempLine) as any).catch(() => {});
+      ctx.session.tempFormatting = fmtToggles[data](ctx.session.tempFormatting);
+      await ctx.editMessageReplyMarkup(buildFormattingKeyboard(ctx.session.tempFormatting) as any).catch(() => {});
     } catch (e) {
       console.error('[DocMaker] fmt toggle error:', e);
     }
+    return true;
+  }
+
+  // ── Format Back Button ───────────────────────────────────────────────────────
+  if (data === 'doc_format_back') {
+    try {
+      await ctx.answerCallbackQuery();
+      ctx.session.tempLine = null;
+      ctx.session.tempFormatting = null;
+      await ctx.deleteMessage().catch(() => {});
+      await ctx.reply('↩️ تم الإلغاء. أرسل النص الذي تريد إضافته:');
+    } catch (e) { console.error('[DocMaker] format_back error:', e); }
     return true;
   }
 
@@ -514,11 +539,12 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  if (data === 'doc_confirm_end') {
+    if (data === 'doc_confirm_end') {
     try {
       await ctx.answerCallbackQuery();
       ctx.session.documentLines = [];
       ctx.session.tempLine = null;
+      ctx.session.tempFormatting = null;
       ctx.session.docType = undefined;
       ctx.session.templateId = undefined;
       ctx.session.pageSize = undefined;
@@ -567,11 +593,17 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
 
   // Awaiting replacement text
   if (ctx.session.awaitingLineEditText) {
-    const newLine: DocLine = { text, align: 'right', bold: false, italic: false, underline: false, size: 'normal', style: 'normal' };
-    ctx.session.tempLine = newLine;
+    if (ctx.session.tempLine) {
+      await ctx.reply('⚠️ الرجاء اختيار المحاذاة أولاً من الأزرار أدناه', {
+        reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting!) as any,
+      });
+      return true;
+    }
+    ctx.session.tempLine = text;
+    ctx.session.tempFormatting = { bold: false, italic: false, underline: false, size: 'normal', style: 'normal' };
     await ctx.reply(`📝 <b>اختر تنسيق النص الجديد:</b>\n\n<code>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`, {
       parse_mode: 'HTML',
-      reply_markup: buildFormattingKeyboard(newLine),
+      reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting) as any,
     });
     return true;
   }
@@ -589,12 +621,20 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
     return true;
   }
 
-  // Normal text → show full 4-row formatting keyboard
-  const newLine: DocLine = { text, align: 'right', bold: false, italic: false, underline: false, size: 'normal', style: 'normal' };
-  ctx.session.tempLine = newLine;
+  // Enforce Alignment Selection
+  if (ctx.session.tempLine) {
+    await ctx.reply('⚠️ الرجاء اختيار المحاذاة أولاً من الأزرار أدناه', {
+      reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting!) as any,
+    });
+    return true;
+  }
+
+  // Normal text → show full formatting keyboard
+  ctx.session.tempLine = text;
+  ctx.session.tempFormatting = { bold: false, italic: false, underline: false, size: 'normal', style: 'normal' };
   await ctx.reply(`📝 <b>اختر تنسيق النص:</b>\n\n<code>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`, {
     parse_mode: 'HTML',
-    reply_markup: buildFormattingKeyboard(newLine),
+    reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting) as any,
   });
   return true;
 }

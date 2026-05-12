@@ -407,8 +407,8 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
 
   // STEP 2 — Read metadata
   const meta = await sharp(inputBuffer).metadata();
-  const W   = meta.width!;
-  const H   = meta.height!;
+  const W = meta.width!;
+  const H = meta.height!;
   const fmt = (meta.format ?? 'jpeg') as keyof sharp.FormatEnum;
   console.log(`[AutoEraser] Dimensions: ${W}x${H}`);
 
@@ -428,14 +428,14 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
         create: { width: zoneW, height: zoneH, channels: 3, background: { r: 255, g: 255, b: 255 } }
       }).png().toBuffer(),
       left: zoneX,
-      top:  zoneY
+      top: zoneY
     }])
     .png()
     .toBuffer();
 
   // STEP 5 — Base64 data URIs
   const imageB64 = `data:image/jpeg;base64,${(await sharp(inputBuffer).jpeg({ quality: 95 }).toBuffer()).toString('base64')}`;
-  const maskB64  = `data:image/png;base64,${maskBuffer.toString('base64')}`;
+  const maskB64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
 
   // STEP 6 — Replicate SDXL inpainting with 120 s timeout
   console.log(`[AutoEraser] Calling Replicate...`);
@@ -447,13 +447,13 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
         "lucataco/sdxl-inpainting:a5b13068cc81a89a4fbeefeccc774869fcb34df4dbc92c1555e0f2771d49dde7",
         {
           input: {
-            image:                imageB64,
-            mask:                 maskB64,
-            prompt:               "seamless background continuation, matching texture and lighting, photorealistic, no watermark, no logo, no text, 8k quality",
-            negative_prompt:      "watermark, logo, text, star, mark, signature, blur, distortion, artifact, smear, low quality",
-            num_inference_steps:  40,
-            guidance_scale:       8,
-            strength:             0.99,
+            image: imageB64,
+            mask: maskB64,
+            prompt: "seamless background continuation, matching texture and lighting, photorealistic, no watermark, no logo, no text, 8k quality",
+            negative_prompt: "watermark, logo, text, star, mark, signature, blur, distortion, artifact, smear, low quality",
+            num_inference_steps: 40,
+            guidance_scale: 8,
+            strength: 0.99,
           }
         }
       ),
@@ -474,15 +474,15 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
     // STEP 8 — Resize to exact original dimensions and format
     resultBuffer = fmt === 'png'
       ? await sharp(resultBuffer)
-          .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
-          .png({ compressionLevel: 0 })
-          .toBuffer()
+        .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
+        .png({ compressionLevel: 0 })
+        .toBuffer()
       : fmt === 'webp'
-      ? await sharp(resultBuffer)
+        ? await sharp(resultBuffer)
           .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
           .webp({ quality: 100, lossless: true })
           .toBuffer()
-      : await sharp(resultBuffer)
+        : await sharp(resultBuffer)
           .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
           .jpeg({ quality: 100 })
           .toBuffer();
@@ -501,17 +501,17 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
 
     resultBuffer = fmt === 'png'
       ? await sharp(inputBuffer)
-          .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
-          .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
-          .png({ compressionLevel: 0 })
-          .toBuffer()
+        .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
+        .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
+        .png({ compressionLevel: 0 })
+        .toBuffer()
       : fmt === 'webp'
-      ? await sharp(inputBuffer)
+        ? await sharp(inputBuffer)
           .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
           .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
           .webp({ quality: 100, lossless: true })
           .toBuffer()
-      : await sharp(inputBuffer)
+        : await sharp(inputBuffer)
           .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
           .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
           .jpeg({ quality: 100 })
@@ -599,7 +599,7 @@ export async function generateMaskFromDiff(
   const maskPixels = Buffer.alloc(W * H);
   for (let i = 0; i < W * H; i++) {
     const idx = i * 4;
-    maskPixels[i] = (diffPixels[idx] > 0 || diffPixels[idx+1] > 0 || diffPixels[idx+2] > 0) ? 255 : 0;
+    maskPixels[i] = (diffPixels[idx] > 0 || diffPixels[idx + 1] > 0 || diffPixels[idx + 2] > 0) ? 255 : 0;
   }
 
   const maskBuffer = await sharp(maskPixels, { raw: { width: W, height: H, channels: 1 } })
@@ -675,7 +675,7 @@ export async function processImageFilter(
   const inputBuffer = Buffer.from(await imageResponse.arrayBuffer());
 
   const metadata = await sharp(inputBuffer).metadata();
-  const originalWidth  = metadata.width  || 1024;
+  const originalWidth = metadata.width || 1024;
   const originalHeight = metadata.height || 1024;
 
   // Resize to max 1024px for AI processing
@@ -685,7 +685,7 @@ export async function processImageFilter(
     .toBuffer();
 
   const procMeta = await sharp(processedBuffer).metadata();
-  const procW = procMeta.width  || 1024;
+  const procW = procMeta.width || 1024;
   const procH = procMeta.height || 1024;
 
   // Strict sizes required by SDXL API
@@ -693,7 +693,7 @@ export async function processImageFilter(
   const getClosestSize = (target: number) =>
     validSizes.reduce((prev, curr) => Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev);
 
-  const aiWidth  = getClosestSize(procW);
+  const aiWidth = getClosestSize(procW);
   const aiHeight = getClosestSize(procH);
 
   const base64Image = `data:image/jpeg;base64,${processedBuffer.toString('base64')}`;
@@ -761,7 +761,7 @@ export async function processImageFilter(
 
   // Polling loop — 90 second timeout
   const startTime = Date.now();
-  while (!['succeeded','failed','canceled'].includes(prediction.status)) {
+  while (!['succeeded', 'failed', 'canceled'].includes(prediction.status)) {
     if (Date.now() - startTime > 90_000) throw new Error('Filter timeout after 90s');
     await new Promise(r => setTimeout(r, 2000));
     prediction = await replicate.predictions.get(prediction.id);
