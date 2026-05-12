@@ -14,6 +14,11 @@ export interface DocLine {
   underline?: boolean;
   size?: 'small' | 'normal' | 'large';
   style?: 'normal' | 'quote' | 'divider' | 'highlight';
+  // Image-line fields
+  type?: 'text' | 'image';
+  fileId?: string;
+  imageLines?: number;
+  imageMask?: 'square' | 'rounded' | 'circle';
 }
 
 export interface SessionData {
@@ -49,6 +54,15 @@ export interface SessionData {
   awaitingCustomHeight?: boolean;
   customSizeWidth?: number;  // cm
   customSizeDims?: { width: number; height: number; label: string }; // PDF points
+  // Font & doc-session state
+  selectedFont?: string;
+  docState?: 'active' | 'awaiting_custom_img_lines' | null;
+  tempImage?: {
+    fileId: string;
+    lines?: number;
+    align?: 'right' | 'center' | 'left';   // starts UNDEFINED
+    mask?: 'square' | 'rounded' | 'circle'; // starts UNDEFINED
+  };
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

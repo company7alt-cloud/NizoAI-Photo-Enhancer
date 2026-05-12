@@ -143,8 +143,8 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
   const docCallbacks = [
     'doc_maker_start','doc_maker_cancel',
-    'doc_type_text','doc_type_image',
-    'doc_compile','doc_continue','doc_finish',
+    'doc_type_text','doc_type_image','doc_type_image_locked',
+    'doc_compile','doc_continue','doc_finish','doc_export_pdf',
     'align_right','align_center','align_left',
     'style_bold','style_italic','style_underline',
     'size_small','size_normal','size_large',
@@ -153,8 +153,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     'doc_tpl_confirm','doc_tpl_back',
     'doc_end_session','doc_confirm_end','doc_cancel_end',
     'doc_format_back','doc_custom_size',
+    'doc_back_to_session',
   ];
-  const isDoc = docCallbacks.includes(data) || data.startsWith('doc_tpl_') || data.startsWith('doc_size_');
+  const isDoc =
+    docCallbacks.includes(data) ||
+    data.startsWith('doc_tpl_') ||
+    data.startsWith('doc_size_') ||
+    data.startsWith('doc_font_') ||
+    data.startsWith('doc_img_space_') ||
+    data.startsWith('doc_img_fmt_') ||
+    data.startsWith('doc_img_mask_');
   if (!isDoc) return false;
 
   const telegramId = ctx.from!.id.toString();
@@ -167,7 +175,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       reply_markup: {
         inline_keyboard: [
           [{ text: '📄 مستند نصي', callback_data: 'doc_type_text' }],
-          [{ text: '🖼 مستند مصور', callback_data: 'doc_type_image' }],
+          [{ text: '🖼 مستند مصور 🔒', callback_data: 'doc_type_image_locked' }],
           [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
         ],
       },
@@ -282,40 +290,169 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── Standard Size Selected → Init + Send Instruction + Update Preview ────
+  // ── Standard Size Selected → Show Font Menu ───────────────────────────
   if (data.startsWith('doc_size_')) {
     await ctx.answerCallbackQuery();
     ctx.session.pageSize = data.replace('doc_size_', '');
+    ctx.session.awaitingCustomWidth = false;
+    ctx.session.awaitingCustomHeight = false;
+
+    await ctx.editMessageCaption({
+      caption:
+        '🔤 <b>اختر خط المستند:</b>\n\nسيُطبَّق هذا الخط على كامل النص في PDF.',
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '✒️ Omnia Serif',               callback_data: 'doc_font_Omnia' }],
+          [{ text: '✨ Modern Pro 2024',           callback_data: 'doc_font_ModernPro' }],
+          [{ text: '🎙 خط إذاعة ثمانية',       callback_data: 'doc_font_Thamanya' }],
+          [{ text: '📜 الخط الرسمي — Amiri', callback_data: 'doc_font_Amiri' }],
+          [{ text: '📱 Cairo العصري',          callback_data: 'doc_font_Cairo' }],
+          [{ text: '❌ إلغاء',                      callback_data: 'doc_cancel_end' }],
+        ],
+      },
+    }).catch(() => {});
+    return true;
+  }
+
+  // ── Font Selected → Start Session ────────────────────────────────────
+  if (data.startsWith('doc_font_')) {
+    await ctx.answerCallbackQuery();
+    ctx.session.selectedFont = data.replace('doc_font_', '');
+    ctx.session.docState = 'active';
     ctx.session.isInDocMaker = true;
     ctx.session.documentLines = [];
     ctx.session.tempLine = null;
     ctx.session.tempFormatting = null;
-    ctx.session.awaitingCustomWidth = false;
-    ctx.session.awaitingCustomHeight = false;
+    ctx.session.tempImage = undefined;
 
-    // Update the preview photo for correct size, remove keyboard
+    // Update preview photo caption, remove keyboard
     if (ctx.session.previewMessageId && ctx.chat) {
       try {
         const png = await generatePreviewPNG({
           templateId: ctx.session.templateId || 1,
-          pageSize: ctx.session.pageSize,
+          pageSize: ctx.session.pageSize || 'A4',
           lines: [],
         });
         const tplName = TEMPLATE_NAMES[ctx.session.templateId || 1] || '';
         await ctx.api.editMessageMedia(ctx.chat.id, ctx.session.previewMessageId, {
           type: 'photo',
           media: new InputFile(png, 'preview.png'),
-          caption: `🖼 <b>معاينة مباشرة</b> · ${tplName} · ${ctx.session.pageSize}\n📝 0 سطر`,
+          caption: `🖼 <b>معاينة مباشرة</b> · ${tplName} · ${ctx.session.pageSize || 'A4'}\n📝 0 سطر`,
           parse_mode: 'HTML',
         });
       } catch { /* silent */ }
     }
 
+    await ctx.reply(
+      '✅ <b>بدأت الجلسة بنجاح!</b>\n\n' +
+      '📝 أرسل نصاً أو صورة لإضافتها للمستند.\n\n' +
+      '⚠️ <i>البوت الآن في وضع المستند — لن يستجيب لأوامر تحسين الصور حتى تنهي الجلسة.</i>',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📥 إنهاء وتصدير PDF', callback_data: 'doc_compile' }],
+          ],
+        },
+      }
+    );
     await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML', reply_markup: COMPILE_KB });
     return true;
   }
 
-  // ── Cancel ─────────────────────────────────────────────────────────────────
+  // ── Image: Spacing selection ────────────────────────────────────────
+  if (data.startsWith('doc_img_space_')) {
+    if (!ctx.session.tempImage?.fileId) {
+      await ctx.answerCallbackQuery({ text: '⚠️ انتهت الجلسة، أرسل الصورة مجدداً.' });
+      return true;
+    }
+    const val = data.replace('doc_img_space_', '');
+    if (val === 'custom') {
+      ctx.session.docState = 'awaiting_custom_img_lines';
+      await ctx.editMessageText(
+        '✍️ <b>أرسل عدد الأسطر</b> (رقم بين 1 و 50 فقط):',
+        { parse_mode: 'HTML' }
+      );
+      return true;
+    }
+    ctx.session.tempImage.lines = parseInt(val);
+    await showImageFormatMenu(ctx);
+    return true;
+  }
+
+  // ── Image: Format (align) + Mask handlers ───────────────────────────
+  if (data.startsWith('doc_img_fmt_') || data.startsWith('doc_img_mask_')) {
+    if (!ctx.session.tempImage?.fileId) {
+      await ctx.answerCallbackQuery({ text: '⚠️ انتهت الجلسة، أرسل الصورة مجدداً.' });
+      return true;
+    }
+
+    if (data.startsWith('doc_img_fmt_')) {
+      ctx.session.tempImage.align = data.replace('doc_img_fmt_', '') as 'right' | 'center' | 'left';
+    }
+    if (data.startsWith('doc_img_mask_')) {
+      ctx.session.tempImage.mask = data.replace('doc_img_mask_', '') as 'square' | 'rounded' | 'circle';
+    }
+
+    // CRITICAL: Only save when BOTH values are explicitly set
+    const bothSelected = !!ctx.session.tempImage.align && !!ctx.session.tempImage.mask;
+
+    if (!bothSelected) {
+      await ctx.answerCallbackQuery({ text: '✅ تم الاختيار، أكمل الخيار الآخر.' });
+      return true;
+    }
+
+    // Both selected → push image line
+    ctx.session.documentLines = ctx.session.documentLines || [];
+    ctx.session.documentLines.push({
+      text: '',
+      type: 'image',
+      fileId: ctx.session.tempImage.fileId,
+      imageLines: ctx.session.tempImage.lines || 5,
+      align: ctx.session.tempImage.align ?? 'center',
+
+      imageMask: ctx.session.tempImage.mask,
+    });
+
+    ctx.session.tempImage = undefined;
+    ctx.session.docState = 'active';
+
+    await ctx.editMessageText(
+      '✅ <b>تمت إضافة الصورة للمستند!</b>\n\nأرسل المزيد من النصوص أو الصور، أو اضغط تصدير.',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📥 إنهاء وتصدير PDF', callback_data: 'doc_compile' }],
+          ],
+        },
+      }
+    );
+    await refreshPreview(ctx);
+    return true;
+  }
+
+  // ── Image: Back / cancel ────────────────────────────────────────────
+  if (data === 'doc_back_to_session') {
+    await ctx.answerCallbackQuery();
+    ctx.session.tempImage = undefined;
+    ctx.session.docState = 'active';
+    await ctx.editMessageText(
+      '↩️ <b>تم الإلغاء.</b>\n\nأرسل نصاً أو صورة، أو اضغط تصدير.',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📥 إنهاء وتصدير PDF', callback_data: 'doc_compile' }],
+          ],
+        },
+      }
+    );
+    return true;
+  }
+
+  // ── Cancel ─────────────────────────────────────────────────────────────────────────────
   if (data === 'doc_maker_cancel') {
     await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' });
     ctx.session.isInDocMaker = false;
@@ -384,7 +521,8 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     const processingMsg = await ctx.reply('⏳ جاري إنشاء ملف PDF...');
     try {
       const { generateDocumentFromLines } = await import('../../services/pdfGeneratorService');
-      const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(safeLines, ctx.session.pageSize || 'A4');
+      const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(safeLines, ctx.session.pageSize || 'A4', ctx.session.selectedFont);
+
       const fileName = `NizoDoc_${Date.now()}.pdf`;
       await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
       const { incrementGlobalCounter } = await import('../../services/statsService');
@@ -706,3 +844,31 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
   });
   return true;
 }
+
+// ── Image Format Menu Helper ───────────────────────────────────────────────────
+
+async function showImageFormatMenu(ctx: BotContext): Promise<void> {
+  await ctx.editMessageText(
+    '🎨 <b>تنسيق الصورة:</b>\n\n' +
+    'اختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:',
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '➡️ يمين',  callback_data: 'doc_img_fmt_right' },
+            { text: '↔️ وسط',  callback_data: 'doc_img_fmt_center' },
+            { text: '⬅️ يسار', callback_data: 'doc_img_fmt_left' },
+          ],
+          [
+            { text: '⭕ دائري',         callback_data: 'doc_img_mask_circle' },
+            { text: '🔲 حواف ناعمة',   callback_data: 'doc_img_mask_rounded' },
+            { text: '⬛ مربع عادي',    callback_data: 'doc_img_mask_square' },
+          ],
+          [{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' }],
+        ],
+      },
+    }
+  );
+}
+
