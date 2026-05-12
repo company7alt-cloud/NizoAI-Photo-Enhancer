@@ -76,7 +76,15 @@ export interface IUser extends Document {
   // Document Maker (session data)
   isInDocMaker?: boolean;
   tempLine?: string | null;
-  documentLines?: { text: string; align: 'right' | 'center' | 'left' }[];
+  documentLines?: {
+    text: string;
+    align: 'right' | 'center' | 'left';
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    size?: 'small' | 'normal' | 'large';
+    style?: 'normal' | 'quote' | 'divider' | 'highlight';
+  }[];
   docWizard: {
     step: number;
     docType: 'text' | 'image' | null;
@@ -263,7 +271,12 @@ const UserSchema = new Schema<IUser>(
     documentLines: {
       type: [{
         text: { type: String, required: true },
-        align: { type: String, enum: ['right', 'center', 'left'], default: 'right' }
+        align: { type: String, enum: ['right', 'center', 'left'], default: 'right' },
+        bold: { type: Boolean, default: false },
+        italic: { type: Boolean, default: false },
+        underline: { type: Boolean, default: false },
+        size: { type: String, enum: ['small', 'normal', 'large'], default: 'normal' },
+        style: { type: String, enum: ['normal', 'quote', 'divider', 'highlight'], default: 'normal' },
       }],
       default: []
     },

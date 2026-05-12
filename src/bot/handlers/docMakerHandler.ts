@@ -1,9 +1,45 @@
 // src/bot/handlers/docMakerHandler.ts
-import { BotContext } from '../../utils/validators';
+import { BotContext, DocLine } from '../../utils/validators';
 import { User } from '../../database/models/User';
 import { InputFile } from 'grammy';
 import { getSettings } from '../../services/settingsService';
 import { generatePreviewPNG, TEMPLATE_NAMES } from '../../services/previewGeneratorService';
+
+function buildFormattingKeyboard(tl: DocLine): { inline_keyboard: any[][] } {
+  const b = tl.bold ? '✅𝐁' : '𝐁 عريض';
+  const it = tl.italic ? '✅𝐼' : '𝐼 مائل';
+  const ul = tl.underline ? '✅U̲' : 'U̲ تحته خط';
+  const sm = tl.size === 'small' ? '✅🔡' : '🔡 صغير';
+  const nm = (!tl.size || tl.size === 'normal') ? '✅🔤' : '🔤 عادي';
+  const lg = tl.size === 'large' ? '✅🔠' : '🔠 كبير';
+  const qt = tl.style === 'quote' ? '✅" اقتباس' : '" اقتباس';
+  const dv = tl.style === 'divider' ? '✅— فاصل' : '— فاصل';
+  const hl = tl.style === 'highlight' ? '✅★ مميز' : '★ مميز';
+  return {
+    inline_keyboard: [
+      [
+        { text: '➡️ يمين', callback_data: 'align_right' },
+        { text: '↔️ وسط', callback_data: 'align_center' },
+        { text: '⬅️ يسار', callback_data: 'align_left' },
+      ],
+      [
+        { text: b, callback_data: 'style_bold' },
+        { text: it, callback_data: 'style_italic' },
+        { text: ul, callback_data: 'style_underline' },
+      ],
+      [
+        { text: sm, callback_data: 'size_small' },
+        { text: nm, callback_data: 'size_normal' },
+        { text: lg, callback_data: 'size_large' },
+      ],
+      [
+        { text: qt, callback_data: 'style_quote' },
+        { text: dv, callback_data: 'style_divider' },
+        { text: hl, callback_data: 'style_highlight' },
+      ],
+    ],
+  };
+}
 
 const BACKUP_CHANNEL_ID = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID || '';
 
@@ -46,6 +82,7 @@ function controlPanel() {
       [{ text: '📤 تصدير الآن', callback_data: 'doc_compile' }, { text: '✏️ تعديل سطر', callback_data: 'doc_edit_line' }],
       [{ text: '🔄 إعادة آخر سطر', callback_data: 'doc_redo' }, { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' }],
       [{ text: '📋 عرض الأسطر', callback_data: 'doc_view' }],
+      [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_end_session' }],
     ],
   };
 }
@@ -105,8 +142,12 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     'doc_type_text','doc_type_image',
     'doc_compile','doc_continue','doc_finish',
     'align_right','align_center','align_left',
+    'style_bold','style_italic','style_underline',
+    'size_small','size_normal','size_large',
+    'style_quote','style_divider','style_highlight',
     'doc_redo','doc_edit_line','doc_view','doc_edit_after','doc_new_page',
     'doc_tpl_confirm','doc_tpl_back',
+    'doc_end_session','doc_confirm_end','doc_cancel_end',
   ];
   const isDoc = docCallbacks.includes(data) || data.startsWith('doc_tpl_') || data.startsWith('doc_size_');
   if (!isDoc) return false;
@@ -261,7 +302,6 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── Alignment ─────────────────────────────────────────────────────────────
   if (data === 'align_right' || data === 'align_center' || data === 'align_left') {
     await ctx.answerCallbackQuery();
     const tempLine = ctx.session.tempLine;
@@ -274,11 +314,13 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     };
     if (!ctx.session.documentLines) ctx.session.documentLines = [];
     const pageSize = ctx.session.pageSize || 'A4';
+    const chosenAlign = alignMap[data];
+    const finalLine: DocLine = { ...tempLine, align: chosenAlign };
 
     if (ctx.session.editingLineIndex !== undefined) {
       const idx = ctx.session.editingLineIndex;
       if (idx >= 0 && idx < ctx.session.documentLines.length) {
-        ctx.session.documentLines[idx] = { text: tempLine, align: alignMap[data] };
+        ctx.session.documentLines[idx] = finalLine;
       }
       ctx.session.editingLineIndex = undefined;
       ctx.session.awaitingLineEditText = false;
@@ -290,8 +332,10 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       return true;
     }
 
-    const wrapped = smartWrap(tempLine, pageSize);
-    for (const chunk of wrapped) ctx.session.documentLines.push({ text: chunk, align: alignMap[data] });
+    const wrapped = smartWrap(finalLine.text, pageSize);
+    for (const chunk of wrapped) {
+      ctx.session.documentLines.push({ ...finalLine, text: chunk });
+    }
     ctx.session.tempLine = null;
 
     const lines = ctx.session.documentLines;
@@ -303,15 +347,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
   // ── Compile ────────────────────────────────────────────────────────────────
   if (data === 'doc_compile') {
-    if (!ctx.session.documentLines || ctx.session.documentLines.length === 0) {
-      await ctx.reply('⚠️ لا يوجد محتوى للتصدير');
+    try { await ctx.answerCallbackQuery(); } catch {}
+    const safeLines = (ctx.session.documentLines ?? []).filter(l => l !== null && l !== undefined);
+    if (safeLines.length === 0) {
+      await ctx.answerCallbackQuery({ text: '⚠️ لا يوجد محتوى للتصدير', show_alert: true }).catch(() => {});
       return true;
     }
-    await ctx.answerCallbackQuery();
     const processingMsg = await ctx.reply('⏳ جاري إنشاء ملف PDF...');
     try {
       const { generateDocumentFromLines } = await import('../../services/pdfGeneratorService');
-      const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(ctx.session.documentLines, ctx.session.pageSize || 'A4');
+      const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(safeLines, ctx.session.pageSize || 'A4');
       const fileName = `NizoDoc_${Date.now()}.pdf`;
       await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
       const { incrementGlobalCounter } = await import('../../services/statsService');
@@ -427,6 +472,74 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
+  // ── Formatting toggles ─────────────────────────────────────────────────────
+  const fmtToggles: Record<string, (tl: DocLine) => DocLine> = {
+    style_bold:       tl => ({ ...tl, bold: !tl.bold }),
+    style_italic:     tl => ({ ...tl, italic: !tl.italic }),
+    style_underline:  tl => ({ ...tl, underline: !tl.underline }),
+    size_small:       tl => ({ ...tl, size: 'small'  }),
+    size_normal:      tl => ({ ...tl, size: 'normal' }),
+    size_large:       tl => ({ ...tl, size: 'large'  }),
+    style_quote:      tl => ({ ...tl, style: tl.style === 'quote'     ? 'normal' : 'quote'     }),
+    style_divider:    tl => ({ ...tl, style: tl.style === 'divider'   ? 'normal' : 'divider'   }),
+    style_highlight:  tl => ({ ...tl, style: tl.style === 'highlight' ? 'normal' : 'highlight' }),
+  };
+  if (fmtToggles[data]) {
+    try {
+      await ctx.answerCallbackQuery();
+      if (!ctx.session.tempLine) {
+        await ctx.answerCallbackQuery({ text: '⚠️ أرسل النص أولاً', show_alert: true }).catch(() => {});
+        return true;
+      }
+      ctx.session.tempLine = fmtToggles[data](ctx.session.tempLine);
+      await ctx.editMessageReplyMarkup(buildFormattingKeyboard(ctx.session.tempLine) as any).catch(() => {});
+    } catch (e) {
+      console.error('[DocMaker] fmt toggle error:', e);
+    }
+    return true;
+  }
+
+  // ── End Session ───────────────────────────────────────────────────────────
+  if (data === 'doc_end_session') {
+    try {
+      await ctx.answerCallbackQuery();
+      await ctx.reply(
+        '⚠️ سيتم حذف جميع بيانات مشروعك نهائياً. هل أنت متأكد؟',
+        { reply_markup: { inline_keyboard: [[
+          { text: '✅ نعم، إنهاء', callback_data: 'doc_confirm_end' },
+          { text: '❌ لا، العودة', callback_data: 'doc_cancel_end' },
+        ]] } }
+      );
+    } catch (e) { console.error('[DocMaker] end_session error:', e); }
+    return true;
+  }
+
+  if (data === 'doc_confirm_end') {
+    try {
+      await ctx.answerCallbackQuery();
+      ctx.session.documentLines = [];
+      ctx.session.tempLine = null;
+      ctx.session.docType = undefined;
+      ctx.session.templateId = undefined;
+      ctx.session.pageSize = undefined;
+      ctx.session.isInDocMaker = false;
+      ctx.session.editingLineIndex = undefined;
+      ctx.session.awaitingLineEditIndex = false;
+      ctx.session.awaitingLineEditText = false;
+      ctx.session.previewMessageId = undefined;
+      await ctx.editMessageText('✅ تم إنهاء الجلسة. يمكنك البدء من جديد.', { reply_markup: undefined }).catch(() => {});
+    } catch (e) { console.error('[DocMaker] confirm_end error:', e); }
+    return true;
+  }
+
+  if (data === 'doc_cancel_end') {
+    try {
+      await ctx.answerCallbackQuery();
+      await ctx.deleteMessage().catch(() => {});
+    } catch (e) { console.error('[DocMaker] cancel_end error:', e); }
+    return true;
+  }
+
   return false;
 }
 
@@ -454,14 +567,11 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
 
   // Awaiting replacement text
   if (ctx.session.awaitingLineEditText) {
-    ctx.session.tempLine = text;
-    await ctx.reply(`📝 <b>اختر محاذاة النص الجديد:</b>\n\n<code>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`, {
+    const newLine: DocLine = { text, align: 'right', bold: false, italic: false, underline: false, size: 'normal', style: 'normal' };
+    ctx.session.tempLine = newLine;
+    await ctx.reply(`📝 <b>اختر تنسيق النص الجديد:</b>\n\n<code>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`, {
       parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: [[
-        { text: '➡️ يمين', callback_data: 'align_right' },
-        { text: '↔️ وسط', callback_data: 'align_center' },
-        { text: '⬅️ يسار', callback_data: 'align_left' },
-      ]] },
+      reply_markup: buildFormattingKeyboard(newLine),
     });
     return true;
   }
@@ -479,15 +589,12 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
     return true;
   }
 
-  // Normal text → alignment selection
-  ctx.session.tempLine = text;
-  await ctx.reply(`📝 <b>اختر محاذاة النص:</b>\n\n<code>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`, {
+  // Normal text → show full 4-row formatting keyboard
+  const newLine: DocLine = { text, align: 'right', bold: false, italic: false, underline: false, size: 'normal', style: 'normal' };
+  ctx.session.tempLine = newLine;
+  await ctx.reply(`📝 <b>اختر تنسيق النص:</b>\n\n<code>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`, {
     parse_mode: 'HTML',
-    reply_markup: { inline_keyboard: [[
-      { text: '➡️ يمين', callback_data: 'align_right' },
-      { text: '↔️ وسط', callback_data: 'align_center' },
-      { text: '⬅️ يسار', callback_data: 'align_left' },
-    ]] },
+    reply_markup: buildFormattingKeyboard(newLine),
   });
   return true;
 }

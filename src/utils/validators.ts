@@ -9,6 +9,11 @@ import { Resolution } from '../services/queueService';
 export interface DocLine {
   text: string;
   align: 'right' | 'center' | 'left';
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  size?: 'small' | 'normal' | 'large';
+  style?: 'normal' | 'quote' | 'divider' | 'highlight';
 }
 
 export interface SessionData {
@@ -24,7 +29,7 @@ export interface SessionData {
   docType?: string;
   templateId?: number;
   pageSize?: string;
-  tempLine?: string | null;
+  tempLine?: DocLine | null;
   documentLines?: DocLine[];
   // DocMaker Edit State
   editingLineIndex?: number;
