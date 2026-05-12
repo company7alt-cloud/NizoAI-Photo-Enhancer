@@ -603,6 +603,148 @@ bot.on('message:text', async (ctx, next) => {
     }
   }
 
+  // ── GIVEAWAY SETUP FLOW (admin only) ─────────────────────────────────────
+  if (isAdm) {
+    const adminUser2 = await User.findOne({ telegramId: telegramId });
+    const gwSetup = (adminUser2 as any)?.giveawaySetup;
+    const gwStep: string | null = gwSetup?.step ?? null;
+
+    if (gwStep === 'gw_winners') {
+      const count = parseInt(messageText.trim());
+      if (isNaN(count) || count < 1) {
+        await ctx.reply('⚠️ يرجى إرسال رقم صحيح أكبر من صفر.');
+        return;
+      }
+      await User.updateOne(
+        { telegramId },
+        { $set: { 'giveawaySetup.maxWinners': count, 'giveawaySetup.step': 'gw_min_reward' } }
+      );
+      await ctx.reply(
+        `✅ عدد الفائزين: <b>${count}</b>\n\n` +
+        `━━━━━━━━━━━━━━━━━\n` +
+        `🎁 <b>الخطوة 2/3</b>\n` +
+        `أرسل <b>الحد الأدنى للجائزة</b> (بالمحاولات)\n` +
+        `<i>مثال: 1</i>`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    if (gwStep === 'gw_min_reward') {
+      const min = parseInt(messageText.trim());
+      if (isNaN(min) || min < 1) {
+        await ctx.reply('⚠️ يرجى إرسال رقم صحيح أكبر من صفر.');
+        return;
+      }
+      await User.updateOne(
+        { telegramId },
+        { $set: { 'giveawaySetup.minReward': min, 'giveawaySetup.step': 'gw_max_reward' } }
+      );
+      await ctx.reply(
+        `✅ الحد الأدنى للجائزة: <b>${min} محاولات</b>\n\n` +
+        `━━━━━━━━━━━━━━━━━\n` +
+        `💰 أرسل <b>الحد الأقصى للجائزة</b>\n` +
+        `<i>مثال: 10 (سيوزع عشوائياً من ${min} إلى 10)</i>`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    if (gwStep === 'gw_max_reward') {
+      const max = parseInt(messageText.trim());
+      const min = gwSetup?.minReward ?? 1;
+      if (isNaN(max) || max < min) {
+        await ctx.reply(`⚠️ يجب أن يكون الحد الأقصى أكبر من أو يساوي ${min}.`);
+        return;
+      }
+      await User.updateOne(
+        { telegramId },
+        { $set: { 'giveawaySetup.maxReward': max, 'giveawaySetup.step': 'gw_channel' } }
+      );
+      await ctx.reply(
+        `✅ نطاق الجائزة: <b>${min} — ${max} محاولات</b>\n\n` +
+        `━━━━━━━━━━━━━━━━━\n` +
+        `📢 <b>الخطوة 3/3</b>\n` +
+        `أرسل <b>معرف القناة</b> أو ID القناة لنشر التوزيعة\n` +
+        `<i>مثال: @MyChannel أو -1001234567890</i>\n\n` +
+        `⚠️ تأكد أن البوت مشرف في القناة`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    if (gwStep === 'gw_channel') {
+      const channelId = messageText.trim();
+      if (!gwSetup?.maxWinners) {
+        await ctx.reply('❌ حدث خطأ في الإعداد. ابدأ من جديد.');
+        await User.updateOne({ telegramId }, { $set: { 'giveawaySetup.step': null } });
+        return;
+      }
+      const { Giveaway } = await import('./database/models/Giveaway');
+      try {
+        const giveawayText =
+          `🎉 <b>توزيعات NizoAI Bot</b> 🎁\n\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `🏆 <b>فرصة ذهبية لربح محاولات مجانية!</b>\n` +
+          `━━━━━━━━━━━━━━━━━━━\n\n` +
+          `💎 <b>الجائزة:</b> من ${gwSetup.minReward} إلى ${gwSetup.maxReward} محاولات عشوائياً\n` +
+          `👥 <b>عدد الفائزين:</b> ${gwSetup.maxWinners} شخص محظوظ\n\n` +
+          `⚡ المستخدمون النشطون لديهم فرص أعلى للفوز!\n\n` +
+          `👇 <b>اضغط الزر واكتشف حظك الآن!</b>`;
+
+        const msg = await ctx.api.sendMessage(
+          channelId,
+          giveawayText,
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🍀 جرب حظك الآن 🟢', callback_data: 'gw_roll_init' } as any
+              ]]
+            }
+          }
+        );
+
+        await Giveaway.create({
+          channelId,
+          messageId: msg.message_id,
+          maxWinners: gwSetup.maxWinners,
+          minReward:  gwSetup.minReward,
+          maxReward:  gwSetup.maxReward,
+        });
+
+        await User.updateOne({ telegramId }, { $set: { 'giveawaySetup.step': null } });
+
+        const safeChannel = channelId.replace('@', '');
+        await ctx.reply(
+          `✅ <b>تم نشر التوزيعة بنجاح!</b> 🎉\n\n` +
+          `📢 القناة: <code>${channelId}</code>\n` +
+          `👥 الفائزون: ${gwSetup.maxWinners}\n` +
+          `🎁 الجوائز: ${gwSetup.minReward}–${gwSetup.maxReward} محاولات\n\n` +
+          `💡 يمكنك إعادة نشر رسالة التوزيعة في أي وقت`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '📤 عرض رسالة التوزيعة', url: `https://t.me/${safeChannel}/${msg.message_id}` }
+              ]]
+            }
+          }
+        );
+      } catch (err: any) {
+        await ctx.reply(
+          `❌ <b>فشل النشر!</b>\n\n` +
+          `تأكد أن البوت مشرف في القناة وأن المعرف صحيح.\n` +
+          `<code>${err.message}</code>`,
+          { parse_mode: 'HTML' }
+        );
+        await User.updateOne({ telegramId }, { $set: { 'giveawaySetup.step': null } });
+      }
+      return;
+    }
+  }
+
+
   // 3. Fund Campaign Logic (Priority 3 - Kept exactly as original)
   const { isFundCampaignPending, handleFundCampaignInput, broadcastFundCampaign } = await import('./services/channelFundService');
   if (isAdm && isFundCampaignPending(ctx.from!.id)) {

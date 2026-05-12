@@ -110,6 +110,14 @@ export interface IUser extends Document {
       captionText?: string;
     }>;
   } | null;
+  // Giveaway setup state (admin only)
+  giveawaySetup?: {
+    step: string | null;
+    maxWinners: number;
+    minReward: number;
+    maxReward: number;
+    channelId: string;
+  };
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -319,6 +327,17 @@ const UserSchema = new Schema<IUser>(
         },
       },
       default: null,
+    },
+    // Giveaway setup state (admin only)
+    giveawaySetup: {
+      type: {
+        step:       { type: String,  default: null },
+        maxWinners: { type: Number,  default: 0 },
+        minReward:  { type: Number,  default: 0 },
+        maxReward:  { type: Number,  default: 0 },
+        channelId:  { type: String,  default: '' },
+      },
+      default: () => ({ step: null, maxWinners: 0, minReward: 0, maxReward: 0, channelId: '' }),
     },
   },
   {

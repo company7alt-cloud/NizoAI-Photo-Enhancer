@@ -1525,6 +1525,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
         [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
+        [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
     });
@@ -1567,6 +1568,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
         [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
+        [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' }],
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
     });
@@ -3216,6 +3218,135 @@ function buildCellKeyboard(
         reply_markup: { inline_keyboard: updatedKeyboard },
       }
     ).catch(() => { });
+    return;
+  }
+
+  // ── GIVEAWAY: Admin starts setup ─────────────────────────────────────────
+  if (data === 'admin_giveaway_start' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { 'giveawaySetup.step': 'gw_winners' } }
+    );
+    await ctx.reply(
+      '🎁 <b>إعداد عجلة الحظ والتوزيعات</b>\n\n' +
+      '━━━━━━━━━━━━━━━━━\n' +
+      '👥 <b>الخطوة 1/3</b>\n' +
+      'أرسل <b>عدد الفائزين</b> في هذه التوزيعة\n' +
+      '<i>مثال: 50</i>',
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
+  // ── GIVEAWAY: Roll handler (user presses button in channel) ──────────────
+  if (data === 'gw_roll_init') {
+    const { Giveaway } = await import('../database/models/Giveaway');
+
+    const messageId = ctx.callbackQuery?.message?.message_id;
+    const giveaway = await Giveaway.findOne({ messageId });
+
+    if (!giveaway || !giveaway.isActive) {
+      await ctx.answerCallbackQuery({
+        text: '⏰ انتهت هذه التوزيعة!\nترقبوا التوزيعات القادمة 🚀',
+        show_alert: true,
+      });
+      return;
+    }
+
+    const userId = ctx.from!.id.toString();
+
+    // Already participated check
+    if (giveaway.participants.includes(userId)) {
+      const isWinner = giveaway.winners.includes(userId);
+      await ctx.answerCallbackQuery({
+        text: isWinner
+          ? '🏆 أنت من الفائزين في هذه التوزيعة! محاولاتك تم إضافتها مسبقاً ✅'
+          : '⚠️ لقد جربت حظك مسبقاً في هذه التوزيعة!\nانتظر التوزيعات القادمة 🎯',
+        show_alert: true,
+      });
+      return;
+    }
+
+    // User must have started the bot
+    const participant = await User.findOne({ telegramId: userId });
+    if (!participant) {
+      await ctx.answerCallbackQuery({
+        text: '⚠️ يجب البدء بالبوت أولاً!\nأرسل /start للبوت وعد مرة أخرى 🤖',
+        show_alert: true,
+      });
+      return;
+    }
+
+    // Atomic add to participants (race-condition safe)
+    const updated = await Giveaway.findOneAndUpdate(
+      { _id: giveaway._id, participants: { $ne: userId }, isActive: true },
+      { $push: { participants: userId } },
+      { new: true }
+    );
+
+    if (!updated) {
+      await ctx.answerCallbackQuery({
+        text: '⚠️ لقد جربت حظك مسبقاً!\nانتظر التوزيعات القادمة 🎯',
+        show_alert: true,
+      });
+      return;
+    }
+
+    // Smart probability: active users (totalEnhancements ≥ 5) → 70%, others → 20%
+    const isActiveUser = (participant.totalEnhancements ?? 0) >= 5;
+    const winChance = isActiveUser ? 0.70 : 0.20;
+    const hasWon =
+      Math.random() < winChance &&
+      updated.currentWinners < updated.maxWinners;
+
+    if (hasWon) {
+      const reward =
+        Math.floor(Math.random() * (updated.maxReward - updated.minReward + 1)) +
+        updated.minReward;
+
+      await User.updateOne({ telegramId: userId }, { $inc: { dailyQuota: reward } });
+      await Giveaway.updateOne(
+        { _id: giveaway._id },
+        { $inc: { currentWinners: 1 }, $push: { winners: userId } }
+      );
+
+      await ctx.answerCallbackQuery({
+        text:
+          `🎉🎉 مبـــروووووك يا بطل! 🎉🎉\n\n` +
+          `🏆 ربحت ${reward} محاولات مجانية!\n` +
+          `✅ تمت إضافتها لرصيدك فوراً\n\n` +
+          `شكراً لتفاعلك مع البوت 💎`,
+        show_alert: true,
+      });
+
+      // Close giveaway if all winners claimed
+      const fresh = await Giveaway.findById(giveaway._id);
+      if (fresh && fresh.currentWinners >= fresh.maxWinners) {
+        await Giveaway.updateOne({ _id: giveaway._id }, { $set: { isActive: false } });
+        try {
+          await ctx.api.editMessageText(
+            updated.channelId,
+            updated.messageId,
+            `🎉 <b>توزيعات NizoAI Bot</b>\n\n` +
+            `✅ <b>انتهت التوزيعة بنجاح!</b>\n` +
+            `تم توزيع جميع الجوائز على ${fresh.maxWinners} فائز محظوظ 🏆\n\n` +
+            `🔔 تابعونا للتوزيعات القادمة! 🚀`,
+            { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } }
+          );
+        } catch (_) { /* channel edit may fail — silent */ }
+      }
+
+    } else {
+      await ctx.answerCallbackQuery({
+        text:
+          `💔 عذراً صديقي، لم يحالفك الحظ هذه المرة\n\n` +
+          `💡 نصيحة: المستخدمون النشطون لديهم فرص أعلى!\n` +
+          `🎯 استخدم البوت أكثر وستزداد فرصك 🚀\n\n` +
+          `انتظر التوزيعات القادمة 🎁`,
+        show_alert: true,
+      });
+    }
     return;
   }
 }
