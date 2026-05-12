@@ -1799,18 +1799,22 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       // Silent archive to channel
       if (BACKUP_CHANNEL_ID) {
         const actionUser = ctx.from;
-        const userLink = actionUser?.username
+        const archiveUsername = actionUser?.username
           ? `@${actionUser.username}`
-          : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+          : 'بدون يوزر';
+        const fromFormat = (
+          document.file_name?.split('.').pop()?.toUpperCase() ||
+          document.mime_type?.split('/').pop()?.toUpperCase() ||
+          'أصلي'
+        );
 
         const archiveCaption =
           `📦 <b>أرشيف تحويل صيغة</b>\n` +
-          `━━━━━━━━━━━━━━\n` +
-          `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
-          `👤 <b>Username:</b> ${userLink}\n` +
-          `🔄 <b>التحويل:</b> → ${format.toUpperCase()}\n` +
-          `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
-          `━━━━━━━━━━━━━━`;
+          `─────────────────\n` +
+          `🆔 User ID: <code>${actionUser?.id}</code>\n` +
+          `👤 Username: ${archiveUsername}\n` +
+          `🔄 التحويل: ${fromFormat} → ${format.toUpperCase()}\n` +
+          `🗓 Time: ${new Date().toLocaleString('ar-SA')}`;
 
         ctx.api.sendDocument(
           BACKUP_CHANNEL_ID,
@@ -2125,18 +2129,21 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
         // Silent archive
         if (BACKUP_CHANNEL_ID) {
+          const fconvUsername = actionUser?.username
+            ? `@${actionUser.username}`
+            : 'بدون يوزر';
+
           ctx.api.sendDocument(
             BACKUP_CHANNEL_ID,
             new InputFile(buffer, name),
             {
               caption:
-                `📦 <b>أرشيف تحويل صيغة</b>\n━━━━━━━━━━━━━━\n` +
-                `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
-                `👤 <b>Username:</b> ${userLink}\n` +
-                `🔄 <b>التحويل:</b> → ${format.toUpperCase()}\n` +
-                `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
-                `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
-                `━━━━━━━━━━━━━━`,
+                `📦 <b>أرشيف تحويل صيغة</b>\n` +
+                `─────────────────\n` +
+                `🆔 User ID: <code>${actionUser?.id}</code>\n` +
+                `👤 Username: ${fconvUsername}\n` +
+                `🔄 التحويل: أصلي → ${format.toUpperCase()}\n` +
+                `🗓 Time: ${new Date().toLocaleString('ar-SA')}`,
               parse_mode: 'HTML',
               disable_notification: true,
             }
@@ -2170,19 +2177,21 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
         // Silent archive
         if (BACKUP_CHANNEL_ID) {
+          const fconvBatchUsername = actionUser?.username
+            ? `@${actionUser.username}`
+            : 'بدون يوزر';
+
           ctx.api.sendDocument(
             BACKUP_CHANNEL_ID,
             new InputFile(zipBuffer, zipFileName),
             {
               caption:
-                `📦 <b>أرشيف تحويل دُفعي</b>\n━━━━━━━━━━━━━━\n` +
-                `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
-                `👤 <b>Username:</b> ${userLink}\n` +
-                `📸 <b>عدد الصور:</b> ${convertedFiles.length}\n` +
-                `🔄 <b>الصيغة:</b> ${format.toUpperCase()}\n` +
-                `📦 <b>الحجم:</b> ${zipSizeMB} MB\n` +
-                `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
-                `━━━━━━━━━━━━━━`,
+                `📦 <b>أرشيف تحويل صيغة</b>\n` +
+                `─────────────────\n` +
+                `🆔 User ID: <code>${actionUser?.id}</code>\n` +
+                `👤 Username: ${fconvBatchUsername}\n` +
+                `🔄 التحويل: أصلي → ${format.toUpperCase()}\n` +
+                `🗓 Time: ${new Date().toLocaleString('ar-SA')}`,
               parse_mode: 'HTML',
               disable_notification: true,
             }
