@@ -112,7 +112,8 @@ async function refreshPreview(ctx: BotContext): Promise<void> {
     await ctx.api.editMessageMedia(ctx.chat.id, ctx.session.previewMessageId, {
       type: 'photo',
       media: new InputFile(png, 'preview.png'),
-      caption: `🖼 <b>معاينة مباشرة</b> · ${tplName} · ${ctx.session.pageSize || 'A4'}\n📝 ${(ctx.session.documentLines || []).length} سطر`,
+      caption: `🖼 <b>معاينة مباشرة</b> · ${tplName} · ${ctx.session.pageSize || 'A4'}\n📝 ${(ctx.session.documentLines || []).length} سطر\n🔤 الخط: ${ctx.session.selectedFont || 'Amiri'} — سيظهر في PDF النهائي`,
+
       parse_mode: 'HTML',
     });
   } catch { /* silent */ }
@@ -733,6 +734,40 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
 
   const text = ctx.message?.text?.trim();
   if (!text || text.startsWith('/')) return false;
+
+  // ── GUARD: awaiting custom image line count ───────────────────────────────
+  if (ctx.session.docState === 'awaiting_custom_img_lines') {
+    if (!ctx.session.tempImage?.fileId) {
+      await ctx.reply('⚠️ انتهت الجلسة، أرسل الصورة مجدداً.');
+      ctx.session.docState = 'active';
+      return true;
+    }
+    const num = parseInt(text);
+    if (isNaN(num) || num < 1 || num > 50) {
+      await ctx.reply('⚠️ أرسل رقماً صحيحاً بين 1 و50 فقط.');
+      return true;
+    }
+    ctx.session.tempImage.lines = num;
+    ctx.session.docState = 'active';
+    await showImageFormatMenu(ctx);
+    return true;
+  }
+
+  // ── GUARD: active session with pending image config ───────────────────────
+  if (ctx.session.docState === 'active' && ctx.session.tempImage?.fileId) {
+    await ctx.reply(
+      '⚠️ <b>أكمل إعدادات الصورة أولاً</b>\nاختر المحاذاة والإطار، أو اضغط رجوع لإلغاء الصورة.',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }
+          ]]
+        }
+      }
+    );
+    return true;
+  }
 
   // ── Custom size: step 1 — awaiting width (cm) ────────────────────────────
   if (ctx.session.awaitingCustomWidth) {

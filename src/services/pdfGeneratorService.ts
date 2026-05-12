@@ -483,10 +483,11 @@ export async function generateDocumentFromLines(
               const allocH = (richLine.imageLines || 5) * 20;
 
               // CRITICAL: add new page if image does not fit
-              const bottomLimit = doc.page.height - doc.page.margins.bottom;
+              const bottomLimit = doc.page.height - (doc.page.margins.bottom ?? PADDING);
               if (doc.y + allocH > bottomLimit) {
                 ({ W, H } = addPage());
-                currentY = PADDING;
+                currentY = doc.page.margins.top ?? PADDING;
+                doc.y = currentY;
                 if (hasFont) doc.font('Arabic');
                 doc.fontSize(BASE_SIZE).fillColor('black');
               }
@@ -527,7 +528,8 @@ export async function generateDocumentFromLines(
         // Auto-paginate
         if (currentY + effectiveLineH > maxY) {
           ({ W, H } = addPage());
-          currentY = PADDING;
+          currentY = doc.page.margins.top ?? PADDING;
+          doc.y = currentY;
           if (hasFont) doc.font('Arabic');
           doc.fontSize(BASE_SIZE).fillColor('black');
         }
