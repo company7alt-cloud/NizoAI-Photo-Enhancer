@@ -400,7 +400,46 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     const bothSelected = !!ctx.session.tempImage.align && !!ctx.session.tempImage.mask;
 
     if (!bothSelected) {
-      await ctx.answerCallbackQuery({ text: '✅ تم الاختيار، أكمل الخيار الآخر.' });
+      await ctx.answerCallbackQuery(); // required silent ACK
+
+      const alignVal  = ctx.session.tempImage?.align;
+      const maskVal   = ctx.session.tempImage?.mask;
+      const alignEmoji: Record<string, string> = { right: '➡️', center: '↔️', left: '⬅️' };
+      const maskEmoji:  Record<string, string> = { circle: '⭕', rounded: '🔲', square: '⬛' };
+
+      const alignStatus = alignVal
+        ? `${alignEmoji[alignVal] ?? ''} <b>${alignVal}</b> ✅`
+        : '⬜ لم يُختَر بعد';
+      const maskStatus = maskVal
+        ? `${maskEmoji[maskVal] ?? ''} <b>${maskVal}</b> ✅`
+        : '⬜ لم يُختَر بعد';
+
+      const missingItem = !alignVal ? 'المحاذاة' : 'شكل الإطار';
+
+      await ctx.editMessageText(
+        '🎨 <b>تنسيق الصورة:</b>\n\n' +
+        `📐 المحاذاة: ${alignStatus}\n` +
+        `🖼 الإطار: ${maskStatus}\n\n` +
+        `<i>اختر ${missingItem} لإتمام الإضافة:</i>`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '➡️ يمين',  callback_data: 'doc_img_fmt_right' },
+                { text: '↔️ وسط',  callback_data: 'doc_img_fmt_center' },
+                { text: '⬅️ يسار', callback_data: 'doc_img_fmt_left' },
+              ],
+              [
+                { text: '⭕ دائري',       callback_data: 'doc_img_mask_circle' },
+                { text: '🔲 حواف ناعمة', callback_data: 'doc_img_mask_rounded' },
+                { text: '⬛ مربع عادي',  callback_data: 'doc_img_mask_square' },
+              ],
+              [{ text: '🔙 إلغاء الصورة', callback_data: 'doc_back_to_session' }],
+            ],
+          },
+        }
+      );
       return true;
     }
 
@@ -524,6 +563,10 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       const { generateDocumentFromLines } = await import('../../services/pdfGeneratorService');
       const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(safeLines, ctx.session.pageSize || 'A4', ctx.session.selectedFont);
 
+      if (!pdfBuffer || pdfBuffer.length === 0) {
+        throw new Error('PDF buffer is empty — generateDocumentFromLines returned 0 bytes');
+      }
+
       const fileName = `NizoDoc_${Date.now()}.pdf`;
       await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
       const { incrementGlobalCounter } = await import('../../services/statsService');
@@ -547,10 +590,11 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
           ]],
         },
       });
-    } catch (err) {
-      console.error('[DocMaker] compile error:', err);
+    } catch (err: any) {
+      console.error('[DocMaker] compile error — message:', err?.message);
+      console.error('[DocMaker] compile error — stack:', err?.stack);
       await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
-      await ctx.reply('❌ حدث خطأ أثناء إنشاء المستند. حاول مرة أخرى.');
+      await ctx.reply('❌ حدث خطأ أثناء إنشاء المستند: ' + (err?.message || 'unknown error'));
     }
     return true;
   }
