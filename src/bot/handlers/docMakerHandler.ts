@@ -95,6 +95,7 @@ const SIZE_KB = {
     [{ text: 'A4 (افتراضي)', callback_data: 'doc_size_A4' }, { text: 'A5', callback_data: 'doc_size_A5' }],
     [{ text: 'Letter', callback_data: 'doc_size_Letter' }, { text: 'B5', callback_data: 'doc_size_B5' }],
     [{ text: 'Legal', callback_data: 'doc_size_Legal' }, { text: 'Executive', callback_data: 'doc_size_Executive' }],
+    [{ text: '📐 مقاس مخصص', callback_data: 'doc_custom_size' }],
     [{ text: '🔙 رجوع', callback_data: 'doc_tpl_back' }],
   ],
 };
@@ -151,7 +152,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     'doc_redo','doc_edit_line','doc_view','doc_edit_after','doc_new_page',
     'doc_tpl_confirm','doc_tpl_back',
     'doc_end_session','doc_confirm_end','doc_cancel_end',
-    'doc_format_back'
+    'doc_format_back','doc_custom_size',
   ];
   const isDoc = docCallbacks.includes(data) || data.startsWith('doc_tpl_') || data.startsWith('doc_size_');
   if (!isDoc) return false;
@@ -265,7 +266,23 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── Size Selected → Init + Send Instruction + Update Preview ─────────────
+  // ── Custom Size → ask for width ──────────────────────────────────────────
+  if (data === 'doc_custom_size') {
+    try {
+      await ctx.answerCallbackQuery();
+      ctx.session.awaitingCustomWidth = true;
+      ctx.session.awaitingCustomHeight = false;
+      ctx.session.customSizeWidth = undefined;
+      await ctx.editMessageCaption({
+        caption: '📐 <b>مقاس مخصص</b>\n\nأرسل <b>العرض</b> بالسنتيمتر (مثال: 21):',
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'doc_tpl_back' }]] },
+      }).catch(() => {});
+    } catch (e) { console.error('[DocMaker] custom_size error:', e); }
+    return true;
+  }
+
+  // ── Standard Size Selected → Init + Send Instruction + Update Preview ────
   if (data.startsWith('doc_size_')) {
     await ctx.answerCallbackQuery();
     ctx.session.pageSize = data.replace('doc_size_', '');
@@ -273,6 +290,8 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     ctx.session.documentLines = [];
     ctx.session.tempLine = null;
     ctx.session.tempFormatting = null;
+    ctx.session.awaitingCustomWidth = false;
+    ctx.session.awaitingCustomHeight = false;
 
     // Update the preview photo for correct size, remove keyboard
     if (ctx.session.previewMessageId && ctx.chat) {
@@ -572,9 +591,58 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 // ── MESSAGE HANDLER ────────────────────────────────────────────────────────────
 
 export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
-  if (!ctx.session || !ctx.from || !ctx.session.isInDocMaker) return false;
+  if (!ctx.session || !ctx.from) return false;
+
   const text = ctx.message?.text?.trim();
   if (!text || text.startsWith('/')) return false;
+
+  // ── Custom size: step 1 — awaiting width (cm) ────────────────────────────
+  if (ctx.session.awaitingCustomWidth) {
+    try {
+      const w = parseFloat(text);
+      if (isNaN(w) || w < 5 || w > 200) {
+        await ctx.reply('⚠️ الرجاء إرسال رقم صحيح بين 5 و 200');
+        return true;
+      }
+      ctx.session.customSizeWidth = w;
+      ctx.session.awaitingCustomWidth = false;
+      ctx.session.awaitingCustomHeight = true;
+      await ctx.reply('📐 أرسل <b>الارتفاع</b> بالسنتيمتر (مثال: 29.7):', { parse_mode: 'HTML' });
+    } catch (e) { console.error('[DocMaker] custom width error:', e); }
+    return true;
+  }
+
+  // ── Custom size: step 2 — awaiting height (cm) ──────────────────────────
+  if (ctx.session.awaitingCustomHeight) {
+    try {
+      const h = parseFloat(text);
+      if (isNaN(h) || h < 5 || h > 200) {
+        await ctx.reply('⚠️ الرجاء إرسال رقم صحيح بين 5 و 200');
+        return true;
+      }
+      const wCm = ctx.session.customSizeWidth!;
+      const CM_TO_PT = 28.35;
+      const label = `${wCm}×${h} سم`;
+
+      ctx.session.awaitingCustomHeight = false;
+      ctx.session.customSizeDims = { width: wCm * CM_TO_PT, height: h * CM_TO_PT, label };
+      ctx.session.pageSize = label;
+      ctx.session.isInDocMaker = true;
+      ctx.session.documentLines = [];
+      ctx.session.tempLine = null;
+      ctx.session.tempFormatting = null;
+
+      await ctx.reply(
+        `✅ <b>تم تحديد المقاس: ${label}</b>\n\nابدأ الكتابة:`,
+        { parse_mode: 'HTML', reply_markup: COMPILE_KB }
+      );
+      await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML' });
+    } catch (e) { console.error('[DocMaker] custom height error:', e); }
+    return true;
+  }
+
+  // For all remaining steps the user must be inside an active doc maker session
+  if (!ctx.session.isInDocMaker) return false;
 
   // Awaiting line index to edit
   if (ctx.session.awaitingLineEditIndex) {

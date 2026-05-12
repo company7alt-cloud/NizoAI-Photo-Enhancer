@@ -44,6 +44,11 @@ export interface SessionData {
   awaitingLineEditText?: boolean;
   // Live preview
   previewMessageId?: number;
+  // Custom page size
+  awaitingCustomWidth?: boolean;
+  awaitingCustomHeight?: boolean;
+  customSizeWidth?: number;  // cm
+  customSizeDims?: { width: number; height: number; label: string }; // PDF points
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;
