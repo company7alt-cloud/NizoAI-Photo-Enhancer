@@ -161,11 +161,13 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     'doc_undo_last','doc_edit_line','doc_view_lines','doc_edit_after','doc_new_page',
     'doc_tpl_confirm','doc_tpl_back',
     'doc_end_session','doc_confirm_end','doc_cancel_end',
-    'doc_format_back','doc_custom_size',
+    'doc_format_back','doc_custom_size','doc_template_colored',
     'doc_back_to_session',
   ];
   const isDoc =
     docCallbacks.includes(data) ||
+    data.startsWith('doc_bg_') ||
+    data.startsWith('doc_txt_') ||
     data.startsWith('doc_tpl_') ||
     data.startsWith('doc_size_') ||
     data.startsWith('doc_font_') ||
@@ -184,7 +186,6 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       reply_markup: {
         inline_keyboard: [
           [{ text: '📄 مستند نصي', callback_data: 'doc_type_text' }],
-          [{ text: 'نموذج ملون 🎨', callback_data: 'doc_type_colored' }],
           [{ text: '🖼 مستند مصور 🔒', callback_data: 'doc_type_image_locked' }],
           [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
         ],
@@ -214,6 +215,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
             [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1' }, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2' }],
             [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3' }, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4' }],
             [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5' }],
+            [{ text: '🎨 تصميم نموذج ملون (احترافي)', callback_data: 'doc_template_colored' }],
             [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
           ],
         },
@@ -222,8 +224,9 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── Template Selected → Send Preview Photo ────────────────────────────────
   if (data.startsWith('doc_tpl_') && data !== 'doc_tpl_confirm' && data !== 'doc_tpl_back') {
+    ctx.session.docBgColor = undefined;
+    ctx.session.docTextColor = undefined;
     await ctx.answerCallbackQuery();
     const tplId = parseInt(data.replace('doc_tpl_', ''), 10);
     ctx.session.templateId = tplId;
@@ -912,27 +915,28 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // 1. Show 6 Background Colors
-  if (data === 'doc_type_colored') {
+  // 1. Trigger Background Color Selection
+  if (data === 'doc_template_colored') {
+    await ctx.answerCallbackQuery();
     await ctx.editMessageText(
-      '🎨 <b>اختر لون خلفية المستند:</b>\n\nألوان هادئة واحترافية:',
+      '🎨 <b>تصميم نموذج ملون (خطوة 1/2):</b>\n\nاختر <b>لون خلفية</b> المستند (ألوان هادئة واحترافية):',
       {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
             [
               { text: 'أسود هادئ 🖤', callback_data: 'doc_bg_#1A1A1A' },
-              { text: 'رمادي فاتح 🤍', callback_data: 'doc_bg_#F8F9FA' }
+              { text: 'رمادي فاتح 🤍', callback_data: 'doc_bg_#F0F2F5' }
             ],
             [
               { text: 'كحلي ليلي 🌌', callback_data: 'doc_bg_#1B263B' },
               { text: 'مريمية هادئ 🌿', callback_data: 'doc_bg_#8F9779' }
             ],
             [
-              { text: 'بيج كلاسيكي 📜', callback_data: 'doc_bg_#F5F5DC' },
+              { text: 'بيج كلاسيكي 📜', callback_data: 'doc_bg_#FDF5E6' },
               { text: 'عنابي داكن 🍷', callback_data: 'doc_bg_#4A232C' }
             ],
-            [{ text: '❌ إلغاء', callback_data: 'doc_cancel_end' }]
+            [{ text: '🔙 رجوع للنماذج', callback_data: 'doc_type_text' }]
           ]
         }
       }
@@ -940,36 +944,30 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // 2. Save Background & Show 12 Text Colors
+  // 2. Save Background & Trigger Text Color Selection
   if (data.startsWith('doc_bg_')) {
+    await ctx.answerCallbackQuery();
     ctx.session.docBgColor = data.replace('doc_bg_', '');
+    
     await ctx.editMessageText(
-      '🔤 <b>اختر لون النص الأساسي:</b>\n\nاختر لوناً متناسقاً مع الخلفية:',
+      '🔤 <b>تصميم نموذج ملون (خطوة 2/2):</b>\n\nاختر <b>لون النص</b> المتناسق مع الخلفية:',
       {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
             [
-              { text: 'أبيض ⚪', callback_data: 'doc_txt_#FFFFFF' },
-              { text: 'أسود ⚫', callback_data: 'doc_txt_#000000' },
-              { text: 'رمادي 🔘', callback_data: 'doc_txt_#808080' }
+              { text: 'أبيض ناصع ⚪', callback_data: 'doc_txt_#FFFFFF' },
+              { text: 'أسود فاحم ⚫', callback_data: 'doc_txt_#000000' }
             ],
             [
-              { text: 'أحمر 🔴', callback_data: 'doc_txt_#E63946' },
-              { text: 'أزرق 🔵', callback_data: 'doc_txt_#457B9D' },
-              { text: 'أخضر 🟢', callback_data: 'doc_txt_#2A9D8F' }
+              { text: 'رمادي داكن 🔘', callback_data: 'doc_txt_#333333' },
+              { text: 'ذهبي فاخر ✨', callback_data: 'doc_txt_#D4AF37' }
             ],
             [
-              { text: 'أصفر 🟡', callback_data: 'doc_txt_#E9C46A' },
-              { text: 'برتقالي 🟠', callback_data: 'doc_txt_#F4A261' },
-              { text: 'بنفسجي 🟣', callback_data: 'doc_txt_#9D4EDD' }
+              { text: 'أزرق ملكي 🔵', callback_data: 'doc_txt_#1D3557' },
+              { text: 'أحمر قاني 🔴', callback_data: 'doc_txt_#8B0000' }
             ],
-            [
-              { text: 'وردي 🌸', callback_data: 'doc_txt_#FFB5A7' },
-              { text: 'ذهبي ✨', callback_data: 'doc_txt_#D4AF37' },
-              { text: 'فضي ⚙️', callback_data: 'doc_txt_#C0C0C0' }
-            ],
-            [{ text: '🔙 رجوع للخلفية', callback_data: 'doc_type_colored' }]
+            [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored' }]
           ]
         }
       }
@@ -977,11 +975,13 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // 3. Save Text Color & Route to Size Selection
+  // 3. Save Text Color & Route to Standard Document Flow (Size Selection)
   if (data.startsWith('doc_txt_')) {
+    await ctx.answerCallbackQuery();
     ctx.session.docTextColor = data.replace('doc_txt_', '');
+    (ctx.session as any).selectedTemplate = 'colored'; // Mark template as colored
     
-    // Directly show the Size Selection menu (A4, A5, etc.) that usually comes after doc_type_text
+    // IMMEDIATELY route the user to the standard Size Selection menu 
     await ctx.editMessageText(
       '📏 <b>اختر مقاس المستند:</b>',
       {
@@ -989,8 +989,8 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
         reply_markup: {
           inline_keyboard: [
             [
-              { text: 'A4 (افتراضي)', callback_data: 'doc_size_A4' },
-              { text: 'A5 (كتاب صغير)', callback_data: 'doc_size_A5' }
+              { text: 'A4 (كلاسيكي)', callback_data: 'doc_size_A4' },
+              { text: 'A5 (كتاب)', callback_data: 'doc_size_A5' }
             ],
             [
               { text: 'مربع (انستجرام)', callback_data: 'doc_size_square' },
