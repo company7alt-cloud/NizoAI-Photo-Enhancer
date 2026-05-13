@@ -114,6 +114,8 @@ async function refreshPreview(ctx: BotContext): Promise<void> {
       pageSize: ctx.session.pageSize || 'A4',
       lines: ctx.session.documentLines || [],
       selectedFont: ctx.session.selectedFont,
+      docBgColor:   ctx.session.docBgColor,
+      docTextColor: ctx.session.docTextColor,
     });
     const tplName = TEMPLATE_NAMES[ctx.session.templateId || 1] || '';
     await ctx.api.editMessageMedia(ctx.chat.id, ctx.session.previewMessageId, {
@@ -980,7 +982,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // 3. Save Text Color → Generate SVG color preview & show Approve/Back
+  // 3. Save Text Color → Bulletproof color preview via sharp { create }
   if (data.startsWith('doc_txt_')) {
     await ctx.answerCallbackQuery();
     ctx.session.docTextColor = data.replace('doc_txt_', '');
@@ -989,85 +991,77 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     const bgColor  = ctx.session.docBgColor  || '#FFFFFF';
     const txtColor = ctx.session.docTextColor || '#000000';
 
-    const svg = [
-      `<svg width="500" height="600" xmlns="http://www.w3.org/2000/svg">`,
-      `  <rect width="100%" height="100%" fill="${bgColor}"/>`,
-      `  <text x="50%" y="45%" font-family="Arial, sans-serif" font-size="28"`,
-      `        fill="${txtColor}" text-anchor="middle" dominant-baseline="middle">`,
-      `    معاينة النموذج الملون`,
-      `  </text>`,
-      `  <text x="50%" y="55%" font-family="Arial, sans-serif" font-size="16"`,
-      `        fill="${txtColor}" text-anchor="middle" dominant-baseline="middle" opacity="0.7">`,
-      `    خلفية: ${bgColor}  ·  نص: ${txtColor}`,
-      `  </text>`,
+    // Bulletproof: create solid background via { create }, composite SVG text on top.
+    // sharp does NOT support %-based SVG dims reliably — always use absolute px.
+    const W = 600, H = 800;
+    const midY = Math.round(H * 0.45);
+    const subY = Math.round(H * 0.56);
+    const svgText = [
+      `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`,
+      `  <text x="${W/2}" y="${midY}" font-family="sans-serif" font-size="38" font-weight="bold"`,
+      `        fill="${txtColor}" text-anchor="middle" dominant-baseline="middle">معاينة النموذج الملون</text>`,
+      `  <text x="${W/2}" y="${subY}" font-family="sans-serif" font-size="18"`,
+      `        fill="${txtColor}" text-anchor="middle" dominant-baseline="middle" opacity="0.75">خلفية: ${bgColor}  ·  نص: ${txtColor}</text>`,
       `</svg>`,
     ].join('\n');
 
     try {
-      const sharp = (await import('sharp')).default;
-      const previewBuffer = await sharp(Buffer.from(svg)).png().toBuffer();
+      const sharpLib = (await import('sharp')).default;
+
+      // Parse hex color → RGBA for sharp background
+      const hex = bgColor.replace('#', '');
+      const r = parseInt(hex.slice(0, 2), 16) || 0;
+      const g = parseInt(hex.slice(2, 4), 16) || 0;
+      const b = parseInt(hex.slice(4, 6), 16) || 0;
+
+      const previewBuffer = await sharpLib({
+        create: { width: W, height: H, channels: 4 as const, background: { r, g, b, alpha: 1 } },
+      })
+        .composite([{ input: Buffer.from(svgText), blend: 'over' }])
+        .png()
+        .toBuffer();
 
       await ctx.deleteMessage().catch(() => {});
-      await ctx.replyWithPhoto(
-        new InputFile(previewBuffer, 'preview.png'),
+      const sent = await ctx.replyWithPhoto(
+        new InputFile(previewBuffer, 'color_preview.png'),
         {
           caption:
             `🎨 <b>معاينة النموذج: ملون</b>\n\n` +
             `<b>خلفية:</b> <code>${bgColor}</code>  ·  <b>نص:</b> <code>${txtColor}</code>\n\n` +
             `هذه معاينة مبدئية للألوان. اضغط ✅ موافق للمتابعة.`,
           parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '✅ موافق', callback_data: 'doc_colored_approve' },
-              { text: '🔙 رجوع',  callback_data: 'doc_colored_back'    },
-            ]],
-          },
+          reply_markup: { inline_keyboard: [[
+            { text: '✅ موافق', callback_data: 'doc_colored_approve' },
+            { text: '🔙 رجوع',  callback_data: 'doc_colored_back'    },
+          ]]},
         }
       );
+      // Store as previewMessageId so native doc_custom_size can editMessageCaption on it
+      ctx.session.previewMessageId = sent.message_id;
     } catch (err) {
-      console.error('[PREVIEW] Failed to generate color preview:', err);
-      // Fallback: text-only confirmation
+      console.error('[PREVIEW] Color preview failed:', err);
       await ctx.editMessageText(
-        '✅ <b>تم حفظ الألوان.</b> اضغط متابعة:',
+        `✅ <b>تم حفظ الألوان</b> (خلفية: ${bgColor} · نص: ${txtColor})\n\nاضغط متابعة للمتابعة:`,
         {
           parse_mode: 'HTML',
           reply_markup: { inline_keyboard: [[
             { text: 'متابعة ➡️', callback_data: 'doc_colored_approve' },
           ]]},
         }
-      ).catch(() => ctx.reply('✅ تم حفظ الألوان. اضغط متابعة:'));
+      ).catch(() => ctx.reply(`✅ تم حفظ الألوان. اضغط متابعة:`));
     }
     return true;
   }
 
-  // 4. Colored approve → full Size menu
+  // 4. Colored approve → EXACTLY the same as doc_tpl_confirm: editMessageCaption + SIZE_KB
   if (data === 'doc_colored_approve') {
     await ctx.answerCallbackQuery();
-    await ctx.deleteMessage().catch(() => {});
-    await ctx.reply(
-      '📐 <b>اختر مقاس الصفحة:</b>',
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: 'A4 (افتراضي)', callback_data: 'doc_size_A4'        },
-              { text: 'A5',           callback_data: 'doc_size_A5'        },
-            ],
-            [
-              { text: 'Letter',       callback_data: 'doc_size_Letter'    },
-              { text: 'B5',           callback_data: 'doc_size_B5'        },
-            ],
-            [
-              { text: 'Legal',        callback_data: 'doc_size_Legal'     },
-              { text: 'Executive',    callback_data: 'doc_size_Executive' },
-            ],
-            [{ text: '📐 مقاس مخصص',  callback_data: 'doc_custom_size'    }],
-            [{ text: '🔙 رجوع',       callback_data: 'doc_cancel_end'     }],
-          ],
-        },
-      }
-    );
+    // Use editMessageCaption on the preview photo (same as native doc_tpl_confirm flow)
+    await ctx.editMessageCaption({
+      caption: '📐 <b>اختر مقاس الصفحة:</b>',
+      parse_mode: 'HTML',
+      reply_markup: SIZE_KB,
+    }).catch(() => {});
     return true;
   }
 

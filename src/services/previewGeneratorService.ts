@@ -25,6 +25,8 @@ export interface DocPreviewOptions {
   pageSize: string;
   lines?: PreviewLine[];
   selectedFont?: string;
+  docBgColor?: string;   // e.g. '#1A1A1A' — colored template background
+  docTextColor?: string; // e.g. '#FFFFFF' — colored template text color
 }
 
 // ─── Scale factor: old canvas was 400 wide, new is 800 ───────────────────────
@@ -143,6 +145,9 @@ async function buildSVG(opts: DocPreviewOptions, w: number, h: number): Promise<
   const { templateId, lines = [] } = opts;
   const S = SCALE;
 
+  const bgColor  = opts.docBgColor  || '#FFFFFF';
+  const txtColor = opts.docTextColor || '#1a1a1a';
+
   // Content area defaults (scaled from old 20px margin)
   let cx = 40, cy = 40, cw = w - 80, ch = h - 80;
 
@@ -253,7 +258,7 @@ async function buildSVG(opts: DocPreviewOptions, w: number, h: number): Promise<
       continue;
     }
 
-    textSVG += `<text x="${x}" y="${y}" font-family="'${opts.selectedFont || 'Amiri'}','Noto Naskh Arabic','Arabic Typesetting',serif" font-size="${FS}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="#1a1a1a" text-anchor="${anchor}">${prepared}</text>\n`;
+    textSVG += `<text x="${x}" y="${y}" font-family="'${opts.selectedFont || 'Amiri'}','Noto Naskh Arabic','Arabic Typesetting',serif" font-size="${FS}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="${txtColor}" text-anchor="${anchor}">${prepared}</text>\n`;
 
     if (line.underline) {
       const approxWidth = Math.min(prepared.length * FS * 0.55, cw);
@@ -275,7 +280,7 @@ async function buildSVG(opts: DocPreviewOptions, w: number, h: number): Promise<
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="#FFFFFF"/>
+  <rect width="${w}" height="${h}" fill="${bgColor}"/>
   ${deco}
   ${textSVG}
   ${watermark}
