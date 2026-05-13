@@ -487,32 +487,60 @@ export async function generateDocumentFromLines(
         // CRASH FIX: skip null/undefined entries
         if (!line || line.text === undefined || line.text === null) continue;
 
-        // ── Image line ──────────────────────────────────────────────────────────
-        {
-          const richLine = line as any;
-          if (richLine.type === 'image' && richLine.fileId) {
+        // ── Image / Image-Row line ──────────────────────────────────────────
+        const richLine = line as any;
+        if (richLine.type === 'image' && (richLine.fileId || richLine.rowImages)) {
+          // Normalise: single image or array of row images
+          const images: Array<{ fileId: string; lines: number; align: string; mask?: string; caption?: string }> =
+            richLine.rowImages
+              ? richLine.rowImages
+              : [{
+                  fileId:  richLine.fileId,
+                  lines:   richLine.imageLines || 5,
+                  align:   richLine.align || 'center',
+                  mask:    richLine.imageMask,
+                  caption: undefined,
+                }];
+
+          const allocH  = (images[0].lines || 5) * 20;
+          const pageW   = doc.page.width - PADDING * 2;
+          const gap     = 8;
+          const imgW    =
+            images.length === 1 ? pageW :
+            images.length === 2 ? (pageW - gap) / 2 :
+            (pageW - gap * 2) / 3;
+
+          // Paginate if needed
+          if (currentY + allocH > maxY) {
+            ({ W, H } = addPage());
+            currentY = PADDING;
+            doc.y = currentY;
+            try { doc.font(chosenFont); } catch {}
+            doc.fontSize(BASE_SIZE).fillColor(txtColor);
+          }
+
+          for (const img of images) {
             try {
-              const fileUrl = await getTelegramFileUrl(richLine.fileId);
-              const imgRes = await fetch(fileUrl);
+              const fileUrl = await getTelegramFileUrl(img.fileId);
+              const imgRes  = await fetch(fileUrl);
               if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status} fetching image`);
-              const rawBuf = await imgRes.arrayBuffer();
-              let imgBuffer = Buffer.from(new Uint8Array(rawBuf));
+              let imgBuffer = Buffer.from(new Uint8Array(await imgRes.arrayBuffer()));
 
               const meta = await sharp(imgBuffer).metadata();
-              const iw = meta.width ?? 500;
-              const ih = meta.height ?? 500;
+              const iw   = meta.width  ?? 500;
+              const ih   = meta.height ?? 500;
 
-              if (richLine.imageMask === 'circle') {
+              if (img.mask === 'circle') {
                 const size = Math.min(iw, ih);
-                const r = Math.floor(size / 2);
-                const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">` +
-                            `<circle cx="${r}" cy="${r}" r="${r}"/></svg>`;
+                const r    = Math.floor(size / 2);
+                const svg  = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">` +
+                             `<circle cx="${r}" cy="${r}" r="${r}"/></svg>`;
                 imgBuffer = (await sharp(imgBuffer)
                   .resize(size, size, { fit: 'cover', position: 'centre' })
                   .composite([{ input: Buffer.from(svg), blend: 'dest-in' }])
                   .png().toBuffer()) as any;
-              } else if (richLine.imageMask === 'rounded') {
-                const rx = Math.round(Math.min(iw, ih) * 0.1);
+              } else if (img.mask === 'rounded') {
+                const rx  = Math.round(Math.min(iw, ih) * 0.1);
                 const svg = `<svg width="${iw}" height="${ih}" xmlns="http://www.w3.org/2000/svg">` +
                             `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${rx}" ry="${rx}"/></svg>`;
                 imgBuffer = (await sharp(imgBuffer)
@@ -520,31 +548,34 @@ export async function generateDocumentFromLines(
                   .png().toBuffer()) as any;
               }
 
-              const pageW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-              const allocH = (richLine.imageLines || 5) * 20;
+              // X position based on per-image alignment
+              const alignX =
+                img.align === 'left'   ? PADDING :
+                img.align === 'center' ? PADDING + (pageW / 2) - (imgW / 2) :
+                /* right */              PADDING + pageW - imgW;
 
-              if (doc.y + allocH > doc.page.height - doc.page.margins.bottom) {
-                ({ W, H } = addPage());
-                currentY = doc.page.margins.top ?? PADDING;
-                doc.y = currentY;
-                try { doc.font(chosenFont); } catch {}
+              doc.image(imgBuffer, alignX, currentY, { width: imgW, height: allocH });
+
+              // Per-image caption
+              if (img.caption) {
+                const capY = currentY + allocH + 2;
+                doc.fontSize(10).fillColor('#444444');
+                doc.text(prepareArabicText(img.caption), alignX, capY, {
+                  width: imgW, align: 'center', lineBreak: false,
+                });
                 doc.fontSize(BASE_SIZE).fillColor(txtColor);
               }
-
-              doc.image(imgBuffer, doc.page.margins.left, doc.y, {
-                fit: [pageW, allocH],
-                align: (richLine.align === 'left' ? undefined : (richLine.align ?? 'center')) as 'right' | 'center' | undefined,
-                valign: 'center',
-              });
-              currentY = doc.y + allocH + 12;
-              doc.y = currentY;
-
             } catch (err) {
-              console.error('[PDF] Image embed failed, skipping:', err);
+              console.error('[PDF] Row image embed failed, skipping:', err);
             }
-            continue;
           }
+
+          const hasCaption = images.some(i => i.caption);
+          currentY += allocH + (hasCaption ? 18 : 0) + 12;
+          doc.y = currentY;
+          continue;
         }
+
 
         const raw = String(line.text).trim();
 
@@ -557,7 +588,6 @@ export async function generateDocumentFromLines(
         }
 
         // Determine effective line height for this line (may vary by size)
-        const richLine = line as RichLine;
         const sizeMap: Record<string, number> = { small: BASE_SIZE - 4, normal: BASE_SIZE, large: BASE_SIZE + 6 };
         const effectiveFontSize = sizeMap[richLine.size ?? 'normal'] ?? BASE_SIZE;
         const effectiveLineH = effectiveFontSize * 1.6;

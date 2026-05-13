@@ -19,6 +19,13 @@ export interface DocLine {
   fileId?: string;
   imageLines?: number;
   imageMask?: 'square' | 'rounded' | 'circle';
+  rowImages?: Array<{
+    fileId: string;
+    lines: number;
+    align: 'right' | 'center' | 'left';
+    mask: 'square' | 'rounded' | 'circle';
+    caption?: string;
+  }>;
 }
 
 export interface SessionData {
@@ -60,13 +67,23 @@ export interface SessionData {
   selectedFont?: string;
   docBgColor?: string;
   docTextColor?: string;
-  docState?: 'active' | 'awaiting_custom_img_lines' | null;
+  docState?: 'active' | 'awaiting_custom_img_lines' | 'awaiting_row_caption' | null;
   tempImage?: {
     fileId: string;
     lines?: number;
     align?: 'right' | 'center' | 'left';   // starts UNDEFINED
     mask?: 'square' | 'rounded' | 'circle'; // starts UNDEFINED
   };
+  // Inline row builder
+  rowImages?: Array<{
+    fileId: string;
+    lines: number;
+    align: 'right' | 'center' | 'left';
+    mask: 'square' | 'rounded' | 'circle';
+    caption?: string;
+  }>;
+  awaitingRowCaption?: number;    // index of image awaiting caption text
+  awaitingNextRowImage?: boolean; // waiting for user to send next image
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

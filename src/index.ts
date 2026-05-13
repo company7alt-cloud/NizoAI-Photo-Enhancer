@@ -164,7 +164,7 @@ bot.command('endchat', async (ctx) => {
 bot.on('message', async (ctx, next) => {
   const docState = (ctx.session as any)?.docState as string | null | undefined;
 
-  if (docState === 'active' || docState === 'awaiting_custom_img_lines') {
+  if (docState === 'active' || docState === 'awaiting_custom_img_lines' || docState === 'awaiting_row_caption') {
     console.log('[TRAP] docState:', (ctx.session as any)?.docState, '| text:', ctx.message?.text);
 
     // EMERGENCY FALLBACK: if tempImage exists and text is a number,
@@ -215,6 +215,19 @@ bot.on('message', async (ctx, next) => {
       ((ctx.message.document.mime_type?.startsWith('image/')) ?? false);
 
     if (isPhoto || isImageDoc) {
+      // ── Row builder: next image for same row ──────────────────────────────
+      if ((ctx.session as any).awaitingNextRowImage) {
+        const fileId = isPhoto
+          ? ctx.message!.photo![ctx.message!.photo!.length - 1].file_id
+          : ctx.message!.document!.file_id;
+        const rowImages = (ctx.session as any).rowImages || [];
+        const baseLines = rowImages[0]?.lines || 5;
+        (ctx.session as any).tempImage = { fileId, lines: baseLines, align: undefined, mask: undefined };
+        (ctx.session as any).awaitingNextRowImage = false;
+        const { showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
+        await showImageFormatMenu(ctx as any);
+        return;
+      }
       // guard: if tempImage already exists, user must finish it first
       if ((ctx.session as any).tempImage?.fileId) {
         await ctx.reply(
@@ -253,6 +266,23 @@ bot.on('message', async (ctx, next) => {
         }
       );
       return; // ← stops 4K/Nano/AI handler
+    }
+
+    // ── Row caption text intercept ──────────────────────────────────────────
+    if (docState === 'awaiting_row_caption' && (ctx.session as any).awaitingRowCaption !== undefined) {
+      const captionText = ctx.message?.text?.trim();
+      if (captionText && !captionText.startsWith('/')) {
+        const idx = (ctx.session as any).awaitingRowCaption;
+        const rowImages = (ctx.session as any).rowImages || [];
+        if (rowImages[idx]) rowImages[idx].caption = captionText;
+        (ctx.session as any).rowImages = rowImages;
+        (ctx.session as any).awaitingRowCaption = undefined;
+        (ctx.session as any).docState = 'active';
+        await ctx.reply(`✅ تم حفظ تسمية الصورة ${idx + 1}`);
+        const { showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
+        await showImageFormatMenu(ctx as any);
+        return;
+      }
     }
 
     // ── CASE 3: Text during active session with pending tempImage ──
