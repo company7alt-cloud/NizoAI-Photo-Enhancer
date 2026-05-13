@@ -1,11 +1,12 @@
 // src/bot/handlers/docMakerHandler.ts
-import { BotContext, DocLine } from '../../utils/validators';
+import { BotContext } from '../../utils/validators';
 import { User } from '../../database/models/User';
 import { InputFile } from 'grammy';
+import { InlineKeyboardButton } from 'grammy/types';
 import { getSettings } from '../../services/settingsService';
 import { generatePreviewPNG, TEMPLATE_NAMES } from '../../services/previewGeneratorService';
 
-function buildFormattingKeyboard(fmt: any): { inline_keyboard: any[][] } {
+function buildFormattingKeyboard(fmt: any): { inline_keyboard: InlineKeyboardButton[][] } {
   const isR = fmt.align === 'right'  ? '✅ يمين' : '➡️ يمين';
   const isC = fmt.align === 'center' ? '✅ وسط'  : '↔️ وسط';
   const isL = fmt.align === 'left'   ? '✅ يسار' : '⬅️ يسار';
@@ -74,7 +75,7 @@ function buildFormattingKeyboard(fmt: any): { inline_keyboard: any[][] } {
 
 const BACKUP_CHANNEL_ID = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID || '';
 
-function smartWrap(text: string, pageSize: string): string[] {
+export function smartWrap(text: string, pageSize: string): string[] {
   const MAX_CHARS = pageSize === 'A5' ? 40 : 65;
   const words = text.split(/\s+/);
   const lines: string[] = [];
@@ -502,13 +503,9 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
   if (data === 'align_right' || data === 'align_center' || data === 'align_left' ||
       data.startsWith('fmt_align_')) {
-    await ctx.answerCallbackQuery();
-    if (!ctx.session.tempLine || !ctx.session.tempFormatting) {
-      await ctx.editMessageText('⚠️ انتهت صلاحية النص. أرسل النص مجدداً.').catch(() => {});
-      return true;
-    }
-    const alignVal = data.replace('fmt_align_', '').replace('align_', '') as 'right' | 'center' | 'left';
-    ctx.session.tempFormatting = { ...ctx.session.tempFormatting, align: alignVal };
+    if (!ctx.session.tempFormatting) return true;
+    ctx.session.tempFormatting.align = data.replace('fmt_align_', '').replace('align_', '') as any;
+    await ctx.answerCallbackQuery('✅ تم');
     await ctx.editMessageReplyMarkup({
       inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
     } as any).catch(() => {});
@@ -517,15 +514,15 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
   if (data === 'color_red' || data === 'color_yellow' ||
       data === 'color_blue' || data === 'color_default') {
-    await ctx.answerCallbackQuery();
-    if (!ctx.session.tempLine || !ctx.session.tempFormatting) return true;
+    if (!ctx.session.tempFormatting) return true;
     const colorMap: Record<string, string | undefined> = {
       color_red:     '#FF0000',
       color_yellow:  '#FFD700',
       color_blue:    '#1565C0',
       color_default: undefined,
     };
-    ctx.session.tempFormatting = { ...ctx.session.tempFormatting, color: colorMap[data] };
+    ctx.session.tempFormatting.color = colorMap[data];
+    await ctx.answerCallbackQuery('✅ تم');
     await ctx.editMessageReplyMarkup({
       inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
     } as any).catch(() => {});
@@ -533,14 +530,18 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   }
 
   if (data === 'color_custom') {
-    await ctx.answerCallbackQuery();
-    if (!ctx.session.tempLine || !ctx.session.tempFormatting) return true;
+    if (!ctx.session.tempFormatting) return true;
     ctx.session.awaitingCustomColor = true;
+    await ctx.answerCallbackQuery('🎨 أرسل كود اللون الآن');
     const promptMsg = await ctx.reply(
-      '🎨 أرسل كود اللون بصيغة HEX\n\nمثال: #E91E63 أو #4CAF50\n\nرسالة التنسيق ستبقى — فقط أرسل الكود هنا',
+      '🎨 <b>أرسل كود اللون بصيغة HEX</b>\nمثال: #E91E63',
       {
         parse_mode: 'HTML',
-        reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'color_custom_cancel' }]] }
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '❌ إلغاء', callback_data: 'color_custom_cancel' }
+          ]]
+        }
       }
     );
     ctx.session.customColorPromptId = promptMsg.message_id;
@@ -556,54 +557,45 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   }
 
   if (data === 'fmt_apply') {
-    await ctx.answerCallbackQuery();
-    const tempLine = ctx.session.tempLine;
-    const tempFmt  = ctx.session.tempFormatting;
-    if (!tempLine || !tempFmt) {
-      await ctx.editMessageText('⚠️ انتهت صلاحية النص. أرسل النص مجدداً.').catch(() => {});
-      return true;
-    }
-    const chosenAlign: 'right' | 'center' | 'left' = tempFmt.align || 'right';
-    const pageSize = ctx.session.pageSize || 'A4';
-    if (!ctx.session.documentLines) ctx.session.documentLines = [];
+    if (!ctx.session.tempLine || !ctx.session.tempFormatting) return true;
 
-    const finalLine: DocLine = {
-      text:      tempLine,
-      align:     chosenAlign,
-      bold:      tempFmt.bold,
-      italic:    tempFmt.italic,
-      underline: tempFmt.underline,
-      size:      tempFmt.size,
-      style:     tempFmt.style,
-      color:     tempFmt.color,
-    };
+    ctx.session.documentLines = ctx.session.documentLines || [];
+    ctx.session.documentLines.push({
+      type: 'text',
+      text: ctx.session.tempLine,
+      align: ctx.session.tempFormatting.align || 'right',
+      bold: ctx.session.tempFormatting.bold,
+      italic: ctx.session.tempFormatting.italic,
+      underline: ctx.session.tempFormatting.underline,
+      size: ctx.session.tempFormatting.size,
+      style: ctx.session.tempFormatting.style,
+      color: ctx.session.tempFormatting.color
+    } as any);
 
-    if (ctx.session.editingLineIndex !== undefined) {
-      const idx = ctx.session.editingLineIndex;
-      if (idx >= 0 && idx < ctx.session.documentLines.length) {
-        ctx.session.documentLines[idx] = finalLine;
-      }
-      ctx.session.editingLineIndex = undefined;
-      ctx.session.awaitingLineEditText = false;
-    } else {
-      const wrapped = smartWrap(finalLine.text, pageSize);
-      for (const chunk of wrapped) {
-        ctx.session.documentLines.push({ ...finalLine, text: chunk });
-      }
-    }
-
+    const lineNum = ctx.session.documentLines.length;
     ctx.session.tempLine = null;
     ctx.session.tempFormatting = null;
 
-    const lines = ctx.session.documentLines;
-    const preview = lines.map((l: any, i: number) =>
-      `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`
-    ).join('\n');
+    await ctx.answerCallbackQuery('✅ تمت الإضافة');
     await ctx.editMessageText(
-      `✅ تمت إضافة النص\n\n📄 المستند:\n${preview}`,
-      { parse_mode: 'HTML', reply_markup: controlPanel() }
+      `✅ <b>تمت إضافة السطر ${lineNum} للمستند!</b>\n\nأرسل نصاً أو صورة، أو اضغط تصدير.`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' },
+              { text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }
+            ],
+            [
+              { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' },
+              { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }
+            ],
+            [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+          ]
+        }
+      }
     ).catch(() => {});
-    await refreshPreview(ctx);
     return true;
   }
 
@@ -886,9 +878,8 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   };
   if (fmtToggles[data]) {
     try {
-      await ctx.answerCallbackQuery();
+      await ctx.answerCallbackQuery('✅ تم');
       if (!ctx.session.tempLine || !ctx.session.tempFormatting) {
-        await ctx.answerCallbackQuery({ text: '⚠️ أرسل النص أولاً', show_alert: true }).catch(() => {});
         return true;
       }
       ctx.session.tempFormatting = fmtToggles[data](ctx.session.tempFormatting);
@@ -903,13 +894,20 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
   // ── Format Back Button ───────────────────────────────────────────────────────
   if (data === 'doc_format_back') {
-    try {
-      await ctx.answerCallbackQuery();
-      ctx.session.tempLine = null;
-      ctx.session.tempFormatting = null;
-      await ctx.deleteMessage().catch(() => {});
-      await ctx.reply('↩️ تم الإلغاء. أرسل النص الذي تريد إضافته:');
-    } catch (e) { console.error('[DocMaker] format_back error:', e); }
+    ctx.session.tempLine = undefined;
+    ctx.session.tempFormatting = undefined;
+    await ctx.answerCallbackQuery('↩️ تم الإلغاء');
+    await ctx.editMessageText(
+      '↩️ <b>تم إلغاء النص.</b>\nأرسل نصاً جديداً أو صورة.',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '📤 تصدير PDF', callback_data: 'doc_export_pdf' }
+          ]]
+        }
+      }
+    ).catch(() => {});
     return true;
   }
 
@@ -1427,18 +1425,36 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
   // Awaiting replacement text
   if (ctx.session.awaitingLineEditText) {
     if (ctx.session.tempLine) {
+      await ctx.deleteMessage().catch(() => {});
       await ctx.reply(
-        '⚠️ اضغط ✅ تطبيق وإضافة للمستند في الرسالة أعلاه لحفظ النص.',
-        { parse_mode: 'HTML' }
+        `📝 <b>اختر تنسيق النص:</b>\n\n${ctx.session.tempLine}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+          }
+        }
       );
       return true;
     }
     ctx.session.tempLine = text;
-    ctx.session.tempFormatting = { bold: false, italic: false, underline: false, size: 'normal', style: 'normal' };
-    await ctx.reply(`📝 <b>اختر تنسيق النص الجديد:</b>\n\n<code>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`, {
-      parse_mode: 'HTML',
-      reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting) as any,
-    });
+    ctx.session.tempFormatting = ctx.session.tempFormatting || {
+      align: 'right',
+      bold: false,
+      italic: false,
+      underline: false,
+      size: 'normal',
+      style: 'normal'
+    };
+    await ctx.reply(
+      `📝 <b>اختر تنسيق النص الجديد:</b>\n\n${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+        }
+      }
+    );
     return true;
   }
 
@@ -1457,20 +1473,38 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
 
   // Enforce Alignment Selection
   if (ctx.session.tempLine) {
+    await ctx.deleteMessage().catch(() => {});
     await ctx.reply(
-      '⚠️ اضغط ✅ تطبيق وإضافة للمستند في الرسالة أعلاه لحفظ النص.',
-      { parse_mode: 'HTML' }
+      `📝 <b>اختر تنسيق النص:</b>\n\n${ctx.session.tempLine}`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+        }
+      }
     );
     return true;
   }
 
-  // Normal text → show full formatting keyboard
   ctx.session.tempLine = text;
-  ctx.session.tempFormatting = { bold: false, italic: false, underline: false, size: 'normal', style: 'normal' };
-  await ctx.reply(`📝 <b>اختر تنسيق النص:</b>\n\n<code>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>`, {
-    parse_mode: 'HTML',
-    reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting) as any,
-  });
+  ctx.session.tempFormatting = ctx.session.tempFormatting || {
+    align: 'right',
+    bold: false,
+    italic: false,
+    underline: false,
+    size: 'normal',
+    style: 'normal'
+  };
+
+  await ctx.reply(
+    `📝 <b>اختر تنسيق النص:</b>\n\n${text}`,
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+      }
+    }
+  );
   return true;
 }
 
