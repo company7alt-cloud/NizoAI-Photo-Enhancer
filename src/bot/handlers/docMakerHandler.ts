@@ -915,6 +915,30 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
   if (!ctx.session || !ctx.from) return false;
 
+  // If tempImage exists and message is a number → it is a line count input
+  if (ctx.session?.tempImage?.fileId && ctx.message?.text) {
+    const num = parseInt(ctx.message.text.trim());
+    if (!isNaN(num) && num >= 1 && num <= 50) {
+      ctx.session.tempImage.lines = num;
+      ctx.session.docState = 'active';
+      await showImageFormatMenu(ctx);
+      return true;
+    }
+    // Non-number text while image pending → block it
+    await ctx.reply(
+      '⚠️ <b>أكمل إعدادات الصورة أولاً</b>\nأو اضغط إلغاء.',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }
+          ]]
+        }
+      }
+    );
+    return true;
+  }
+
   const text = ctx.message?.text?.trim();
   if (!text || text.startsWith('/')) return false;
 

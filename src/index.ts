@@ -165,6 +165,21 @@ bot.on('message', async (ctx, next) => {
   const docState = (ctx.session as any)?.docState as string | null | undefined;
 
   if (docState === 'active' || docState === 'awaiting_custom_img_lines') {
+    console.log('[TRAP] docState:', (ctx.session as any)?.docState, '| text:', ctx.message?.text);
+
+    // EMERGENCY FALLBACK: if tempImage exists and text is a number,
+    // treat it as custom line count regardless of exact docState value
+    if (ctx.message?.text && (ctx.session as any)?.tempImage?.fileId) {
+      const num = parseInt(ctx.message.text.trim());
+      if (!isNaN(num) && num >= 1 && num <= 50) {
+        (ctx.session as any).tempImage.lines = num;
+        (ctx.session as any).docState = 'active';
+        const { showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
+        await showImageFormatMenu(ctx as any);
+        return;
+      }
+    }
+
 
     // ── CASE 1: Custom line number input — MUST be checked FIRST ──
     if (docState === 'awaiting_custom_img_lines') {
