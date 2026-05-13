@@ -280,19 +280,23 @@ function renderRichLine(
     doc.save().lineWidth(0.4);
   }
 
-  const prepared = prepareArabicText(line.text);
   doc.fontSize(fontSize).fillColor(textColor);
-  doc.text(prepared, effectiveX, currentY, {
-    width: effectiveW,
-    align: line.align ?? 'right',
-    lineBreak: false,
-  });
+  const newY = drawArabicParagraph(
+    doc,
+    line.text,
+    effectiveX,
+    currentY,
+    effectiveW,
+    line.align ?? 'right',
+    prepareArabicText
+  );
 
   if (line.bold) doc.restore();
 
   // ── underline: draw line beneath text ────────────────────────────────────────
   if (line.underline) {
     try {
+      const prepared = prepareArabicText(line.text);
       const tw = Math.min(doc.widthOfString(prepared), effectiveW);
       const lineY = currentY + fontSize + 1;
       // For RTL text the rendered start depends on alignment; approximate
@@ -314,7 +318,7 @@ function renderRichLine(
   // italic note: pdfkit with a non-italic font variant cannot tilt glyphs;
   // we skip the effect silently to avoid font registration errors.
 
-  return lineH;
+  return newY > currentY ? (newY - currentY) : lineH;
 }
 
 // ─── Main generator (wizard flow) ─────────────────────────────────────────────
@@ -402,6 +406,53 @@ export async function generateDocument(params: PdfGeneratorParams): Promise<Buff
       reject(err);
     }
   });
+}
+
+function drawArabicParagraph(doc: any, rawText: string, startX: number, startY: number, width: number, align: string, prepareFn: (txt: string) => string): number {
+  if (!rawText) return startY;
+  
+  // Split raw text by words to maintain natural sentence flow
+  const words = rawText.split(/\s+/);
+  let lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine ? currentLine + ' ' + word : word;
+    // Measure the width of the prepared (reshaped) text
+    const testWidth = doc.widthOfString(prepareFn(testLine));
+    
+    if (testWidth > width && currentLine !== '') {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+
+  let currentY = startY;
+  const lineHeight = doc.currentLineHeight();
+
+  for (const line of lines) {
+    const preparedLine = prepareFn(line);
+    const lineWidth = doc.widthOfString(preparedLine);
+    
+    // Calculate X position based on requested alignment
+    let x = startX;
+    if (align === 'center') {
+      x = startX + (width / 2) - (lineWidth / 2);
+    } else if (align === 'left') {
+      x = startX;
+    } else {
+      x = startX + width - lineWidth; // Right align (default for Arabic)
+    }
+
+    // CRITICAL: lineBreak MUST be false to prevent PDFKit from interfering
+    doc.text(preparedLine, x, currentY, { lineBreak: false });
+    currentY += lineHeight;
+  }
+
+  return currentY;
 }
 
 // ─── Aligned-line document generator (doc maker flow) ─────────────────────────
@@ -558,11 +609,16 @@ export async function generateDocumentFromLines(
 
               // Per-image caption
               if (img.caption) {
-                const capY = currentY + allocH + 2;
                 doc.fontSize(10).fillColor('#444444');
-                doc.text(prepareArabicText(img.caption), alignX, capY, {
-                  width: imgW, align: 'center', lineBreak: false,
-                });
+                drawArabicParagraph(
+                  doc, 
+                  img.caption, 
+                  alignX, 
+                  currentY + allocH + 2, 
+                  imgW, 
+                  'center', 
+                  prepareArabicText
+                );
                 doc.fontSize(BASE_SIZE).fillColor(txtColor);
               }
             } catch (err) {
