@@ -509,9 +509,9 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     }
     const alignVal = data.replace('fmt_align_', '').replace('align_', '') as 'right' | 'center' | 'left';
     ctx.session.tempFormatting = { ...ctx.session.tempFormatting, align: alignVal };
-    await ctx.editMessageReplyMarkup(
-      buildFormattingKeyboard(ctx.session.tempFormatting) as any
-    ).catch(() => {});
+    await ctx.editMessageReplyMarkup({
+      inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+    } as any).catch(() => {});
     return true;
   }
 
@@ -526,9 +526,9 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       color_default: undefined,
     };
     ctx.session.tempFormatting = { ...ctx.session.tempFormatting, color: colorMap[data] };
-    await ctx.editMessageReplyMarkup(
-      buildFormattingKeyboard(ctx.session.tempFormatting) as any
-    ).catch(() => {});
+    await ctx.editMessageReplyMarkup({
+      inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+    } as any).catch(() => {});
     return true;
   }
 
@@ -892,7 +892,9 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
         return true;
       }
       ctx.session.tempFormatting = fmtToggles[data](ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup(buildFormattingKeyboard(ctx.session.tempFormatting) as any).catch(() => {});
+      await ctx.editMessageReplyMarkup({
+        inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+      } as any).catch(() => {});
     } catch (e) {
       console.error('[DocMaker] fmt toggle error:', e);
     }
@@ -1425,9 +1427,10 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
   // Awaiting replacement text
   if (ctx.session.awaitingLineEditText) {
     if (ctx.session.tempLine) {
-      await ctx.reply('⚠️ الرجاء اختيار المحاذاة أولاً من الأزرار أدناه', {
-        reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting!) as any,
-      });
+      await ctx.reply(
+        '⚠️ اضغط ✅ تطبيق وإضافة للمستند في الرسالة أعلاه لحفظ النص.',
+        { parse_mode: 'HTML' }
+      );
       return true;
     }
     ctx.session.tempLine = text;
@@ -1454,9 +1457,10 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
 
   // Enforce Alignment Selection
   if (ctx.session.tempLine) {
-    await ctx.reply('⚠️ الرجاء اختيار المحاذاة أولاً من الأزرار أدناه', {
-      reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting!) as any,
-    });
+    await ctx.reply(
+      '⚠️ اضغط ✅ تطبيق وإضافة للمستند في الرسالة أعلاه لحفظ النص.',
+      { parse_mode: 'HTML' }
+    );
     return true;
   }
 
