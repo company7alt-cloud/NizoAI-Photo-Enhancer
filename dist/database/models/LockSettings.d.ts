@@ -9,6 +9,7 @@ export interface ILockSettings extends Document {
         btn_nano: boolean;
         btn_eraser: boolean;
         btn_doc_maker: boolean;
+        btn_filters: boolean;
     };
 }
 export declare const LockSettings: mongoose.Model<ILockSettings, {}, {}, {}, mongoose.Document<unknown, {}, ILockSettings, {}, {}> & ILockSettings & Required<{

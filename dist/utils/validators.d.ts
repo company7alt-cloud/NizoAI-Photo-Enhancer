@@ -4,6 +4,15 @@ import { Resolution } from '../services/queueService';
 export interface DocLine {
     text: string;
     align: 'right' | 'center' | 'left';
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    size?: 'small' | 'normal' | 'large';
+    style?: 'normal' | 'quote' | 'divider' | 'highlight';
+    type?: 'text' | 'image';
+    fileId?: string;
+    imageLines?: number;
+    imageMask?: 'square' | 'rounded' | 'circle';
 }
 export interface SessionData {
     pendingFile?: {
@@ -18,11 +27,36 @@ export interface SessionData {
     templateId?: number;
     pageSize?: string;
     tempLine?: string | null;
+    tempFormatting?: {
+        bold: boolean;
+        italic: boolean;
+        underline: boolean;
+        size: 'small' | 'normal' | 'large';
+        style: 'normal' | 'quote' | 'divider' | 'highlight';
+    } | null;
     documentLines?: DocLine[];
+    pendingExportCost?: number;
+    pendingExportPages?: number;
     editingLineIndex?: number;
     awaitingLineEditIndex?: boolean;
     awaitingLineEditText?: boolean;
     previewMessageId?: number;
+    awaitingCustomWidth?: boolean;
+    awaitingCustomHeight?: boolean;
+    customSizeWidth?: number;
+    customSizeDims?: {
+        width: number;
+        height: number;
+        label: string;
+    };
+    selectedFont?: string;
+    docState?: 'active' | 'awaiting_custom_img_lines' | null;
+    tempImage?: {
+        fileId: string;
+        lines?: number;
+        align?: 'right' | 'center' | 'left';
+        mask?: 'square' | 'rounded' | 'circle';
+    };
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

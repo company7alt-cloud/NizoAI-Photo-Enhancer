@@ -30,8 +30,15 @@ function prepareArabicText(text: string): string {
 // ─── Font Registration ─────────────────────────────────────────────────────────
 // Uses process.cwd() — NOT __dirname — so fonts load correctly after npm run build.
 
-function registerAllFonts(doc: PDFKit.PDFDocument): void {
-  const fontDir = path.join(process.cwd(), 'src', 'assets', 'fonts');
+function registerAllFonts(doc: PDFKit.PDFDocument): string {
+  const possibleBases = [
+    path.join(process.cwd(), 'src', 'assets', 'fonts'),
+    path.join(process.cwd(), 'assets', 'fonts'),
+    path.join(__dirname, '..', '..', 'assets', 'fonts'),
+    path.join(__dirname, '..', 'assets', 'fonts'),
+    path.join(__dirname, 'assets', 'fonts'),
+  ];
+
   const fonts = [
     { name: 'Omnia',     file: 'Omnia.ttf' },
     { name: 'ModernPro', file: 'ModernPro.ttf' },
@@ -39,12 +46,38 @@ function registerAllFonts(doc: PDFKit.PDFDocument): void {
     { name: 'Amiri',     file: 'Amiri.ttf' },
     { name: 'Cairo',     file: 'Cairo.ttf' },
   ];
-  for (const f of fonts) {
-    const fullPath = path.join(fontDir, f.file);
-    if (fs.existsSync(fullPath)) {
-      try { doc.registerFont(f.name, fullPath); } catch { /* skip broken font */ }
+
+  let fontsDir: string | null = null;
+  for (const base of possibleBases) {
+    if (fs.existsSync(path.join(base, 'Amiri.ttf'))) {
+      fontsDir = base;
+      break;
     }
   }
+
+  if (!fontsDir) {
+    console.error('[FONTS] Could not find fonts dir. Checked:', possibleBases);
+    return 'Helvetica';
+  }
+
+  console.log('[FONTS] Using fonts from:', fontsDir);
+  let registeredAny = false;
+
+  for (const f of fonts) {
+    const fullPath = path.join(fontsDir, f.file);
+    if (fs.existsSync(fullPath)) {
+      try {
+        doc.registerFont(f.name, fullPath);
+        registeredAny = true;
+        console.log('[FONTS] Registered:', f.name);
+      } catch (e) {
+        console.error('[FONTS] Failed to register', f.name, ':', e);
+      }
+    } else {
+      console.warn('[FONTS] File not found:', fullPath);
+    }
+  }
+  return registeredAny ? 'registered' : 'Helvetica';
 }
 
 // ─── Telegram File URL (pure REST — no bot instance needed) ────────────────────
@@ -381,13 +414,10 @@ export async function generateDocumentFromLines(
   lines: (RichLine | AlignedLine)[],
   pageSize: string = 'A4',
   selectedFont?: string
-): Promise<{ buffer: Buffer; pageCount: number }> {
+): Promise<Buffer> {
   if (!lines || !Array.isArray(lines) || lines.length === 0) {
     throw new Error('No lines to generate');
   }
-
-  const fontPath = path.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
-  await ensureFontExists(fontPath);
 
   return new Promise(async (resolve, reject) => {
     try {
@@ -401,24 +431,23 @@ export async function generateDocumentFromLines(
       }
 
       const doc = new PDFDocument({ autoFirstPage: false, size: safePageSize, margin: 0 });
-      registerAllFonts(doc);
-      const hasFont = (() => {
-        const chosenFont: string = selectedFont || 'Amiri';
-        try { doc.font(chosenFont); return true; } catch { /* fallback */ }
-        // Try legacy Arabic font path
-        const legacyPath = path.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
-        if (fs.existsSync(legacyPath)) {
-          try { doc.registerFont('Arabic', legacyPath); doc.font('Arabic'); return true; } catch { }
-        }
-        try { doc.font('Helvetica'); } catch { }
-        return false;
-      })();
+
+      const fontStatus = registerAllFonts(doc);
+      const chosenFont = fontStatus === 'Helvetica'
+        ? 'Helvetica'
+        : (selectedFont || 'Amiri');
+      try {
+        doc.font(chosenFont);
+        console.log('[PDF] Using font:', chosenFont);
+      } catch (e) {
+        console.error('[PDF] Font apply failed, fallback Helvetica:', e);
+        doc.font('Helvetica');
+      }
 
       const buffers: Buffer[] = [];
+      doc.on('data', (chunk: Buffer) => buffers.push(chunk));
+
       let pageCount = 0;
-      doc.on('data', (c: Buffer) => buffers.push(c));
-      doc.on('end',  () => resolve({ buffer: Buffer.concat(buffers), pageCount }));
-      doc.on('error', reject);
 
       const addPage = () => {
         doc.addPage();
@@ -435,7 +464,8 @@ export async function generateDocumentFromLines(
       const maxY     = H - PADDING;
       let currentY   = PADDING;
 
-      if (hasFont) doc.font('Arabic');
+      try { doc.font(chosenFont); } catch {}
+
       doc.fontSize(BASE_SIZE).fillColor('black');
 
       for (const line of lines) {
@@ -453,7 +483,6 @@ export async function generateDocumentFromLines(
               const rawBuf = await imgRes.arrayBuffer();
               let imgBuffer = Buffer.from(new Uint8Array(rawBuf));
 
-              // Apply shape mask using sharp
               const meta = await sharp(imgBuffer).metadata();
               const iw = meta.width ?? 500;
               const ih = meta.height ?? 500;
@@ -463,32 +492,27 @@ export async function generateDocumentFromLines(
                 const r = Math.floor(size / 2);
                 const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">` +
                             `<circle cx="${r}" cy="${r}" r="${r}"/></svg>`;
-                const rawBuf2 = await sharp(imgBuffer)
+                imgBuffer = (await sharp(imgBuffer)
                   .resize(size, size, { fit: 'cover', position: 'centre' })
                   .composite([{ input: Buffer.from(svg), blend: 'dest-in' }])
-                  .png().toBuffer();
-                imgBuffer = rawBuf2 as unknown as Buffer<ArrayBuffer>;
+                  .png().toBuffer()) as any;
               } else if (richLine.imageMask === 'rounded') {
                 const rx = Math.round(Math.min(iw, ih) * 0.1);
                 const svg = `<svg width="${iw}" height="${ih}" xmlns="http://www.w3.org/2000/svg">` +
                             `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${rx}" ry="${rx}"/></svg>`;
-                const rawBuf3 = await sharp(imgBuffer)
+                imgBuffer = (await sharp(imgBuffer)
                   .composite([{ input: Buffer.from(svg), blend: 'dest-in' }])
-                  .png().toBuffer();
-                imgBuffer = rawBuf3 as unknown as Buffer<ArrayBuffer>;
+                  .png().toBuffer()) as any;
               }
-              // 'square' → no mask, use buffer as-is
 
               const pageW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
               const allocH = (richLine.imageLines || 5) * 20;
 
-              // CRITICAL: add new page if image does not fit
-              const bottomLimit = doc.page.height - (doc.page.margins.bottom ?? PADDING);
-              if (doc.y + allocH > bottomLimit) {
+              if (doc.y + allocH > doc.page.height - doc.page.margins.bottom) {
                 ({ W, H } = addPage());
                 currentY = doc.page.margins.top ?? PADDING;
                 doc.y = currentY;
-                if (hasFont) doc.font('Arabic');
+                try { doc.font(chosenFont); } catch {}
                 doc.fontSize(BASE_SIZE).fillColor('black');
               }
 
@@ -497,15 +521,13 @@ export async function generateDocumentFromLines(
                 align: (richLine.align === 'left' ? undefined : (richLine.align ?? 'center')) as 'right' | 'center' | undefined,
                 valign: 'center',
               });
-
               currentY = doc.y + allocH + 12;
               doc.y = currentY;
 
             } catch (err) {
               console.error('[PDF] Image embed failed, skipping:', err);
-              // continue to next line — do not crash PDF
             }
-            continue; // skip text rendering for this image line
+            continue;
           }
         }
 
@@ -514,7 +536,7 @@ export async function generateDocumentFromLines(
         if (raw === '---PAGE_BREAK---') {
           ({ W, H } = addPage());
           currentY = PADDING;
-          if (hasFont) doc.font('Arabic');
+          try { doc.font(chosenFont); } catch {}
           doc.fontSize(BASE_SIZE).fillColor('black');
           continue;
         }
@@ -530,7 +552,7 @@ export async function generateDocumentFromLines(
           ({ W, H } = addPage());
           currentY = doc.page.margins.top ?? PADDING;
           doc.y = currentY;
-          if (hasFont) doc.font('Arabic');
+          try { doc.font(chosenFont); } catch {}
           doc.fontSize(BASE_SIZE).fillColor('black');
         }
 
@@ -544,7 +566,18 @@ export async function generateDocumentFromLines(
         currentY += advance;
       }
 
-      doc.end();
+      await new Promise<void>((res, rej) => {
+        doc.on('end', res);
+        doc.on('error', rej);
+        doc.end();
+      });
+
+      const pdfBuffer = Buffer.concat(buffers);
+      if (!pdfBuffer || pdfBuffer.length === 0) {
+        throw new Error('PDF buffer is empty after generation');
+      }
+      resolve(pdfBuffer);
+
     } catch (err) {
       console.error('[pdfGeneratorService] Error in generateDocumentFromLines:', err);
       reject(err);

@@ -202,6 +202,7 @@ async function startCommand(ctx) {
         const keyboard = new grammy_1.InlineKeyboard();
         if (devLink)
             keyboard.url('المطور', devLink);
+        keyboard.row().text(nanoLocks.btn_filters ? '🔒 فلاتر الصور — مقفل' : '🎨 فلاتر الصور', 'open_filters_menu');
         keyboard.row().text('⚙️ تحسين الصور (Pro)', 'pro_enhance_start');
         keyboard.row().text(nanoLocks.btn_nano ? '🔒 تحسين الصورة بالذكاء — مقفل' : '✨ تحسين الصورة بالذكاء', 'nano_banana_start');
         const eraserSettingsData = await (0, settingsService_1.getSettings)();

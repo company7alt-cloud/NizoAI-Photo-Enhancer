@@ -43,6 +43,8 @@ export interface SessionData {
     style: 'normal' | 'quote' | 'divider' | 'highlight';
   } | null;
   documentLines?: DocLine[];
+  pendingExportCost?: number;
+  pendingExportPages?: number;
   // DocMaker Edit State
   editingLineIndex?: number;
   awaitingLineEditIndex?: boolean;

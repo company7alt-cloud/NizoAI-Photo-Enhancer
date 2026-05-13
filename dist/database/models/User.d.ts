@@ -14,6 +14,10 @@ export interface IUser extends Document {
     isVip: boolean;
     isBanned: boolean;
     isRestricted: boolean;
+    isPermBanned: boolean;
+    isAppealing: boolean;
+    adminActionState: string;
+    adminTargetId: string;
     lastRewardDate: Date | null;
     lastSeen: Date;
     joinedAt: Date;
@@ -33,9 +37,13 @@ export interface IUser extends Document {
     awaitingNanoBananaImage: boolean;
     awaitingEraserImage?: boolean;
     awaitingEraserOriginal?: boolean;
-    awaitingMarkedImage?: boolean;
-    awaitingRawImage?: boolean;
-    markedImageFileId?: string;
+    awaitingCustomEraserImage?: boolean;
+    awaitingCustomEraserZone?: boolean;
+    customEraserFileId?: string;
+    customEraserSelectedCells?: number[];
+    customEraserBtnMsgId?: number | null;
+    customEraserGridBuffer?: string;
+    customEraserGridSize?: number;
     eraserCoords?: {
         minX: number | null;
         minY: number | null;
@@ -58,6 +66,8 @@ export interface IUser extends Document {
     lastEraserResultBuffer?: string;
     lastEraserResultMsgId?: number;
     awaitingAutoEraserImage?: boolean;
+    awaitingFilterImage?: boolean;
+    selectedFilterType?: string;
     vipSizeBypass: boolean;
     successfulReferrals: number;
     canBypassLocks: boolean;
@@ -66,6 +76,11 @@ export interface IUser extends Document {
     documentLines?: {
         text: string;
         align: 'right' | 'center' | 'left';
+        bold?: boolean;
+        italic?: boolean;
+        underline?: boolean;
+        size?: 'small' | 'normal' | 'large';
+        style?: 'normal' | 'quote' | 'divider' | 'highlight';
     }[];
     docWizard: {
         step: number;
@@ -98,6 +113,13 @@ export interface IUser extends Document {
             captionText?: string;
         }>;
     } | null;
+    giveawaySetup?: {
+        step: string | null;
+        maxWinners: number;
+        minReward: number;
+        maxReward: number;
+        channelId: string;
+    };
 }
 export interface IUserModel extends Model<IUser> {
     findByTelegramId(telegramId: number): Promise<IUser | null>;

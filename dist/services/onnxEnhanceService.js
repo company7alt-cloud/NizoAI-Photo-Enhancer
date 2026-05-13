@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getQueuePosition = getQueuePosition;
 exports.isAtCapacity = isAtCapacity;
 exports.enhanceWithONNX = enhanceWithONNX;
+exports.warmupONNX = warmupONNX;
 // src/services/onnxEnhanceService.ts
 const ort = __importStar(require("onnxruntime-node"));
 const sharp_1 = __importDefault(require("sharp"));
@@ -197,6 +198,22 @@ async function enhanceWithONNX(inputBuffer) {
     }
     finally {
         releaseSlot();
+    }
+}
+async function warmupONNX() {
+    try {
+        console.log('[ONNX] Preloading model...');
+        // Create a tiny 64x64 black image buffer
+        const { default: sharp } = await Promise.resolve().then(() => __importStar(require('sharp')));
+        const dummyBuffer = await sharp({
+            create: { width: 64, height: 64, channels: 3,
+                background: { r: 0, g: 0, b: 0 } }
+        }).jpeg().toBuffer();
+        await enhanceWithONNX(dummyBuffer);
+        console.log('[ONNX] ✅ Model preloaded and ready');
+    }
+    catch (e) {
+        console.log('[ONNX] Preload skipped:', e);
     }
 }
 //# sourceMappingURL=onnxEnhanceService.js.map

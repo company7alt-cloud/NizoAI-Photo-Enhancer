@@ -41,17 +41,17 @@ exports.enhanceWithNanoBanana = enhanceWithNanoBanana;
 exports.process4KAi = process4KAi;
 exports.processProEnhance = processProEnhance;
 exports.processNanoBanana = processNanoBanana;
-exports.extractMaskCoordinates = extractMaskCoordinates;
-exports.processTwoStepInpainting = processTwoStepInpainting;
 exports.removeBottomRightWatermarkAI = removeBottomRightWatermarkAI;
 exports.convertImageFormat = convertImageFormat;
 exports.getFileBuffer = getFileBuffer;
 exports.generateMaskFromDiff = generateMaskFromDiff;
+exports.removeCustomAreaAI = removeCustomAreaAI;
+exports.processImageFilter = processImageFilter;
 const replicate_1 = __importDefault(require("replicate"));
 const sharp_1 = __importDefault(require("sharp"));
 const pixelmatch_1 = __importDefault(require("pixelmatch"));
 const replicate = new replicate_1.default({
-    auth: process.env.REPLICATE_API_KEY || '',
+    auth: process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY || '',
 });
 async function enhance2K(inputBuffer) {
     const metadata = await (0, sharp_1.default)(inputBuffer).metadata();
@@ -389,89 +389,6 @@ async function processNanoBanana(imageUrl) {
         throw error;
     }
 }
-// FUNCTION 1: Extract red-marked region coordinates from reference image
-async function extractMaskCoordinates(imageUrl) {
-    const imageResponse = await fetch(imageUrl);
-    const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
-    const metadata = await (0, sharp_1.default)(rawBuffer).metadata();
-    const imgWidth = metadata.width;
-    const imgHeight = metadata.height;
-    const { data, info } = await (0, sharp_1.default)(rawBuffer)
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-    let minX = imgWidth, minY = imgHeight, maxX = 0, maxY = 0;
-    let hasMarker = false;
-    for (let i = 0; i < imgWidth * imgHeight; i++) {
-        const r = data[i * info.channels];
-        const g = data[i * info.channels + 1];
-        const b = data[i * info.channels + 2];
-        // Detect red marker: high red, low green+blue
-        if (r > 140 && g < 110 && b < 110) {
-            hasMarker = true;
-            const x = i % imgWidth;
-            const y = Math.floor(i / imgWidth);
-            if (x < minX)
-                minX = x;
-            if (x > maxX)
-                maxX = x;
-            if (y < minY)
-                minY = y;
-            if (y > maxY)
-                maxY = y;
-        }
-    }
-    if (!hasMarker)
-        return null;
-    // Add 15px padding for seamless blending
-    minX = Math.max(0, minX - 15);
-    minY = Math.max(0, minY - 15);
-    maxX = Math.min(imgWidth - 1, maxX + 15);
-    maxY = Math.min(imgHeight - 1, maxY + 15);
-    return {
-        minX,
-        minY,
-        width: maxX - minX,
-        height: maxY - minY,
-    };
-}
-// FUNCTION 2: Generate mask and send to Replicate inpainting
-async function processTwoStepInpainting(cleanImageUrl, coords) {
-    const imageResponse = await fetch(cleanImageUrl);
-    const rawBuffer = Buffer.from(new Uint8Array(await imageResponse.arrayBuffer()));
-    const metadata = await (0, sharp_1.default)(rawBuffer).metadata();
-    const imgW = metadata.width;
-    const imgH = metadata.height;
-    // Generate black mask with white rectangle over the target area
-    const baseMask = await (0, sharp_1.default)({
-        create: { width: imgW, height: imgH, channels: 3, background: { r: 0, g: 0, b: 0 } }
-    }).png().toBuffer();
-    const whiteBox = await (0, sharp_1.default)({
-        create: { width: coords.width, height: coords.height, channels: 3, background: { r: 255, g: 255, b: 255 } }
-    }).png().toBuffer();
-    const finalMaskBuffer = await (0, sharp_1.default)(baseMask)
-        .composite([{ input: whiteBox, left: coords.minX, top: coords.minY }])
-        .blur(4)
-        .png()
-        .toBuffer();
-    const imageBase64 = `data:image/jpeg;base64,${(await (0, sharp_1.default)(rawBuffer).jpeg({ quality: 95 }).toBuffer()).toString('base64')}`;
-    const maskBase64 = `data:image/png;base64,${finalMaskBuffer.toString('base64')}`;
-    const output = await replicate.run("stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3", {
-        input: {
-            image: imageBase64,
-            mask: maskBase64,
-            prompt: "remove the element in the masked area completely, fill seamlessly with the surrounding background texture and lighting, preserve all original product features, branding, shape, and design details exactly as they are",
-            negative_prompt: "watermark, text, logo, blur, distortion, artifacts, changing original design, redesigning product",
-            disable_safety_checker: true,
-            num_inference_steps: 30,
-            guidance_scale: 7.5
-        }
-    });
-    const resultUrl = Array.isArray(output) ? output[0] : output;
-    if (!resultUrl)
-        throw new Error('Inpainting API returned no image.');
-    const res = await fetch(resultUrl.toString());
-    return Buffer.from(new Uint8Array(await res.arrayBuffer()));
-}
 // ── AUTO WATERMARK REMOVAL (bottom-right corner, SDXL inpainting + sharp fallback) ──
 async function removeBottomRightWatermarkAI(imageUrl) {
     // STEP 1 — Download original image
@@ -619,33 +536,184 @@ async function getFileBuffer(fileId, ctx) {
     return Buffer.from(arrayBuffer);
 }
 async function generateMaskFromDiff(markedBuf, rawBuf) {
-    // Prevent OOM: Resize both buffers to a max of 1024x1024 
     const resizeOpts = { width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true };
-    const markedImg = (0, sharp_1.default)(markedBuf).resize(resizeOpts);
-    const rawImg = (0, sharp_1.default)(rawBuf).resize(resizeOpts);
-    const { width, height } = (await rawImg.metadata());
-    const [markedRaw, rawRaw] = await Promise.all([
-        markedImg.ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
-        rawImg.ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    const [markedResized] = await Promise.all([
+        (0, sharp_1.default)(markedBuf).resize(resizeOpts).png().toBuffer(),
+        (0, sharp_1.default)(rawBuf).resize(resizeOpts).png().toBuffer()
     ]);
-    const diffImage = new Uint8ClampedArray(width * height * 4);
-    (0, pixelmatch_1.default)(markedRaw.data, rawRaw.data, diffImage, width, height, { threshold: 0.15, includeAA: true });
-    // Generate binary mask: white for diff, black for match
-    const maskPixels = Buffer.alloc(width * height * 4);
-    for (let i = 0; i < diffImage.length; i += 4) {
-        const isDiff = diffImage[i] > 0 || diffImage[i + 1] > 0 || diffImage[i + 2] > 0;
-        const color = isDiff ? 255 : 0;
-        maskPixels[i] = color; // R
-        maskPixels[i + 1] = color; // G
-        maskPixels[i + 2] = color; // B
-        maskPixels[i + 3] = 255; // A
-    }
-    // Morphological dilation to expand edges
-    const maskBuffer = await (0, sharp_1.default)(maskPixels, { raw: { width, height, channels: 4 } })
-        .blur(5)
-        .threshold(40)
+    const markedMeta = await (0, sharp_1.default)(markedResized).metadata();
+    const W = markedMeta.width;
+    const H = markedMeta.height;
+    const rawResizedExact = await (0, sharp_1.default)(rawBuf)
+        .resize(W, H, { fit: 'fill' })
         .png()
         .toBuffer();
-    return { maskBuffer, width, height };
+    const markedRaw = await (0, sharp_1.default)(markedResized).ensureAlpha().raw().toBuffer();
+    const rawRaw = await (0, sharp_1.default)(rawResizedExact).ensureAlpha().raw().toBuffer();
+    const diffPixels = new Uint8ClampedArray(W * H * 4);
+    (0, pixelmatch_1.default)(markedRaw, rawRaw, diffPixels, W, H, { threshold: 0.1, includeAA: true });
+    const maskPixels = Buffer.alloc(W * H);
+    for (let i = 0; i < W * H; i++) {
+        const idx = i * 4;
+        maskPixels[i] = (diffPixels[idx] > 0 || diffPixels[idx + 1] > 0 || diffPixels[idx + 2] > 0) ? 255 : 0;
+    }
+    const maskBuffer = await (0, sharp_1.default)(maskPixels, { raw: { width: W, height: H, channels: 1 } })
+        .blur(6)
+        .threshold(30)
+        .png()
+        .toBuffer();
+    return { maskBuffer, width: W, height: H };
+}
+async function removeCustomAreaAI(rawBuffer, maskBuffer, onProcessingStart) {
+    if (onProcessingStart) {
+        await onProcessingStart();
+    }
+    const metadata = await (0, sharp_1.default)(rawBuffer).metadata();
+    const originalWidth = metadata.width || 1024;
+    const originalHeight = metadata.height || 1024;
+    const resizedRaw = await (0, sharp_1.default)(rawBuffer)
+        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 95 })
+        .toBuffer();
+    const { width: rW, height: rH } = await (0, sharp_1.default)(resizedRaw).metadata();
+    const resizedMask = await (0, sharp_1.default)(maskBuffer)
+        .resize(rW, rH, { fit: 'fill' })
+        .grayscale()
+        .png()
+        .toBuffer();
+    const imageBase64 = `data:image/jpeg;base64,${resizedRaw.toString('base64')}`;
+    const maskBase64 = `data:image/png;base64,${resizedMask.toString('base64')}`;
+    const output = await Promise.race([
+        replicate.run("allenhooo/lama:cdac78a1bec5b23c07fd29692fb70baa513ea403a39e643c48ec5edadb15fe72", { input: { image: imageBase64, mask: maskBase64 } }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout after 120s')), 120_000))
+    ]);
+    const outputUrl = typeof output?.url === 'function'
+        ? output.url().toString()
+        : Array.isArray(output) ? String(output[0]) : String(output);
+    if (!outputUrl || outputUrl === 'undefined')
+        throw new Error('No output from LaMa');
+    const res = await fetch(outputUrl);
+    if (!res.ok)
+        throw new Error('Failed to fetch result');
+    const resultBuffer = Buffer.from(await res.arrayBuffer());
+    return await (0, sharp_1.default)(resultBuffer)
+        .resize(originalWidth, originalHeight, { fit: 'fill', kernel: sharp_1.default.kernel.lanczos3 })
+        .jpeg({ quality: 100 })
+        .toBuffer();
+}
+async function processImageFilter(imageUrl, filterType) {
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok)
+        throw new Error('Download failed');
+    const inputBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    const metadata = await (0, sharp_1.default)(inputBuffer).metadata();
+    const originalWidth = metadata.width || 1024;
+    const originalHeight = metadata.height || 1024;
+    // Resize to max 1024px for AI processing
+    const processedBuffer = await (0, sharp_1.default)(inputBuffer)
+        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 92 })
+        .toBuffer();
+    const procMeta = await (0, sharp_1.default)(processedBuffer).metadata();
+    const procW = procMeta.width || 1024;
+    const procH = procMeta.height || 1024;
+    // Strict sizes required by SDXL API
+    const validSizes = [128, 256, 512, 640, 704, 768, 896, 1024];
+    const getClosestSize = (target) => validSizes.reduce((prev, curr) => Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev);
+    const aiWidth = getClosestSize(procW);
+    const aiHeight = getClosestSize(procH);
+    const base64Image = `data:image/jpeg;base64,${processedBuffer.toString('base64')}`;
+    let prediction;
+    switch (filterType) {
+        case 'face':
+            prediction = await replicate.predictions.create({
+                version: "7de2ea26c616d5bf2245ad0d5e24f0ff9a6204578a5c876db53142edd9d2cd56",
+                input: {
+                    image: base64Image,
+                    codeformer_fidelity: 0.7,
+                    background_enhance: true,
+                    face_upsample: true,
+                    upscale: 2
+                }
+            });
+            break;
+        case 'color':
+            prediction = await replicate.predictions.create({
+                version: "0da600fab0c45a66211339f1c16b71345d22f26ef5fea3dca1bb90bb5711e950",
+                input: {
+                    input_image: base64Image,
+                    model_name: "Artistic",
+                    render_factor: 35
+                }
+            });
+            break;
+        case 'anime':
+            prediction = await replicate.predictions.create({
+                version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+                input: {
+                    image: base64Image,
+                    prompt: "masterpiece, best quality, 2D anime style, studio anime, highly detailed, vibrant colors, flat shading",
+                    negative_prompt: "realistic, photo, 3d, ugly, blurry, deformed, text",
+                    prompt_strength: 0.65,
+                    num_inference_steps: 30,
+                    width: aiWidth,
+                    height: aiHeight
+                }
+            });
+            break;
+        case 'ghibli':
+            prediction = await replicate.predictions.create({
+                version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+                input: {
+                    image: base64Image,
+                    prompt: "studio ghibli art style, watercolor painting, magical atmosphere, highly detailed, Hayao Miyazaki",
+                    negative_prompt: "realistic, photographic, dark, horror, text, watermark",
+                    prompt_strength: 0.60,
+                    num_inference_steps: 30,
+                    width: aiWidth,
+                    height: aiHeight
+                }
+            });
+            break;
+        default:
+            throw new Error(`Unknown filter type: ${filterType}`);
+    }
+    // Polling loop — 90 second timeout
+    const startTime = Date.now();
+    while (!['succeeded', 'failed', 'canceled'].includes(prediction.status)) {
+        if (Date.now() - startTime > 90_000)
+            throw new Error('Filter timeout after 90s');
+        await new Promise(r => setTimeout(r, 2000));
+        prediction = await replicate.predictions.get(prediction.id);
+        console.log(`[Filter:${filterType}] Status: ${prediction.status}`);
+    }
+    if (prediction.status !== 'succeeded') {
+        throw new Error(`Filter failed: ${prediction.error}`);
+    }
+    // Extract output URL safely
+    const output = prediction.output;
+    const outputUrl = typeof output === 'string'
+        ? output
+        : Array.isArray(output) && output.length > 0
+            ? String(output[0])
+            : (() => { throw new Error('No output URL from Replicate'); })();
+    // Download result
+    const resultResponse = await fetch(outputUrl);
+    if (!resultResponse.ok)
+        throw new Error('Result download failed');
+    const resultBuffer = Buffer.from(await resultResponse.arrayBuffer());
+    // face/color preserve dimensions — anime/ghibli resize back to original
+    if (filterType === 'face' || filterType === 'color') {
+        return resultBuffer;
+    }
+    else {
+        return await (0, sharp_1.default)(resultBuffer)
+            .resize(originalWidth, originalHeight, {
+            fit: 'fill',
+            kernel: sharp_1.default.kernel.lanczos3
+        })
+            .jpeg({ quality: 95 })
+            .toBuffer();
+    }
 }
 //# sourceMappingURL=imageService.js.map

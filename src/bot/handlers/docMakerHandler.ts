@@ -74,19 +74,25 @@ const DOC_MAKER_INSTRUCTION =
 
 const COMPILE_KB = {
   inline_keyboard: [
-    [{ text: '📥 إنهاء وتصدير PDF', callback_data: 'doc_compile' }],
-    [{ text: '🔄 إعادة', callback_data: 'doc_redo' }],
+    [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
+    [{ text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }],
   ],
 };
 
 function controlPanel() {
   return {
     inline_keyboard: [
-      [{ text: '📤 تصدير الآن', callback_data: 'doc_compile' }, { text: '✏️ تعديل سطر', callback_data: 'doc_edit_line' }],
-      [{ text: '🔄 إعادة آخر سطر', callback_data: 'doc_redo' }, { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' }],
-      [{ text: '📋 عرض الأسطر', callback_data: 'doc_view' }],
-      [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_end_session' }],
-    ],
+      [
+        { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' },
+        { text: '✏️ تعديل سطر', callback_data: 'doc_edit_line' }
+      ],
+      [
+        { text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' },
+        { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' }
+      ],
+      [{ text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }],
+      [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+    ]
   };
 }
 
@@ -107,6 +113,7 @@ async function refreshPreview(ctx: BotContext): Promise<void> {
       templateId: ctx.session.templateId || 1,
       pageSize: ctx.session.pageSize || 'A4',
       lines: ctx.session.documentLines || [],
+      selectedFont: ctx.session.selectedFont,
     });
     const tplName = TEMPLATE_NAMES[ctx.session.templateId || 1] || '';
     await ctx.api.editMessageMedia(ctx.chat.id, ctx.session.previewMessageId, {
@@ -146,11 +153,12 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     'doc_maker_start','doc_maker_cancel',
     'doc_type_text','doc_type_image','doc_type_image_locked',
     'doc_compile','doc_continue','doc_finish','doc_export_pdf',
+    'doc_export_confirm','doc_export_cancel','doc_back_to_session_keep',
     'align_right','align_center','align_left',
     'style_bold','style_italic','style_underline',
     'size_small','size_normal','size_large',
     'style_quote','style_divider','style_highlight',
-    'doc_redo','doc_edit_line','doc_view','doc_edit_after','doc_new_page',
+    'doc_undo_last','doc_edit_line','doc_view_lines','doc_edit_after','doc_new_page',
     'doc_tpl_confirm','doc_tpl_back',
     'doc_end_session','doc_confirm_end','doc_cancel_end',
     'doc_format_back','doc_custom_size',
@@ -334,6 +342,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
           templateId: ctx.session.templateId || 1,
           pageSize: ctx.session.pageSize || 'A4',
           lines: [],
+          selectedFont: ctx.session.selectedFont,
         });
         const tplName = TEMPLATE_NAMES[ctx.session.templateId || 1] || '';
         await ctx.api.editMessageMedia(ctx.chat.id, ctx.session.previewMessageId, {
@@ -464,7 +473,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '📥 إنهاء وتصدير PDF', callback_data: 'doc_compile' }],
+            [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
           ],
         },
       }
@@ -484,7 +493,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '📥 إنهاء وتصدير PDF', callback_data: 'doc_compile' }],
+            [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
           ],
         },
       }
@@ -550,57 +559,180 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── Compile ────────────────────────────────────────────────────────────────
-  if (data === 'doc_compile') {
-    try { await ctx.answerCallbackQuery(); } catch {}
-    const safeLines = (ctx.session.documentLines ?? []).filter(l => l !== null && l !== undefined);
-    if (safeLines.length === 0) {
-      await ctx.answerCallbackQuery({ text: '⚠️ لا يوجد محتوى للتصدير', show_alert: true }).catch(() => {});
+  // ── Smart Export Confirmation ──────────────────────────────────────────────
+  if (data === 'doc_export_pdf') {
+    const lines = ctx.session.documentLines || [];
+
+    const totalLineCount = lines.reduce((acc, l) => {
+      return acc + (l.type === 'image' ? (l.imageLines || 5) : 1);
+    }, 0);
+    const estimatedPages = Math.max(1, Math.ceil(totalLineCount / 30));
+
+    if (estimatedPages > 40) {
+      await ctx.editMessageText(
+        '🚫 <b>المستند كبير جداً!</b>\n\n' +
+        `📄 عدد الصفحات المتوقع: <b>${estimatedPages} صفحة</b>\n\n` +
+        'الحد المسموح به هو 40 صفحة.\n' +
+        'للحصول على صلاحية تصدير حتى 1000 صفحة تواصل مع المطور.',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 العودة للجلسة', callback_data: 'doc_back_to_session_keep' }
+            ]]
+          }
+        }
+      );
       return true;
     }
-    const processingMsg = await ctx.reply('⏳ جاري إنشاء ملف PDF...');
+
+    let cost: number;
+    if (estimatedPages <= 3)       cost = 1;
+    else if (estimatedPages <= 5)  cost = 2;
+    else if (estimatedPages <= 10) cost = 3;
+    else if (estimatedPages <= 20) cost = 4;
+    else                           cost = 5;
+
+    ctx.session.pendingExportCost = cost;
+    ctx.session.pendingExportPages = estimatedPages;
+
+    await ctx.editMessageText(
+      '📤 <b>تأكيد التصدير</b>\n\n' +
+      `📄 مستندك مكوّن من <b>~${estimatedPages} صفحة</b>\n` +
+      `💳 سيتم خصم <b>${cost} محاولة</b> من رصيدك\n\n` +
+      'هل أنت موافق على المتابعة؟',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: `✅ موافق — خصم ${cost} محاولة`, callback_data: 'doc_export_confirm' },
+            { text: '❌ إلغاء', callback_data: 'doc_export_cancel' }
+          ]]
+        }
+      }
+    );
+    return true;
+  }
+
+  if (data === 'doc_export_confirm') {
+    const cost = ctx.session.pendingExportCost || 1;
+
+    // Fetch real user from database
+    const user = await User.findOne({ telegramId });
+    if (!user) return true;
+
+    if (user.dailyQuota < cost) {
+      await ctx.editMessageText(
+        '❌ <b>رصيدك غير كافٍ!</b>\n\n' +
+        `💳 رصيدك الحالي: <b>${user.dailyQuota} محاولة</b>\n` +
+        `💸 المطلوب: <b>${cost} محاولات</b>\n\n` +
+        'أضف رصيداً للمتابعة.',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 العودة', callback_data: 'doc_back_to_session_keep' }
+            ]]
+          }
+        }
+      );
+      return true;
+    }
+
+    // Deduct attempts from real database
+    await User.updateOne({ telegramId }, { $inc: { dailyQuota: -cost } });
+
+    await ctx.editMessageText(
+      '⏳ <b>جاري إنشاء ملف PDF...</b>',
+      { parse_mode: 'HTML' }
+    );
+
     try {
       const { generateDocumentFromLines } = await import('../../services/pdfGeneratorService');
-      const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(safeLines, ctx.session.pageSize || 'A4', ctx.session.selectedFont);
+      const safeLines = (ctx.session.documentLines ?? []).filter(l => l !== null && l !== undefined);
+      
+      const pdfBuffer = await generateDocumentFromLines(
+        safeLines,
+        ctx.session.pageSize || 'A4',
+        ctx.session.selectedFont || 'Amiri'
+      );
 
       if (!pdfBuffer || pdfBuffer.length === 0) {
-        throw new Error('PDF buffer is empty — generateDocumentFromLines returned 0 bytes');
+        throw new Error('PDF buffer is empty');
       }
 
-      const fileName = `NizoDoc_${Date.now()}.pdf`;
-      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
       const { incrementGlobalCounter } = await import('../../services/statsService');
       await incrementGlobalCounter();
-      await ctx.replyWithDocument(new InputFile(pdfBuffer, fileName), {
-        caption: `✅ <b>تم تصدير المستند!</b>\n\n📄 عدد الصفحات: ${pageCount}\n📐 المقاس: ${ctx.session.pageSize || 'A4'}`,
-        parse_mode: 'HTML',
-      });
+
+      const fileName = `document_${Date.now()}.pdf`;
+      const { InputFile } = await import('grammy');
+      await ctx.replyWithDocument(
+        new InputFile(pdfBuffer, fileName),
+        {
+          caption:
+            '✅ <b>مستندك جاهز!</b>\n' +
+            `📄 الصفحات: ~${ctx.session.pendingExportPages}\n` +
+            `🔤 الخط: ${ctx.session.selectedFont || 'Amiri'}\n` +
+            `💳 تم خصم: ${cost} محاولة`,
+          parse_mode: 'HTML'
+        }
+      );
+
       if (BACKUP_CHANNEL_ID) {
         await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new InputFile(pdfBuffer, fileName), {
           caption: `📦 أرشيف صانع المستندات\n🆔 ${telegramId}`, disable_notification: true,
         }).catch(() => {});
       }
-      await ctx.reply('🎉 <b>تم تصدير مستندك!</b>\n\nاختر الإجراء التالي:', {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '📝 مواصلة', callback_data: 'doc_continue' },
-            { text: '✏️ تعديل', callback_data: 'doc_edit_after' },
-            { text: '✅ إتمام', callback_data: 'doc_finish' },
-          ]],
-        },
-      });
+
+      ctx.session.pendingExportCost = undefined;
+      ctx.session.pendingExportPages = undefined;
+
     } catch (err: any) {
-      console.error('[DocMaker] compile error — message:', err?.message);
-      console.error('[DocMaker] compile error — stack:', err?.stack);
-      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
-      await ctx.reply('❌ حدث خطأ أثناء إنشاء المستند: ' + (err?.message || 'unknown error'));
+      console.error('[EXPORT] Failed:', err?.message, err?.stack);
+      // Refund on failure — real database rollback
+      await User.updateOne({ telegramId }, { $inc: { dailyQuota: cost } });
+      await ctx.reply(
+        '❌ <b>فشل إنشاء المستند.</b>\n' +
+        'تم استرداد محاولاتك تلقائياً.\n\n' +
+        `<code>${err?.message || 'unknown error'}</code>`,
+        { parse_mode: 'HTML' }
+      );
     }
     return true;
   }
 
+  if (data === 'doc_export_cancel') {
+    ctx.session.pendingExportCost = undefined;
+    ctx.session.pendingExportPages = undefined;
+    await ctx.editMessageText(
+      '↩️ <b>تم إلغاء التصدير.</b>\nيمكنك الاستمرار في تعديل المستند.',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '📤 تصدير PDF', callback_data: 'doc_export_pdf' }
+          ]]
+        }
+      }
+    );
+    return true;
+  }
+
+  if (data === 'doc_back_to_session_keep') {
+    ctx.session.pendingExportCost = undefined;
+    ctx.session.pendingExportPages = undefined;
+    await ctx.editMessageText(
+      '↩️ <b>عدت للجلسة.</b>\nأرسل نصاً أو صورة، أو اضغط تصدير.',
+      {
+        parse_mode: 'HTML',
+        reply_markup: controlPanel()
+      }
+    );
+    return true;
+  }
+
   // ── Redo ───────────────────────────────────────────────────────────────────
-  if (data === 'doc_redo') {
+  if (data === 'doc_undo_last') {
     await ctx.answerCallbackQuery();
     if (!ctx.session.documentLines || ctx.session.documentLines.length === 0) {
       await ctx.editMessageText('⚠️ المستند فارغ!').catch(() => {});
@@ -653,7 +785,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   }
 
   // ── View Lines ─────────────────────────────────────────────────────────────
-  if (data === 'doc_view') {
+  if (data === 'doc_view_lines') {
     await ctx.answerCallbackQuery();
     const lines = ctx.session.documentLines || [];
     if (lines.length === 0) { await ctx.reply('⚠️ المستند فارغ.'); return true; }

@@ -24,6 +24,7 @@ export interface DocPreviewOptions {
   templateId: number;
   pageSize: string;
   lines?: PreviewLine[];
+  selectedFont?: string;
 }
 
 // ─── Scale factor: old canvas was 400 wide, new is 800 ───────────────────────
@@ -252,7 +253,7 @@ async function buildSVG(opts: DocPreviewOptions, w: number, h: number): Promise<
       continue;
     }
 
-    textSVG += `<text x="${x}" y="${y}" font-family="'Amiri','Noto Naskh Arabic','Arabic Typesetting',serif" font-size="${FS}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="#1a1a1a" text-anchor="${anchor}">${prepared}</text>\n`;
+    textSVG += `<text x="${x}" y="${y}" font-family="'${opts.selectedFont || 'Amiri'}','Noto Naskh Arabic','Arabic Typesetting',serif" font-size="${FS}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="#1a1a1a" text-anchor="${anchor}">${prepared}</text>\n`;
 
     if (line.underline) {
       const approxWidth = Math.min(prepared.length * FS * 0.55, cw);

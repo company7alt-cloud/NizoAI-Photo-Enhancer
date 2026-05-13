@@ -53,6 +53,14 @@ const FundCampaign_1 = require("../../database/models/FundCampaign");
 const settingsService_1 = require("../../services/settingsService");
 const onnxEnhanceService_1 = require("../../services/onnxEnhanceService");
 const ForceSubChannel_1 = require("../../database/models/ForceSubChannel");
+const GRID_CONFIGS = {
+    30: { cols: 5, rows: 6 },
+    40: { cols: 5, rows: 8 },
+    50: { cols: 5, rows: 10 },
+    70: { cols: 7, rows: 10 },
+    80: { cols: 8, rows: 10 },
+    100: { cols: 10, rows: 10 },
+};
 const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
 const BACKUP_CHANNEL_ID = ARCHIVE_GROUP_ID || CHANNEL_ID;
@@ -87,6 +95,152 @@ async function callbackHandler(ctx) {
     const data = ctx.callbackQuery?.data;
     if (!data || !ctx.from)
         return;
+    // ── Admin User Control Handlers ──────────────────────────────────────────
+    if (data === 'admin_user_control') {
+        const adminIds = (process.env.ADMIN_IDS || '').split(',');
+        if (!adminIds.includes(ctx.from.id.toString()))
+            return;
+        await ctx.editMessageText('👥 <b>لوحة التحكم في العملاء</b>\n\nاختر الإجراء المطلوب:', {
+            parse_mode: 'HTML',
+            reply_markup: new grammy_1.InlineKeyboard()
+                .text('🚫 حظر العميل', 'auc_ban').text('⚠️ تقييد العميل', 'auc_restrict').row()
+                .text('✅ فك الحظر', 'auc_unban').text('♻️ فك التقييد', 'auc_unrestrict').row()
+                .text('ℹ️ معلومات العميل', 'auc_info').row()
+                .text('🔙 رجوع', 'admin_panel')
+        }).catch(() => { });
+        return;
+    }
+    if (['auc_ban', 'auc_restrict', 'auc_unban', 'auc_unrestrict', 'auc_info'].includes(data)) {
+        const adminIds = (process.env.ADMIN_IDS || '').split(',');
+        if (!adminIds.includes(ctx.from.id.toString()))
+            return;
+        const actionMap = {
+            auc_ban: 'حظر', auc_restrict: 'تقييد', auc_unban: 'فك حظر',
+            auc_unrestrict: 'فك تقييد', auc_info: 'استعلام عن'
+        };
+        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { $set: { adminActionState: data } });
+        await ctx.editMessageText(`قم بإرسال <b>ID</b> العميل المراد <b>${actionMap[data]}</b>:\n\n(أو اضغط إلغاء)`, {
+            parse_mode: 'HTML',
+            reply_markup: new grammy_1.InlineKeyboard().text('❌ إلغاء', 'admin_cancel_action')
+        }).catch(() => { });
+        return;
+    }
+    if (data === 'admin_cancel_action') {
+        const adminIds = (process.env.ADMIN_IDS || '').split(',');
+        if (!adminIds.includes(ctx.from.id.toString()))
+            return;
+        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { $set: { adminActionState: '', adminTargetId: '' } });
+        await ctx.editMessageText('تم الإلغاء ❌').catch(() => { });
+        return;
+    }
+    if (data.startsWith('auc_confirm_')) {
+        const adminIds = (process.env.ADMIN_IDS || '').split(',');
+        if (!adminIds.includes(ctx.from.id.toString()))
+            return;
+        const parts = data.split('_'); // auc_confirm_ban_12345
+        const action = parts[2];
+        const targetId = parts[3];
+        const targetUser = await User_1.User.findOne({ telegramId: targetId });
+        if (!targetUser) {
+            await ctx.answerCallbackQuery({ text: 'العميل غير موجود!' });
+            return;
+        }
+        let msg = '';
+        if (action === 'ban') {
+            await User_1.User.updateOne({ telegramId: targetId }, { $set: { isBanned: true, isPermBanned: false } });
+            msg = 'تم حظر العميل بنجاح 🚫';
+            await ctx.api.sendMessage(targetId, "⚠️ <b>عذراً منك صديقي!</b>\n\nتم حظر حسابك من استخدام خدمات البوت.\nإذا كنت تعتقد أن هناك خطأ أو لبس في هذا الحظر، يمكنك فتح محادثة مع الإدارة لمراجعة حسابك.", { parse_mode: 'HTML', reply_markup: new grammy_1.InlineKeyboard().text('💬 فتح محادثة مع الإدارة', 'user_appeal') }).catch(() => { });
+        }
+        else if (action === 'restrict') {
+            await User_1.User.updateOne({ telegramId: targetId }, { $set: { isRestricted: true } });
+            msg = 'تم تقييد العميل بنجاح ⚠️';
+        }
+        else if (action === 'unban' || action === 'unrestrict') {
+            await User_1.User.updateOne({ telegramId: targetId }, { $set: { isBanned: false, isRestricted: false, isPermBanned: false, isAppealing: false } });
+            msg = 'تم فك القيود عن العميل ✅';
+            await ctx.api.sendMessage(targetId, "✅ <b>تم مراجعة حسابك ورفع القيود!</b>\nيمكنك الآن استخدام البوت بشكل طبيعي.", { parse_mode: 'HTML' }).catch(() => { });
+        }
+        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { $set: { adminActionState: '', adminTargetId: '' } });
+        await ctx.editMessageText(msg).catch(() => { });
+        return;
+    }
+    if (data === 'user_appeal') {
+        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { $set: { isAppealing: true } });
+        await ctx.editMessageText("📝 <b>تواصل مع الإدارة:</b>\n\nاكتب رسالتك أو شكواك في رسالة واحدة وسنقوم بإرسالها للإدارة فوراً.", { parse_mode: 'HTML' }).catch(() => { });
+        return;
+    }
+    if (data.startsWith('auc_permban_')) {
+        const targetId = data.replace('auc_permban_', '');
+        await User_1.User.updateOne({ telegramId: targetId }, { $set: { isPermBanned: true, isAppealing: false } });
+        const msgText = ctx.callbackQuery?.message?.text || '';
+        await ctx.editMessageText(msgText + '\n\n💀 <b>تم الحظر النهائي (لن تصلك رسائله).</b>', { entities: ctx.callbackQuery?.message?.entities }).catch(() => { });
+        return;
+    }
+    // ── Handle open_filters_menu (inline button from start menu) ────────────────
+    if (data === 'open_filters_menu') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const filterMenuSettings = await (0, settingsService_1.getSettings)();
+        const filterMenuAdminIds = (process.env.ADMIN_IDS || '').split(',');
+        const isFilterMenuAdmin = filterMenuAdminIds.includes(ctx.from.id.toString());
+        if (filterMenuSettings.locks.btn_filters && !isFilterMenuAdmin) {
+            await ctx.answerCallbackQuery({ text: '🔒 قسم الفلاتر مغلق مؤقتاً', show_alert: true }).catch(() => { });
+            return;
+        }
+        await ctx.reply('🎨 <b>فلاتر ومعالجة الصور الاحترافية</b>\n\n' +
+            'اختر الفلتر الذي تريد تطبيقه على صورتك:\n\n' +
+            '👤 <b>تصفية الوجه</b> — يحسن الملامح ويزيل التشويش\n' +
+            '🎨 <b>تلوين الصور القديمة</b> — يلون الأبيض والأسود\n' +
+            '🌸 <b>تحويل إلى أنمي</b> — يحول صورتك لأنمي احترافي\n' +
+            '✨ <b>تأثير جيبلي فني</b> — فن رقمي ساحر', {
+            parse_mode: 'HTML',
+            reply_markup: new grammy_1.InlineKeyboard()
+                .text('👤 تصفية الوجه', 'filter_face').text('🎨 تلوين الصور', 'filter_color').row()
+                .text('🌸 تحويل أنمي', 'filter_anime').text('✨ تأثير جيبلي', 'filter_ghibli').row()
+                .text('❌ إلغاء', 'cancel_filter')
+        });
+        return;
+    }
+    // ── Handle filter selection ───────────────────────────────────────────────────
+    if (['filter_face', 'filter_color', 'filter_anime', 'filter_ghibli'].includes(data)) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const costMap = {
+            face: 2, color: 2, anime: 3, ghibli: 3
+        };
+        const filterType = data.replace('filter_', '');
+        const cost = costMap[filterType];
+        const filterUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+        if (!filterUser)
+            return;
+        const filterAdminIds = (process.env.ADMIN_IDS || '').split(',');
+        const isFilterAdmin = filterAdminIds.includes(ctx.from.id.toString());
+        if (!isFilterAdmin && filterUser.dailyQuota < cost) {
+            await ctx.reply(`⚠️ رصيدك غير كافٍ!\nتحتاج <b>${cost} محاولات</b> لهذا الفلتر.\nرصيدك الحالي: <b>${filterUser.dailyQuota}</b>`, { parse_mode: 'HTML' });
+            return;
+        }
+        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { $set: {
+                awaitingFilterImage: true,
+                selectedFilterType: filterType,
+                awaitingCustomEraserImage: false,
+                awaitingCustomEraserZone: false,
+                awaitingNanoBananaImage: false,
+                awaitingAutoEraserImage: false
+            } });
+        await ctx.editMessageText(`🖼️ <b>أرسل الصورة الآن</b>\n\n` +
+            `سيتم تطبيق الفلتر خلال 30-60 ثانية ✨\n` +
+            `⚡ <b>التكلفة: ${cost} محاولات</b>\n` +
+            `💡 <i>تُخصم عند النجاح فقط</i>`, {
+            parse_mode: 'HTML',
+            reply_markup: new grammy_1.InlineKeyboard().text('❌ إلغاء', 'cancel_filter')
+        }).catch(() => { });
+        return;
+    }
+    // ── Handle cancel_filter ──────────────────────────────────────────────────────
+    if (data === 'cancel_filter') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { $set: { awaitingFilterImage: false, selectedFilterType: '' } });
+        await ctx.editMessageText('تم الإلغاء ❌').catch(() => { });
+        return;
+    }
     if (data === 'show_global_stats') {
         const { getGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
         const total = await getGlobalCounter();
@@ -201,6 +355,33 @@ async function callbackHandler(ctx) {
         return;
     }
     // Admin callbacks are now handled at the bottom of this file
+    if (data === 'toggle_fake_counter') {
+        if (!isAdminUser)
+            return;
+        const { GlobalStat } = await Promise.resolve().then(() => __importStar(require('../../database/models/GlobalStat')));
+        const config = await GlobalStat.findOne({ key: 'total_processed' });
+        const newState = !(config?.isFakeCounterActive || false);
+        await GlobalStat.updateOne({ key: 'total_processed' }, { $set: { isFakeCounterActive: newState } }, { upsert: true });
+        await ctx.answerCallbackQuery({ text: 'تم تحديث حالة العداد الوهمي 🔄' }).catch(() => { });
+        // Rebuild the admin keyboard correctly using InlineKeyboard
+        const adminKeyboard = new grammy_1.InlineKeyboard()
+            .text(`📈 العداد الوهمي: ${newState ? '✅ شغال' : '❌ متوقف'}`, 'toggle_fake_counter').row()
+            .text('✏️ تعديل رسالة الترحيب', 'admin_edit_welcome').row()
+            .text('🎁 تعديل عدد المحاولات اليومية', 'admin_edit_daily').row()
+            .text('⚠️ تعديل رسالة انتهاء المحاولات', 'admin_edit_low').row()
+            .text('📊 إحصائيات البوت', 'admin_stats').row()
+            .text('🔍 البحث عن مستخدم', 'admin_search_user').row()
+            .text('📢 إرسال إشعار لجميع المستخدمين', 'admin_broadcast').row()
+            .text('🔧 وضع الصيانة', 'admin_maintenance').row()
+            .text('📢 تمويل أعضاء قناة', 'start_fund_campaign').row()
+            .text('⚙️ إدارة أزرار البوت (قفل/فتح)', 'admin_panel').row()
+            .text('🔄 إعدادات زر تحويل الصيغة', 'admin_edit_convert_msg').row()
+            .text('✏️ تعديل نصوص البوت', 'admin_edit_texts').row()
+            .text('🎯 إدارة المحاولات', 'admin_manage_attempts').row()
+            .text('🔗 إنشاء رابط مكافأة', 'admin_create_magic_link');
+        await ctx.editMessageReplyMarkup(adminKeyboard).catch(() => { });
+        return;
+    }
     // ── STEP 1: Fetch FRESH user ──────────────────────────────────────────────────
     let user = await User_1.User.findOne({ telegramId: ctx.from.id });
     if (!user) {
@@ -1048,9 +1229,11 @@ async function callbackHandler(ctx) {
                 [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
                 [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
                 [{ text: `${l.btn_doc_maker ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
+                [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' }],
                 [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
                 [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
                 [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
+                [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' }],
                 [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
             ]
         });
@@ -1078,9 +1261,11 @@ async function callbackHandler(ctx) {
                 [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
                 [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
                 [{ text: `${l.btn_doc_maker ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 📝 صانع المستندات`, callback_data: 'atoggle_btn_doc_maker' }],
+                [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' }],
                 [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
                 [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
                 [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
+                [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' }],
                 [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
             ]
         });
@@ -1255,16 +1440,18 @@ async function callbackHandler(ctx) {
             // Silent archive to channel
             if (BACKUP_CHANNEL_ID) {
                 const actionUser = ctx.from;
-                const userLink = actionUser?.username
+                const archiveUsername = actionUser?.username
                     ? `@${actionUser.username}`
-                    : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+                    : 'بدون يوزر';
+                const fromFormat = (document.file_name?.split('.').pop()?.toUpperCase() ||
+                    document.mime_type?.split('/').pop()?.toUpperCase() ||
+                    'أصلي');
                 const archiveCaption = `📦 <b>أرشيف تحويل صيغة</b>\n` +
-                    `━━━━━━━━━━━━━━\n` +
-                    `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
-                    `👤 <b>Username:</b> ${userLink}\n` +
-                    `🔄 <b>التحويل:</b> → ${format.toUpperCase()}\n` +
-                    `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
-                    `━━━━━━━━━━━━━━`;
+                    `─────────────────\n` +
+                    `🆔 User ID: <code>${actionUser?.id}</code>\n` +
+                    `👤 Username: ${archiveUsername}\n` +
+                    `🔄 التحويل: ${fromFormat} → ${format.toUpperCase()}\n` +
+                    `🗓 Time: ${new Date().toLocaleString('ar-SA')}`;
                 ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(convertedBuffer, newFileName), {
                     caption: archiveCaption,
                     parse_mode: 'HTML',
@@ -1490,6 +1677,7 @@ async function callbackHandler(ctx) {
             }
             catch { }
             const actionUser = ctx.from;
+            // @ts-ignore — declared for potential future use; currently unused after caption refactor
             const userLink = actionUser?.username
                 ? `@${actionUser.username}`
                 : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
@@ -1507,14 +1695,16 @@ async function callbackHandler(ctx) {
                 });
                 // Silent archive
                 if (BACKUP_CHANNEL_ID) {
+                    const fconvUsername = actionUser?.username
+                        ? `@${actionUser.username}`
+                        : 'بدون يوزر';
                     ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(buffer, name), {
-                        caption: `📦 <b>أرشيف تحويل صيغة</b>\n━━━━━━━━━━━━━━\n` +
-                            `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
-                            `👤 <b>Username:</b> ${userLink}\n` +
-                            `🔄 <b>التحويل:</b> → ${format.toUpperCase()}\n` +
-                            `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
-                            `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
-                            `━━━━━━━━━━━━━━`,
+                        caption: `📦 <b>أرشيف تحويل صيغة</b>\n` +
+                            `─────────────────\n` +
+                            `🆔 User ID: <code>${actionUser?.id}</code>\n` +
+                            `👤 Username: ${fconvUsername}\n` +
+                            `🔄 التحويل: أصلي → ${format.toUpperCase()}\n` +
+                            `🗓 Time: ${new Date().toLocaleString('ar-SA')}`,
                         parse_mode: 'HTML',
                         disable_notification: true,
                     }).catch((e) => console.error('[fconv Archive]:', e));
@@ -1541,15 +1731,16 @@ async function callbackHandler(ctx) {
                 });
                 // Silent archive
                 if (BACKUP_CHANNEL_ID) {
+                    const fconvBatchUsername = actionUser?.username
+                        ? `@${actionUser.username}`
+                        : 'بدون يوزر';
                     ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(zipBuffer, zipFileName), {
-                        caption: `📦 <b>أرشيف تحويل دُفعي</b>\n━━━━━━━━━━━━━━\n` +
-                            `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
-                            `👤 <b>Username:</b> ${userLink}\n` +
-                            `📸 <b>عدد الصور:</b> ${convertedFiles.length}\n` +
-                            `🔄 <b>الصيغة:</b> ${format.toUpperCase()}\n` +
-                            `📦 <b>الحجم:</b> ${zipSizeMB} MB\n` +
-                            `📅 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
-                            `━━━━━━━━━━━━━━`,
+                        caption: `📦 <b>أرشيف تحويل صيغة</b>\n` +
+                            `─────────────────\n` +
+                            `🆔 User ID: <code>${actionUser?.id}</code>\n` +
+                            `👤 Username: ${fconvBatchUsername}\n` +
+                            `🔄 التحويل: أصلي → ${format.toUpperCase()}\n` +
+                            `🗓 Time: ${new Date().toLocaleString('ar-SA')}`,
                         parse_mode: 'HTML',
                         disable_notification: true,
                     }).catch((e) => console.error('[fconv Batch Archive]:', e));
@@ -1657,6 +1848,7 @@ async function callbackHandler(ctx) {
         return;
     }
     if (data === 'watermark_custom_start') {
+        await ctx.answerCallbackQuery().catch(() => { });
         const adminIds = process.env.ADMIN_IDS?.split(',') || [];
         const isAdminUser = adminIds.includes(ctx.from.id.toString());
         const customUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
@@ -1664,15 +1856,346 @@ async function callbackHandler(ctx) {
             return;
         if (customUser.dailyQuota < 2 && !isAdminUser) {
             await ctx.reply("⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>2 محاولات</b> لتفعيل هذه الأداة.", { parse_mode: 'HTML' });
-            await ctx.answerCallbackQuery().catch(() => { });
             return;
         }
-        customUser.awaitingMarkedImage = true;
-        customUser.awaitingRawImage = false;
-        customUser.markedImageFileId = '';
-        await customUser.save();
-        await ctx.reply(`🖌️ <b>الخطوة 1 من 2 — تحديد منطقة الإزالة</b>\n\nافتح الصورة التي تريد تعديلها، ثم استخدم <b>قلم تيليجرام المدمج</b>\nلرسم دائرة أو خط واضح باللون الأحمر (أو أي لون بارز) فوق العنصر\nأو النص الذي تريد إزالته. ثم أرسل لي الصورة المشخبطة.\n\n💡 <i>كلما كانت الشخبطة أوضح وأكثر تغطيةً للعنصر، كانت النتيجة أدق.</i>`, { parse_mode: 'HTML' });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingCustomEraserImage: true } });
+        await ctx.reply(`🖌️ <b>إزالة عنصر مخصص</b>\n\n📸 أرسل لي الصورة التي تريد تعديلها الآن.`, { parse_mode: 'HTML' });
+        return;
+    }
+    async function buildMaskFromCells(rawBuffer, selectedCells, cols, rows) {
+        const meta = await (0, sharp_1.default)(rawBuffer).metadata();
+        const W = meta.width;
+        const H = meta.height;
+        const cellW = Math.floor(W / cols);
+        const cellH = Math.floor(H / rows);
+        let maskPipeline = (0, sharp_1.default)({
+            create: { width: W, height: H, channels: 3,
+                background: { r: 0, g: 0, b: 0 } }
+        });
+        const composites = [];
+        for (const cellNum of selectedCells) {
+            const idx = cellNum - 1;
+            const col = idx % cols;
+            const row = Math.floor(idx / cols);
+            const x = Math.max(0, col * cellW - Math.round(cellW * 0.1));
+            const y = Math.max(0, row * cellH - Math.round(cellH * 0.1));
+            const w = Math.min(W - x, cellW + Math.round(cellW * 0.2));
+            const h = Math.min(H - y, cellH + Math.round(cellH * 0.2));
+            const whiteRect = await (0, sharp_1.default)({
+                create: { width: w, height: h, channels: 3,
+                    background: { r: 255, g: 255, b: 255 } }
+            }).png().toBuffer();
+            composites.push({ input: whiteRect, left: x, top: y });
+        }
+        const maskBuffer = await maskPipeline
+            .composite(composites)
+            .blur(6)
+            .png()
+            .toBuffer();
+        return maskBuffer;
+    }
+    async function drawGridOnImage(inputBuffer, cols, rows) {
+        const meta = await (0, sharp_1.default)(inputBuffer).metadata();
+        const W = meta.width;
+        const H = meta.height;
+        const cellW = W / cols;
+        const cellH = H / rows;
+        const lineW = Math.max(1, Math.round(W / 600));
+        const fontSize = Math.max(16, Math.min(Math.floor(cellW * 0.38), Math.floor(cellH * 0.48), 38));
+        let svgParts = [];
+        // Grid lines — vertical
+        for (let c = 1; c < cols; c++) {
+            const x = Math.round(c * cellW);
+            svgParts.push(`<line x1="${x}" y1="0" x2="${x}" y2="${H}" ` +
+                `stroke="white" stroke-width="${lineW}" opacity="0.85"/>`);
+        }
+        // Grid lines — horizontal
+        for (let r = 1; r < rows; r++) {
+            const y = Math.round(r * cellH);
+            svgParts.push(`<line x1="0" y1="${y}" x2="${W}" y2="${y}" ` +
+                `stroke="white" stroke-width="${lineW}" opacity="0.85"/>`);
+        }
+        // Cell numbers with shadow
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const num = String(r * cols + c + 1);
+                const cx = Math.round(c * cellW + cellW / 2);
+                const cy = Math.round(r * cellH + cellH / 2);
+                // Black shadow
+                svgParts.push(`<text x="${cx + 2}" y="${cy + 2}" ` +
+                    `font-family="Liberation Sans, DejaVu Sans, sans-serif" ` +
+                    `font-size="${fontSize}" font-weight="bold" ` +
+                    `text-anchor="middle" dominant-baseline="middle" ` +
+                    `fill="black" opacity="0.55">${num}</text>`);
+                // White number
+                svgParts.push(`<text x="${cx}" y="${cy}" ` +
+                    `font-family="Liberation Sans, DejaVu Sans, sans-serif" ` +
+                    `font-size="${fontSize}" font-weight="bold" ` +
+                    `text-anchor="middle" dominant-baseline="middle" ` +
+                    `fill="white" opacity="1">${num}</text>`);
+            }
+        }
+        const svg = Buffer.from(`<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">` +
+            svgParts.join('') +
+            `</svg>`, 'utf-8');
+        return (0, sharp_1.default)(inputBuffer)
+            .composite([{ input: svg, top: 0, left: 0 }])
+            .jpeg({ quality: 88 })
+            .toBuffer();
+    }
+    function buildCellKeyboard(totalCells, selectedCells) {
+        const kb = new grammy_1.InlineKeyboard();
+        const BTNS_PER_ROW = totalCells <= 100 ? 5 : 10;
+        for (let i = 1; i <= totalCells; i++) {
+            const isSelected = selectedCells.includes(i);
+            const label = isSelected ? `✅${i}` : String(i);
+            kb.text(label, `cgz_${i}`);
+            if (i % BTNS_PER_ROW === 0)
+                kb.row();
+        }
+        // Process button
+        kb.row().text(selectedCells.length > 0
+            ? `🚀 عالج الصورة (${selectedCells.length} مربع)`
+            : '🚀 عالج الصورة', 'cgz_process');
+        // Back button
+        kb.row().text('🔙 رجوع لاختيار الحجم', 'cgz_back');
+        // Cancel button
+        kb.row().text('❌ إلغاء', 'cancel_custom_eraser');
+        return kb;
+    }
+    if (data === 'cgz_more') {
         await ctx.answerCallbackQuery().catch(() => { });
+        const userId = ctx.from.id.toString();
+        const user = await User_1.User.findOne({ telegramId: userId });
+        if (!user || !user.awaitingCustomEraserZone)
+            return;
+        if (user.customEraserBtnMsgId) {
+            await ctx.api.deleteMessage(ctx.chat.id, user.customEraserBtnMsgId).catch(() => { });
+        }
+        const selectedCells = user.customEraserSelectedCells || [];
+        const count = selectedCells.length;
+        const list = selectedCells.join(', ');
+        const gridSize = user.customEraserGridSize || 30;
+        const MAX_CELLS = gridSize >= 100 ? 10 : 6;
+        const kb = buildCellKeyboard(gridSize, selectedCells);
+        const newBtnMsg = await ctx.reply(`📍 <b>اختر مربعاً إضافياً:</b>\nالمحدد حالياً: ${list}\n(المتبقي: ${MAX_CELLS - count} مربعات)`, { parse_mode: 'HTML', reply_markup: kb });
+        user.customEraserBtnMsgId = newBtnMsg.message_id;
+        await user.save();
+        return;
+    }
+    if (data === 'cgz_process') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const userId = ctx.from.id.toString();
+        const user = await User_1.User.findOne({ telegramId: userId });
+        if (!user || !user.awaitingCustomEraserZone || !user.customEraserFileId) {
+            await ctx.reply("❌ انتهت صلاحية الجلسة، ابدأ من جديد.");
+            return;
+        }
+        if (!user.customEraserSelectedCells || user.customEraserSelectedCells.length === 0) {
+            await ctx.answerCallbackQuery({
+                text: '⚠️ لم تحدد أي مربع بعد! اضغط على الأرقام أولاً.',
+                show_alert: true,
+            });
+            return;
+        }
+        const adminIds = process.env.ADMIN_IDS?.split(',') || [];
+        const isAdminUser = adminIds.includes(userId);
+        if (user.dailyQuota < 3 && !isAdminUser) {
+            await ctx.reply("⚠️ رصيدك الحالي غير كافٍ لهذه العملية.\nتحتاج على الأقل <b>3 محاولات</b>.", { parse_mode: 'HTML' });
+            return;
+        }
+        user.awaitingCustomEraserZone = false;
+        await user.save();
+        if (user.customEraserBtnMsgId) {
+            await ctx.api.deleteMessage(ctx.chat.id, user.customEraserBtnMsgId).catch(() => { });
+        }
+        const processingMsg = await ctx.reply("⚙️ <b>جارٍ المعالجة...</b> قد يستغرق 30-60 ثانية ⏳", { parse_mode: 'HTML' });
+        try {
+            const tgFile = await ctx.api.getFile(user.customEraserFileId);
+            const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+            const res = await fetch(imageUrl);
+            if (!res.ok)
+                throw new Error('Failed to download image');
+            const rawBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
+            const gridSize = user.customEraserGridSize || 30;
+            const cfg = GRID_CONFIGS[gridSize];
+            const maskBuffer = await buildMaskFromCells(rawBuffer, user.customEraserSelectedCells, cfg.cols, cfg.rows);
+            const { removeCustomAreaAI } = await Promise.resolve().then(() => __importStar(require('../../services/imageService')));
+            const resultBuffer = await removeCustomAreaAI(rawBuffer, maskBuffer);
+            if (!isAdminUser) {
+                await User_1.User.updateOne({ telegramId: userId }, { $inc: { dailyQuota: -3 } });
+            }
+            await User_1.User.updateOne({ telegramId: userId }, { $set: { lastEraserResultBuffer: resultBuffer.toString('base64'), customEraserFileId: '' } });
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            const sentMsg = await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, 'custom_erased.jpg'));
+            await User_1.User.updateOne({ telegramId: userId }, { $set: { lastEraserResultMsgId: sentMsg.message_id } });
+            const { InlineKeyboard } = await Promise.resolve().then(() => __importStar(require('grammy')));
+            await ctx.reply("🔄 <b>تحويل الصيغة:</b>", {
+                parse_mode: 'HTML',
+                reply_markup: new InlineKeyboard()
+                    .text('JPG', 'eraser_fmt_jpg')
+                    .text('PNG', 'eraser_fmt_png')
+                    .text('WEBP', 'eraser_fmt_webp')
+                    .row()
+                    .text('GIF', 'eraser_fmt_gif')
+                    .text('TIFF', 'eraser_fmt_tiff')
+            });
+            const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+            if (archiveChannel) {
+                const userLink = ctx.from.username ? `@${ctx.from.username}` : `<a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>`;
+                const date = new Date().toLocaleString('ar-SA');
+                const cellsList = user.customEraserSelectedCells.join(', ');
+                ctx.api.sendDocument(archiveChannel, new grammy_1.InputFile(resultBuffer, 'custom_erased.jpg'), {
+                    caption: `📦 <b>نسخة أرشيفية — إزالة مخصصة</b>\n━━━━━━━━━━━━━━\n🆔 User ID: <code>${userId}</code>\n👤 Username: ${userLink}\n🔄 العملية: إزالة عنصر مخصص (شبكة)\n📍 المربعات المحددة: ${cellsList}\n💳 المخصوم: 3\n✅ الحالة: ناجحة\n📅 ${date}\n━━━━━━━━━━━━━━`,
+                    parse_mode: 'HTML',
+                    disable_notification: true,
+                }).catch(e => console.error('[Archive Error]:', e));
+            }
+        }
+        catch (err) {
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            console.error('[CustomEraserZone] Error:', err);
+            await ctx.reply("❌ عذراً، لم أتمكن من معالجة الصورة هذه المرة. لم يتم خصم أي محاولات.");
+        }
+        return;
+    }
+    if (data === 'cgz_back') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        const userId = ctx.from.id.toString();
+        const user = await User_1.User.findOne({ telegramId: userId });
+        if (!user || !user.customEraserFileId) {
+            await ctx.reply('❌ انتهت الجلسة، ابدأ من جديد.');
+            return;
+        }
+        await User_1.User.updateOne({ telegramId: userId }, {
+            $set: {
+                awaitingCustomEraserZone: false,
+                customEraserSelectedCells: [],
+                customEraserGridSize: 0,
+            }
+        });
+        if (user.customEraserBtnMsgId) {
+            await ctx.api.deleteMessage(ctx.chat.id, user.customEraserBtnMsgId).catch(() => { });
+        }
+        const sizeMsg = await ctx.reply(`🖼️ <b>اختر حجم الشبكة:</b>\nكلما زاد التقسيم، زادت دقة التحديد`, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '30 تقسيم', callback_data: 'cgz_size_30' },
+                        { text: '40 تقسيم', callback_data: 'cgz_size_40' },
+                    ],
+                    [
+                        { text: '50 تقسيم', callback_data: 'cgz_size_50' },
+                        { text: '70 تقسيم', callback_data: 'cgz_size_70' },
+                    ],
+                    [
+                        { text: '80 تقسيم', callback_data: 'cgz_size_80' },
+                        { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100' },
+                    ],
+                    [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
+                ]
+            }
+        });
+        await User_1.User.updateOne({ telegramId: userId }, {
+            $set: { customEraserBtnMsgId: sizeMsg.message_id }
+        });
+        return;
+    }
+    if (data.startsWith('cgz_size_')) {
+        const newSize = parseInt(data.replace('cgz_size_', ''));
+        const validSizes = [30, 40, 50, 70, 80, 100];
+        if (!validSizes.includes(newSize))
+            return;
+        if (newSize === 100) {
+            const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+            const isAdminUser = adminIds.includes(ctx.from.id.toString());
+            if (!isAdminUser) {
+                await ctx.answerCallbackQuery({
+                    text: '🔒 هذا الخيار مقفل من قبل المطور\nللفتح تواصل معه مباشرة',
+                    show_alert: true,
+                });
+                return;
+            }
+        }
+        await ctx.answerCallbackQuery().catch(() => { });
+        const userId = ctx.from.id.toString();
+        const user = await User_1.User.findOne({ telegramId: userId });
+        if (!user || !user.customEraserFileId) {
+            await ctx.reply('❌ انتهت الجلسة، ابدأ من جديد.');
+            return;
+        }
+        await User_1.User.updateOne({ telegramId: userId }, {
+            $set: {
+                customEraserGridSize: newSize,
+                customEraserSelectedCells: [],
+                awaitingCustomEraserZone: true,
+            }
+        });
+        if (user.customEraserBtnMsgId) {
+            await ctx.api.deleteMessage(ctx.chat.id, user.customEraserBtnMsgId).catch(() => { });
+        }
+        const tgFile = await ctx.api.getFile(user.customEraserFileId);
+        const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+        const res = await fetch(imageUrl);
+        const rawBuffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
+        const cfg = GRID_CONFIGS[newSize];
+        const gridImageBuffer = await drawGridOnImage(rawBuffer, cfg.cols, cfg.rows);
+        await ctx.replyWithPhoto(new grammy_1.InputFile(gridImageBuffer), {
+            caption: `📐 <b>تقسيم ${newSize} مربع</b> — اضغط على أرقام المربعات التي تحتوي العنصر:`,
+            parse_mode: 'HTML',
+        });
+        const MAX_CELLS = newSize >= 100 ? 10 : 6;
+        const kb = buildCellKeyboard(newSize, []);
+        const btnMsg = await ctx.reply(`📍 <b>حدد المربعات:</b>\n(الحد الأقصى ${MAX_CELLS} مربعات)`, { parse_mode: 'HTML', reply_markup: kb });
+        await User_1.User.updateOne({ telegramId: userId }, { $set: { customEraserBtnMsgId: btnMsg.message_id } });
+        return;
+    }
+    if (data.startsWith('cgz_') && data !== 'cgz_more' && data !== 'cgz_process' && data !== 'cgz_back') {
+        const N = parseInt(data.replace('cgz_', ''));
+        if (isNaN(N))
+            return;
+        const userId = ctx.from.id.toString();
+        const user = await User_1.User.findOne({ telegramId: userId });
+        if (!user || !user.awaitingCustomEraserZone)
+            return;
+        if (user.customEraserSelectedCells?.includes(N)) {
+            await ctx.answerCallbackQuery({ text: 'هذا المربع محدد مسبقاً ✅', show_alert: false }).catch(() => { });
+            return;
+        }
+        const MAX_CELLS = (user.customEraserGridSize ?? 0) >= 100 ? 10 : 6;
+        if ((user.customEraserSelectedCells?.length || 0) >= MAX_CELLS) {
+            await ctx.answerCallbackQuery({
+                text: `⚠️ وصلت للحد الأقصى (${MAX_CELLS} مربعات). اضغط "عالج الصورة" للمتابعة.`,
+                show_alert: true
+            }).catch(() => { });
+            return;
+        }
+        const selectedCells = user.customEraserSelectedCells || [];
+        selectedCells.push(N);
+        user.customEraserSelectedCells = selectedCells;
+        await user.save();
+        await ctx.answerCallbackQuery({ text: `✅ تم إضافة المربع ${N}`, show_alert: false }).catch(() => { });
+        if (user.customEraserBtnMsgId) {
+            await ctx.api.deleteMessage(ctx.chat.id, user.customEraserBtnMsgId).catch(() => { });
+        }
+        const count = selectedCells.length;
+        const list = selectedCells.join(', ');
+        const gridSize = user.customEraserGridSize || 30;
+        const kb = buildCellKeyboard(gridSize, selectedCells);
+        const newBtnMsg = await ctx.reply(`✅ <b>تم اختيار ${count} مربع/مربعات:</b> ${list}\n\nهل تريد إضافة مربع آخر أم تبدأ المعالجة؟`, { parse_mode: 'HTML', reply_markup: kb });
+        user.customEraserBtnMsgId = newBtnMsg.message_id;
+        await user.save();
+        return;
+    }
+    if (data === 'cancel_custom_eraser') {
+        await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
+        const user = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+        if (user?.customEraserBtnMsgId) {
+            await ctx.api.deleteMessage(ctx.chat.id, user.customEraserBtnMsgId).catch(() => { });
+        }
+        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { $set: { awaitingCustomEraserImage: false, awaitingCustomEraserZone: false, customEraserFileId: '', customEraserSelectedCells: [], customEraserBtnMsgId: null, customEraserGridSize: 0 } });
+        await ctx.reply('تم الإلغاء ❌');
         return;
     }
     if (data === 'cancel_auto_eraser') {
@@ -1954,6 +2477,100 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: updatedKeyboard },
         }).catch(() => { });
+        return;
+    }
+    // ── GIVEAWAY: Admin starts setup ─────────────────────────────────────────
+    if (data === 'admin_giveaway_start' && isAdminUser) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { 'giveawaySetup.step': 'gw_winners' } });
+        await ctx.reply('🎁 <b>إعداد عجلة الحظ والتوزيعات</b>\n\n' +
+            '━━━━━━━━━━━━━━━━━\n' +
+            '👥 <b>الخطوة 1/3</b>\n' +
+            'أرسل <b>عدد الفائزين</b> في هذه التوزيعة\n' +
+            '<i>مثال: 50</i>', { parse_mode: 'HTML' });
+        return;
+    }
+    // ── GIVEAWAY: Roll handler (user presses button in channel) ──────────────
+    if (data === 'gw_roll_init') {
+        const { Giveaway } = await Promise.resolve().then(() => __importStar(require('../../database/models/Giveaway')));
+        const messageId = ctx.callbackQuery?.message?.message_id;
+        const giveaway = await Giveaway.findOne({ messageId });
+        if (!giveaway || !giveaway.isActive) {
+            await ctx.answerCallbackQuery({
+                text: '⏰ انتهت هذه التوزيعة!\nترقبوا التوزيعات القادمة 🚀',
+                show_alert: true,
+            });
+            return;
+        }
+        const userId = ctx.from.id.toString();
+        // Already participated check
+        if (giveaway.participants.includes(userId)) {
+            const isWinner = giveaway.winners.includes(userId);
+            await ctx.answerCallbackQuery({
+                text: isWinner
+                    ? '🏆 أنت من الفائزين في هذه التوزيعة! محاولاتك تم إضافتها مسبقاً ✅'
+                    : '⚠️ لقد جربت حظك مسبقاً في هذه التوزيعة!\nانتظر التوزيعات القادمة 🎯',
+                show_alert: true,
+            });
+            return;
+        }
+        // User must have started the bot
+        const participant = await User_1.User.findOne({ telegramId: userId });
+        if (!participant) {
+            await ctx.answerCallbackQuery({
+                text: '⚠️ يجب البدء بالبوت أولاً!\nأرسل /start للبوت وعد مرة أخرى 🤖',
+                show_alert: true,
+            });
+            return;
+        }
+        // Atomic add to participants (race-condition safe)
+        const updated = await Giveaway.findOneAndUpdate({ _id: giveaway._id, participants: { $ne: userId }, isActive: true }, { $push: { participants: userId } }, { new: true });
+        if (!updated) {
+            await ctx.answerCallbackQuery({
+                text: '⚠️ لقد جربت حظك مسبقاً!\nانتظر التوزيعات القادمة 🎯',
+                show_alert: true,
+            });
+            return;
+        }
+        // Smart probability: active users (totalEnhancements ≥ 5) → 70%, others → 20%
+        const isActiveUser = (participant.totalEnhancements ?? 0) >= 5;
+        const winChance = isActiveUser ? 0.70 : 0.20;
+        const hasWon = Math.random() < winChance &&
+            updated.currentWinners < updated.maxWinners;
+        if (hasWon) {
+            const reward = Math.floor(Math.random() * (updated.maxReward - updated.minReward + 1)) +
+                updated.minReward;
+            await User_1.User.updateOne({ telegramId: userId }, { $inc: { dailyQuota: reward } });
+            await Giveaway.updateOne({ _id: giveaway._id }, { $inc: { currentWinners: 1 }, $push: { winners: userId } });
+            await ctx.answerCallbackQuery({
+                text: `🎉🎉 مبـــروووووك يا بطل! 🎉🎉\n\n` +
+                    `🏆 ربحت ${reward} محاولات مجانية!\n` +
+                    `✅ تمت إضافتها لرصيدك فوراً\n\n` +
+                    `شكراً لتفاعلك مع البوت 💎`,
+                show_alert: true,
+            });
+            // Close giveaway if all winners claimed
+            const fresh = await Giveaway.findById(giveaway._id);
+            if (fresh && fresh.currentWinners >= fresh.maxWinners) {
+                await Giveaway.updateOne({ _id: giveaway._id }, { $set: { isActive: false } });
+                try {
+                    await ctx.api.editMessageText(updated.channelId, updated.messageId, `🎉 <b>توزيعات NizoAI Bot</b>\n\n` +
+                        `✅ <b>انتهت التوزيعة بنجاح!</b>\n` +
+                        `تم توزيع جميع الجوائز على ${fresh.maxWinners} فائز محظوظ 🏆\n\n` +
+                        `🔔 تابعونا للتوزيعات القادمة! 🚀`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } });
+                }
+                catch (_) { /* channel edit may fail — silent */ }
+            }
+        }
+        else {
+            await ctx.answerCallbackQuery({
+                text: `💔 عذراً صديقي، لم يحالفك الحظ هذه المرة\n\n` +
+                    `💡 نصيحة: المستخدمون النشطون لديهم فرص أعلى!\n` +
+                    `🎯 استخدم البوت أكثر وستزداد فرصك 🚀\n\n` +
+                    `انتظر التوزيعات القادمة 🎁`,
+                show_alert: true,
+            });
+        }
         return;
     }
 }

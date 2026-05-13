@@ -60,6 +60,10 @@ const UserSchema = new mongoose_1.Schema({
     lastRewardDate: { type: Date, default: null },
     isBanned: { type: Boolean, default: false },
     isRestricted: { type: Boolean, default: false },
+    isPermBanned: { type: Boolean, default: false },
+    isAppealing: { type: Boolean, default: false },
+    adminActionState: { type: String, default: '' },
+    adminTargetId: { type: String, default: '' },
     lastSeen: {
         type: Date,
         default: () => new Date(),
@@ -106,9 +110,13 @@ const UserSchema = new mongoose_1.Schema({
     awaitingNanoBananaImage: { type: Boolean, default: false },
     awaitingEraserImage: { type: Boolean, default: false },
     awaitingEraserOriginal: { type: Boolean, default: false },
-    awaitingMarkedImage: { type: Boolean, default: false },
-    awaitingRawImage: { type: Boolean, default: false },
-    markedImageFileId: { type: String, default: '' },
+    awaitingCustomEraserImage: { type: Boolean, default: false },
+    awaitingCustomEraserZone: { type: Boolean, default: false },
+    customEraserFileId: { type: String, default: '' },
+    customEraserSelectedCells: { type: [Number], default: [] },
+    customEraserBtnMsgId: { type: Number, default: null },
+    customEraserGridBuffer: { type: String, default: '' },
+    customEraserGridSize: { type: Number, default: 0 },
     eraserCoords: {
         type: {
             minX: { type: Number, default: null },
@@ -137,6 +145,8 @@ const UserSchema = new mongoose_1.Schema({
     lastEraserResultBuffer: { type: String, default: null },
     lastEraserResultMsgId: { type: Number, default: null },
     awaitingAutoEraserImage: { type: Boolean, default: false },
+    awaitingFilterImage: { type: Boolean, default: false },
+    selectedFilterType: { type: String, default: '' },
     vipSizeBypass: { type: Boolean, default: false },
     successfulReferrals: { type: Number, default: 0 },
     canBypassLocks: { type: Boolean, default: false },
@@ -146,7 +156,12 @@ const UserSchema = new mongoose_1.Schema({
     documentLines: {
         type: [{
                 text: { type: String, required: true },
-                align: { type: String, enum: ['right', 'center', 'left'], default: 'right' }
+                align: { type: String, enum: ['right', 'center', 'left'], default: 'right' },
+                bold: { type: Boolean, default: false },
+                italic: { type: Boolean, default: false },
+                underline: { type: Boolean, default: false },
+                size: { type: String, enum: ['small', 'normal', 'large'], default: 'normal' },
+                style: { type: String, enum: ['normal', 'quote', 'divider', 'highlight'], default: 'normal' },
             }],
         default: []
     },
@@ -189,6 +204,17 @@ const UserSchema = new mongoose_1.Schema({
             },
         },
         default: null,
+    },
+    // Giveaway setup state (admin only)
+    giveawaySetup: {
+        type: {
+            step: { type: String, default: null },
+            maxWinners: { type: Number, default: 0 },
+            minReward: { type: Number, default: 0 },
+            maxReward: { type: Number, default: 0 },
+            channelId: { type: String, default: '' },
+        },
+        default: () => ({ step: null, maxWinners: 0, minReward: 0, maxReward: 0, channelId: '' }),
     },
 }, {
     timestamps: false,

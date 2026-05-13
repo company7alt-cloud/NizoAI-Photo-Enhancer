@@ -33,20 +33,21 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LockSettings = void 0;
+exports.Giveaway = void 0;
+// src/database/models/Giveaway.ts
 const mongoose_1 = __importStar(require("mongoose"));
-const LockSettingsSchema = new mongoose_1.Schema({
-    locks: {
-        btn_2k: { type: Boolean, default: false },
-        btn_4k: { type: Boolean, default: false },
-        btn_8k: { type: Boolean, default: true },
-        btn_4kai: { type: Boolean, default: false },
-        btn_8kai: { type: Boolean, default: true },
-        btn_nano: { type: Boolean, default: false },
-        btn_eraser: { type: Boolean, default: false },
-        btn_doc_maker: { type: Boolean, default: false },
-        btn_filters: { type: Boolean, default: false },
-    }
-}, { collection: 'lock_settings' });
-exports.LockSettings = mongoose_1.default.model('LockSettings', LockSettingsSchema);
-//# sourceMappingURL=LockSettings.js.map
+const giveawaySchema = new mongoose_1.Schema({
+    channelId: { type: String, required: true },
+    messageId: { type: Number, required: true },
+    maxWinners: { type: Number, required: true },
+    currentWinners: { type: Number, default: 0 },
+    minReward: { type: Number, required: true },
+    maxReward: { type: Number, required: true },
+    participants: { type: [String], default: [] },
+    winners: { type: [String], default: [] },
+    isActive: { type: Boolean, default: true },
+    createdAt: { type: Date, default: Date.now },
+});
+exports.Giveaway = mongoose_1.default.models.Giveaway ||
+    mongoose_1.default.model('Giveaway', giveawaySchema);
+//# sourceMappingURL=Giveaway.js.map

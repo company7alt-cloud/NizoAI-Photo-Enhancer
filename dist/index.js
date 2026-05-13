@@ -59,6 +59,7 @@ const callbackHandler_1 = require("./bot/handlers/callbackHandler");
 const forceSubMiddleware_1 = require("./bot/middlewares/forceSubMiddleware");
 const ForceSubChannel_1 = require("./database/models/ForceSubChannel");
 const botTextsService_1 = require("./services/botTextsService");
+const settingsService_1 = require("./services/settingsService");
 // ─── Bot Instance ──────────────────────────────────────────────────────────────
 const bot = new grammy_1.Bot(process.env.BOT_TOKEN);
 // ─── Middlewares ───────────────────────────────────────────────────────────────
@@ -123,6 +124,28 @@ bot.use(async (ctx, next) => {
 bot.command('start', start_1.startCommand);
 (0, admin_1.registerAdminCommands)(bot);
 bot.command('invite', start_1.inviteCommand);
+// ─── 🎨 فلاتر الصور ──────────────────────────────────────────────────────────
+bot.hears('🎨 فلاتر الصور', async (ctx) => {
+    const settings = await (0, settingsService_1.getSettings)();
+    const adminIds = (process.env.ADMIN_IDS || '').split(',');
+    const isAdmin = adminIds.includes(ctx.from.id.toString());
+    if (settings.locks.btn_filters && !isAdmin) {
+        await ctx.reply('🔒 قسم الفلاتر مغلق مؤقتاً. تابعنا للتحديثات ✨');
+        return;
+    }
+    await ctx.reply('🎨 <b>فلاتر ومعالجة الصور الاحترافية</b>\n\n' +
+        'اختر الفلتر الذي تريد تطبيقه على صورتك:\n\n' +
+        '👤 <b>تصفية الوجه</b> — يحسن الملامح ويزيل التشويش\n' +
+        '🎨 <b>تلوين الصور القديمة</b> — يلون الأبيض والأسود\n' +
+        '🌸 <b>تحويل إلى أنمي</b> — يحول صورتك لأنمي احترافي\n' +
+        '✨ <b>تأثير جيبلي فني</b> — فن رقمي ساحر', {
+        parse_mode: 'HTML',
+        reply_markup: new grammy_1.InlineKeyboard()
+            .text('👤 تصفية الوجه', 'filter_face').text('🎨 تلوين الصور', 'filter_color').row()
+            .text('🌸 تحويل أنمي', 'filter_anime').text('✨ تأثير جيبلي', 'filter_ghibli').row()
+            .text('❌ إلغاء', 'cancel_filter')
+    });
+});
 // ─── /endchat — Admin closes the active support session ───────────────────────
 bot.command('endchat', async (ctx) => {
     const telegramId = ctx.from?.id.toString();
@@ -487,6 +510,110 @@ bot.on('message:text', async (ctx, next) => {
             return;
         }
     }
+    // ── GIVEAWAY SETUP FLOW (admin only) ─────────────────────────────────────
+    if (isAdm) {
+        const adminUser2 = await User_1.User.findOne({ telegramId: telegramId });
+        const gwSetup = adminUser2?.giveawaySetup;
+        const gwStep = gwSetup?.step ?? null;
+        if (gwStep === 'gw_winners') {
+            const count = parseInt(messageText.trim());
+            if (isNaN(count) || count < 1) {
+                await ctx.reply('⚠️ يرجى إرسال رقم صحيح أكبر من صفر.');
+                return;
+            }
+            await User_1.User.updateOne({ telegramId }, { $set: { 'giveawaySetup.maxWinners': count, 'giveawaySetup.step': 'gw_min_reward' } });
+            await ctx.reply(`✅ عدد الفائزين: <b>${count}</b>\n\n` +
+                `━━━━━━━━━━━━━━━━━\n` +
+                `🎁 <b>الخطوة 2/3</b>\n` +
+                `أرسل <b>الحد الأدنى للجائزة</b> (بالمحاولات)\n` +
+                `<i>مثال: 1</i>`, { parse_mode: 'HTML' });
+            return;
+        }
+        if (gwStep === 'gw_min_reward') {
+            const min = parseInt(messageText.trim());
+            if (isNaN(min) || min < 1) {
+                await ctx.reply('⚠️ يرجى إرسال رقم صحيح أكبر من صفر.');
+                return;
+            }
+            await User_1.User.updateOne({ telegramId }, { $set: { 'giveawaySetup.minReward': min, 'giveawaySetup.step': 'gw_max_reward' } });
+            await ctx.reply(`✅ الحد الأدنى للجائزة: <b>${min} محاولات</b>\n\n` +
+                `━━━━━━━━━━━━━━━━━\n` +
+                `💰 أرسل <b>الحد الأقصى للجائزة</b>\n` +
+                `<i>مثال: 10 (سيوزع عشوائياً من ${min} إلى 10)</i>`, { parse_mode: 'HTML' });
+            return;
+        }
+        if (gwStep === 'gw_max_reward') {
+            const max = parseInt(messageText.trim());
+            const min = gwSetup?.minReward ?? 1;
+            if (isNaN(max) || max < min) {
+                await ctx.reply(`⚠️ يجب أن يكون الحد الأقصى أكبر من أو يساوي ${min}.`);
+                return;
+            }
+            await User_1.User.updateOne({ telegramId }, { $set: { 'giveawaySetup.maxReward': max, 'giveawaySetup.step': 'gw_channel' } });
+            await ctx.reply(`✅ نطاق الجائزة: <b>${min} — ${max} محاولات</b>\n\n` +
+                `━━━━━━━━━━━━━━━━━\n` +
+                `📢 <b>الخطوة 3/3</b>\n` +
+                `أرسل <b>معرف القناة</b> أو ID القناة لنشر التوزيعة\n` +
+                `<i>مثال: @MyChannel أو -1001234567890</i>\n\n` +
+                `⚠️ تأكد أن البوت مشرف في القناة`, { parse_mode: 'HTML' });
+            return;
+        }
+        if (gwStep === 'gw_channel') {
+            const channelId = messageText.trim();
+            if (!gwSetup?.maxWinners) {
+                await ctx.reply('❌ حدث خطأ في الإعداد. ابدأ من جديد.');
+                await User_1.User.updateOne({ telegramId }, { $set: { 'giveawaySetup.step': null } });
+                return;
+            }
+            const { Giveaway } = await Promise.resolve().then(() => __importStar(require('./database/models/Giveaway')));
+            try {
+                const giveawayText = `🎉 <b>توزيعات NizoAI Bot</b> 🎁\n\n` +
+                    `━━━━━━━━━━━━━━━━━━━\n` +
+                    `🏆 <b>فرصة ذهبية لربح محاولات مجانية!</b>\n` +
+                    `━━━━━━━━━━━━━━━━━━━\n\n` +
+                    `💎 <b>الجائزة:</b> من ${gwSetup.minReward} إلى ${gwSetup.maxReward} محاولات عشوائياً\n` +
+                    `👥 <b>عدد الفائزين:</b> ${gwSetup.maxWinners} شخص محظوظ\n\n` +
+                    `⚡ المستخدمون النشطون لديهم فرص أعلى للفوز!\n\n` +
+                    `👇 <b>اضغط الزر واكتشف حظك الآن!</b>`;
+                const msg = await ctx.api.sendMessage(channelId, giveawayText, {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [[
+                                { text: '🍀 جرب حظك الآن 🟢', callback_data: 'gw_roll_init' }
+                            ]]
+                    }
+                });
+                await Giveaway.create({
+                    channelId,
+                    messageId: msg.message_id,
+                    maxWinners: gwSetup.maxWinners,
+                    minReward: gwSetup.minReward,
+                    maxReward: gwSetup.maxReward,
+                });
+                await User_1.User.updateOne({ telegramId }, { $set: { 'giveawaySetup.step': null } });
+                const safeChannel = channelId.replace('@', '');
+                await ctx.reply(`✅ <b>تم نشر التوزيعة بنجاح!</b> 🎉\n\n` +
+                    `📢 القناة: <code>${channelId}</code>\n` +
+                    `👥 الفائزون: ${gwSetup.maxWinners}\n` +
+                    `🎁 الجوائز: ${gwSetup.minReward}–${gwSetup.maxReward} محاولات\n\n` +
+                    `💡 يمكنك إعادة نشر رسالة التوزيعة في أي وقت`, {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [[
+                                { text: '📤 عرض رسالة التوزيعة', url: `https://t.me/${safeChannel}/${msg.message_id}` }
+                            ]]
+                    }
+                });
+            }
+            catch (err) {
+                await ctx.reply(`❌ <b>فشل النشر!</b>\n\n` +
+                    `تأكد أن البوت مشرف في القناة وأن المعرف صحيح.\n` +
+                    `<code>${err.message}</code>`, { parse_mode: 'HTML' });
+                await User_1.User.updateOne({ telegramId }, { $set: { 'giveawaySetup.step': null } });
+            }
+            return;
+        }
+    }
     // 3. Fund Campaign Logic (Priority 3 - Kept exactly as original)
     const { isFundCampaignPending, handleFundCampaignInput, broadcastFundCampaign } = await Promise.resolve().then(() => __importStar(require('./services/channelFundService')));
     if (isAdm && isFundCampaignPending(ctx.from.id)) {
@@ -508,6 +635,49 @@ bot.on('message:text', async (ctx, next) => {
         else if (result.status === 'invalid_target') {
             await ctx.reply('❌ عدد غير صحيح.');
         }
+        return;
+    }
+    // 3b. Admin User Control — waiting for target User ID (adminActionState)
+    const adminUser = await User_1.User.findOne({ telegramId: telegramId });
+    if (adminUser && adminUser.adminActionState && adminUser.adminActionState.startsWith('auc_')) {
+        const targetId = ctx.message?.text?.trim();
+        if (!targetId) {
+            await ctx.reply('❌ أرسل ID المستخدم كرقم فقط.');
+            return;
+        }
+        const actionState = adminUser.adminActionState; // e.g. "auc_ban"
+        const action = actionState.replace('auc_', ''); // "ban" | "restrict" | "unban" | "unrestrict" | "info"
+        const actionLabelMap = {
+            ban: 'حظر', restrict: 'تقييد',
+            unban: 'فك حظر', unrestrict: 'فك تقييد', info: 'استعلام عن'
+        };
+        if (action === 'info') {
+            const targetUser = await User_1.User.findOne({ telegramId: targetId });
+            if (!targetUser) {
+                await ctx.reply('❌ لم يتم العثور على مستخدم بهذا الـ ID.');
+            }
+            else {
+                await ctx.reply(`ℹ️ <b>معلومات العميل</b>\n\n` +
+                    `🆔 ID: <code>${targetUser.telegramId}</code>\n` +
+                    `👤 Username: @${targetUser.username || 'غير محدد'}\n` +
+                    `⚡ المحاولات: ${targetUser.dailyQuota}\n` +
+                    `🚫 محظور: ${targetUser.isBanned ? 'نعم' : 'لا'}\n` +
+                    `⚠️ مقيد: ${targetUser.isRestricted ? 'نعم' : 'لا'}`, { parse_mode: 'HTML' });
+            }
+            await User_1.User.updateOne({ telegramId: telegramId }, { $set: { adminActionState: '' } });
+            return;
+        }
+        const labelMap = actionLabelMap[action] || action;
+        await ctx.reply(`⚠️ <b>تأكيد الإجراء</b>\n\n` +
+            `الإجراء: <b>${labelMap}</b>\n` +
+            `العميل: <code>${targetId}</code>\n\n` +
+            `هل أنت متأكد؟`, {
+            parse_mode: 'HTML',
+            reply_markup: new grammy_1.InlineKeyboard()
+                .text(`✅ نعم، ${labelMap}`, `auc_confirm_${action}_${targetId}`)
+                .text('❌ إلغاء', 'admin_cancel_action')
+        });
+        await User_1.User.updateOne({ telegramId: telegramId }, { $set: { adminActionState: '' } });
         return;
     }
     // 4. Strict Admin -> User Support Routing (Admin is sending a message during an active session)
@@ -570,6 +740,49 @@ bot.on([':photo', ':document'], async (ctx, next) => {
     const user = await User_1.User.findOne({ telegramId });
     const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
     const isAdm = adminIds.includes(telegramId || '');
+    // ══════════════════════════════════════════════════════════════
+    // DOC SESSION TRAP — intercepts photos/docs for users in a doc session.
+    // Must be FIRST check so the 4K/Nano/AI pipeline is never reached.
+    // ══════════════════════════════════════════════════════════════
+    const docState = ctx.session?.docState;
+    if (docState === 'active' || docState === 'awaiting_custom_img_lines') {
+        // CASE A: awaiting custom line count — only text is expected; photos/docs ignored
+        if (docState === 'awaiting_custom_img_lines') {
+            // No photo/doc action here — this sub-state only accepts numeric text.
+            // The text handler in handleDocMakerMessage handles it.
+            // Simply acknowledge and re-prompt.
+            await ctx.reply('⚠️ أرسل رقماً صحيحاً بين 1 و50 لتحديد المساحة، ليس صورة.');
+            return; // Stop — do NOT reach 4K/Nano/AI
+        }
+        // CASE B: User sends image/document during active doc session
+        const isPhoto = !!ctx.message?.photo;
+        const isImageDoc = !!ctx.message?.document &&
+            ((ctx.message.document.mime_type?.startsWith('image/')) ?? false);
+        if (isPhoto || isImageDoc) {
+            const fileId = isPhoto
+                ? ctx.message.photo[ctx.message.photo.length - 1].file_id
+                : ctx.message.document.file_id;
+            // CRITICAL: NO align or mask defaults — force explicit user selection
+            ctx.session.tempImage = { fileId };
+            await ctx.reply('🖼 <b>تم استلام الصورة!</b>\n\n📏 كم سطراً تريد تخصيصها للصورة في المستند؟', {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '📏 افتراضي — 5 أسطر', callback_data: 'doc_img_space_5' }],
+                        [{ text: '📐 كبير — 10 أسطر', callback_data: 'doc_img_space_10' }],
+                        [{ text: '✍️ تخصيص العدد...', callback_data: 'doc_img_space_custom' }],
+                        [{ text: '🔙 إلغاء', callback_data: 'doc_back_to_session' }],
+                    ],
+                },
+            });
+            return; // STOPS 4K/Nano/AI from triggering
+        }
+        // CASE C: Non-image message (text) during active session
+        // Fall through — let the existing message text handler process it.
+    }
+    // ══════════════════════════════════════════════════════════════
+    // END DOC SESSION TRAP — normal bot logic resumes below
+    // ══════════════════════════════════════════════════════════════
     // 1. Admin -> User (Confirm media sending)
     if (isAdm) {
         const activeUser = await User_1.User.findOne({
@@ -757,6 +970,12 @@ async function bootstrap() {
             drop_pending_updates: true,
             onStart: (info) => {
                 console.log(`[Bot] 🚀 Polling started for @${info.username}`);
+                // Preload ONNX model in background (non-blocking)
+                Promise.resolve().then(() => __importStar(require('./services/onnxEnhanceService'))).then(({ warmupONNX }) => warmupONNX?.())
+                    .catch(() => { });
+                // Start fake counter engine
+                Promise.resolve().then(() => __importStar(require('./services/fakeCounterService'))).then(({ startFakeCounterEngine }) => startFakeCounterEngine())
+                    .catch(err => console.error('[Bot] Failed to start fake counter engine', err));
             },
         });
     }

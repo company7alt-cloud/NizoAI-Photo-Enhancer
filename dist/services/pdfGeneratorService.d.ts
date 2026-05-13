@@ -15,12 +15,18 @@ export interface PdfGeneratorParams {
     templateId?: number | null;
     pages: PdfPageParams[];
 }
+export interface RichLine {
+    text: string;
+    align: 'right' | 'center' | 'left';
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    size?: 'small' | 'normal' | 'large';
+    style?: 'normal' | 'quote' | 'divider' | 'highlight';
+}
 export declare function generateDocument(params: PdfGeneratorParams): Promise<Buffer>;
 export interface AlignedLine {
     text: string;
     align: 'right' | 'center' | 'left';
 }
-export declare function generateDocumentFromLines(lines: AlignedLine[], pageSize?: string): Promise<{
-    buffer: Buffer;
-    pageCount: number;
-}>;
+export declare function generateDocumentFromLines(lines: (RichLine | AlignedLine)[], pageSize?: string, selectedFont?: string): Promise<Buffer>;
