@@ -158,7 +158,114 @@ bot.command('endchat', async (ctx) => {
   );
 });
 
+// ══════════════════════════════════════════════════════════════
+// DOC SESSION TRAP — intercepts photos/docs/text for users in a doc session.
+// ══════════════════════════════════════════════════════════════
+bot.on('message', async (ctx, next) => {
+  const docState = (ctx.session as any)?.docState as string | null | undefined;
+
+  if (docState === 'active' || docState === 'awaiting_custom_img_lines') {
+
+    // ── CASE 1: Custom line number input — MUST be checked FIRST ──
+    if (docState === 'awaiting_custom_img_lines') {
+      if (!ctx.message?.text) {
+        await ctx.reply(
+          '⚠️ أرسل رقماً فقط (مثال: 10)',
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+      const num = parseInt(ctx.message.text.trim());
+      if (isNaN(num) || num < 1 || num > 50) {
+        await ctx.reply('⚠️ أرسل رقماً صحيحاً بين 1 و50 فقط.');
+        return;
+      }
+      if (!(ctx.session as any).tempImage) {
+        await ctx.reply('⚠️ انتهت صلاحية الصورة، أرسلها مجدداً.');
+        (ctx.session as any).docState = 'active';
+        return;
+      }
+      // Save line count and move to format/mask menu
+      (ctx.session as any).tempImage.lines = num;
+      (ctx.session as any).docState = 'active';
+      const { showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
+      await showImageFormatMenu(ctx as any);
+      return; // ← CRITICAL: must return here
+    }
+
+    // ── CASE 2: Image sent during active session ──
+    const isPhoto = !!ctx.message?.photo;
+    const isImageDoc =
+      !!ctx.message?.document &&
+      ((ctx.message.document.mime_type?.startsWith('image/')) ?? false);
+
+    if (isPhoto || isImageDoc) {
+      // guard: if tempImage already exists, user must finish it first
+      if ((ctx.session as any).tempImage?.fileId) {
+        await ctx.reply(
+          '⚠️ <b>أكمل إعدادات الصورة الحالية أولاً</b>\nأو اضغط إلغاء الصورة.',
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }
+              ]]
+            }
+          }
+        );
+        return;
+      }
+
+      const fileId = isPhoto
+        ? ctx.message!.photo![ctx.message!.photo!.length - 1].file_id
+        : ctx.message!.document!.file_id;
+
+      // NO defaults for align/mask — force explicit selection
+      (ctx.session as any).tempImage = { fileId };
+
+      await ctx.reply(
+        '🖼 <b>تم استلام الصورة!</b>\n\n📏 كم سطراً تريد تخصيصها للصورة في المستند؟',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📏 افتراضي — 5 أسطر', callback_data: 'doc_img_space_5' }],
+              [{ text: '📐 كبير — 10 أسطر', callback_data: 'doc_img_space_10' }],
+              [{ text: '✍️ تخصيص العدد...', callback_data: 'doc_img_space_custom' }],
+              [{ text: '🔙 إلغاء', callback_data: 'doc_back_to_session' }]
+            ]
+          }
+        }
+      );
+      return; // ← stops 4K/Nano/AI handler
+    }
+
+    // ── CASE 3: Text during active session with pending tempImage ──
+    if ((ctx.session as any).tempImage?.fileId) {
+      await ctx.reply(
+        '⚠️ <b>أكمل إعدادات الصورة أولاً</b>\nاختر المحاذاة والإطار، أو اضغط إلغاء.',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }
+            ]]
+          }
+        }
+      );
+      return;
+    }
+
+    // ── CASE 4: Normal text during active session ──
+    // Fall through to existing doc text handler below
+  }
+  // END SESSION TRAP
+  
+  await next();
+});
+
 bot.on('message:text', async (ctx, next) => {
+  if ((ctx.session as any)?.docState === 'awaiting_custom_img_lines') return;
   const telegramId = ctx.from?.id.toString();
   const user = await User.findOne({ telegramId });
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
@@ -900,60 +1007,7 @@ bot.on([':photo', ':document'], async (ctx, next) => {
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
   const isAdm = adminIds.includes(telegramId || '');
 
-  // ══════════════════════════════════════════════════════════════
-  // DOC SESSION TRAP — intercepts photos/docs for users in a doc session.
-  // Must be FIRST check so the 4K/Nano/AI pipeline is never reached.
-  // ══════════════════════════════════════════════════════════════
-  const docState = (ctx.session as any)?.docState as string | null | undefined;
 
-  if (docState === 'active' || docState === 'awaiting_custom_img_lines') {
-
-    // CASE A: awaiting custom line count — only text is expected; photos/docs ignored
-    if (docState === 'awaiting_custom_img_lines') {
-      // No photo/doc action here — this sub-state only accepts numeric text.
-      // The text handler in handleDocMakerMessage handles it.
-      // Simply acknowledge and re-prompt.
-      await ctx.reply('⚠️ أرسل رقماً صحيحاً بين 1 و50 لتحديد المساحة، ليس صورة.');
-      return; // Stop — do NOT reach 4K/Nano/AI
-    }
-
-    // CASE B: User sends image/document during active doc session
-    const isPhoto = !!ctx.message?.photo;
-    const isImageDoc =
-      !!ctx.message?.document &&
-      ((ctx.message.document.mime_type?.startsWith('image/')) ?? false);
-
-    if (isPhoto || isImageDoc) {
-      const fileId = isPhoto
-        ? ctx.message!.photo![ctx.message!.photo!.length - 1].file_id
-        : ctx.message!.document!.file_id;
-
-      // CRITICAL: NO align or mask defaults — force explicit user selection
-      (ctx.session as any).tempImage = { fileId };
-
-      await ctx.reply(
-        '🖼 <b>تم استلام الصورة!</b>\n\n📏 كم سطراً تريد تخصيصها للصورة في المستند؟',
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '📏 افتراضي — 5 أسطر',  callback_data: 'doc_img_space_5' }],
-              [{ text: '📐 كبير — 10 أسطر',    callback_data: 'doc_img_space_10' }],
-              [{ text: '✍️ تخصيص العدد...', callback_data: 'doc_img_space_custom' }],
-              [{ text: '🔙 إلغاء',              callback_data: 'doc_back_to_session' }],
-            ],
-          },
-        }
-      );
-      return; // STOPS 4K/Nano/AI from triggering
-    }
-
-    // CASE C: Non-image message (text) during active session
-    // Fall through — let the existing message text handler process it.
-  }
-  // ══════════════════════════════════════════════════════════════
-  // END DOC SESSION TRAP — normal bot logic resumes below
-  // ══════════════════════════════════════════════════════════════
 
   // 1. Admin -> User (Confirm media sending)
   if (isAdm) {

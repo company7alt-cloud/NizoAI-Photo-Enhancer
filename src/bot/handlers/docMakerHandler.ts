@@ -911,23 +911,6 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
   const text = ctx.message?.text?.trim();
   if (!text || text.startsWith('/')) return false;
 
-  // ── GUARD: awaiting custom image line count ───────────────────────────────
-  if (ctx.session.docState === 'awaiting_custom_img_lines') {
-    if (!ctx.session.tempImage?.fileId) {
-      await ctx.reply('⚠️ انتهت الجلسة، أرسل الصورة مجدداً.');
-      ctx.session.docState = 'active';
-      return true;
-    }
-    const num = parseInt(text);
-    if (isNaN(num) || num < 1 || num > 50) {
-      await ctx.reply('⚠️ أرسل رقماً صحيحاً بين 1 و50 فقط.');
-      return true;
-    }
-    ctx.session.tempImage.lines = num;
-    ctx.session.docState = 'active';
-    await showImageFormatMenu(ctx);
-    return true;
-  }
 
   // ── GUARD: active session with pending image config ───────────────────────
   if (ctx.session.docState === 'active' && ctx.session.tempImage?.fileId) {
@@ -1058,7 +1041,7 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
 
 // ── Image Format Menu Helper ───────────────────────────────────────────────────
 
-async function showImageFormatMenu(ctx: BotContext): Promise<void> {
+export async function showImageFormatMenu(ctx: BotContext): Promise<void> {
   await ctx.editMessageText(
     '🎨 <b>تنسيق الصورة:</b>\n\n' +
     'اختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:',
