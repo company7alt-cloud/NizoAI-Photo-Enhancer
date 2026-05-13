@@ -228,7 +228,8 @@ function renderRichLine(
   x: number,
   currentY: number,
   contentW: number,
-  baseSize: number
+  baseSize: number,
+  textColor: string = 'black'
 ): number {
   const style = line.style ?? 'normal';
 
@@ -280,7 +281,7 @@ function renderRichLine(
   }
 
   const prepared = prepareArabicText(line.text);
-  doc.fontSize(fontSize).fillColor('black');
+  doc.fontSize(fontSize).fillColor(textColor);
   doc.text(prepared, effectiveX, currentY, {
     width: effectiveW,
     align: line.align ?? 'right',
@@ -413,7 +414,9 @@ export interface AlignedLine {
 export async function generateDocumentFromLines(
   lines: (RichLine | AlignedLine)[],
   pageSize: string = 'A4',
-  selectedFont?: string
+  selectedFont?: string,
+  docBgColor?: string,
+  docTextColor?: string
 ): Promise<Buffer> {
   if (!lines || !Array.isArray(lines) || lines.length === 0) {
     throw new Error('No lines to generate');
@@ -449,8 +452,20 @@ export async function generateDocumentFromLines(
 
       let pageCount = 0;
 
+      const bgColor = docBgColor || '#FFFFFF';
+      const txtColor = docTextColor || '#000000';
+
+      const drawBackground = () => {
+        if (bgColor !== '#FFFFFF') {
+          doc.save();
+          doc.rect(0, 0, doc.page.width, doc.page.height).fill(bgColor);
+          doc.restore();
+        }
+      };
+
       const addPage = () => {
         doc.addPage();
+        drawBackground();
         pageCount++;
         const W = doc.page.width;
         const H = doc.page.height;
@@ -466,7 +481,7 @@ export async function generateDocumentFromLines(
 
       try { doc.font(chosenFont); } catch {}
 
-      doc.fontSize(BASE_SIZE).fillColor('black');
+      doc.fontSize(BASE_SIZE).fillColor(txtColor);
 
       for (const line of lines) {
         // CRASH FIX: skip null/undefined entries
@@ -513,7 +528,7 @@ export async function generateDocumentFromLines(
                 currentY = doc.page.margins.top ?? PADDING;
                 doc.y = currentY;
                 try { doc.font(chosenFont); } catch {}
-                doc.fontSize(BASE_SIZE).fillColor('black');
+                doc.fontSize(BASE_SIZE).fillColor(txtColor);
               }
 
               doc.image(imgBuffer, doc.page.margins.left, doc.y, {
@@ -537,7 +552,7 @@ export async function generateDocumentFromLines(
           ({ W, H } = addPage());
           currentY = PADDING;
           try { doc.font(chosenFont); } catch {}
-          doc.fontSize(BASE_SIZE).fillColor('black');
+          doc.fontSize(BASE_SIZE).fillColor(txtColor);
           continue;
         }
 
@@ -553,7 +568,7 @@ export async function generateDocumentFromLines(
           currentY = doc.page.margins.top ?? PADDING;
           doc.y = currentY;
           try { doc.font(chosenFont); } catch {}
-          doc.fontSize(BASE_SIZE).fillColor('black');
+          doc.fontSize(BASE_SIZE).fillColor(txtColor);
         }
 
         if (raw === '') {
@@ -562,7 +577,7 @@ export async function generateDocumentFromLines(
         }
 
         // Render rich line
-        const advance = renderRichLine(doc, richLine, PADDING, currentY, contentW, BASE_SIZE);
+        const advance = renderRichLine(doc, richLine, PADDING, currentY, contentW, BASE_SIZE, txtColor);
         currentY += advance;
       }
 

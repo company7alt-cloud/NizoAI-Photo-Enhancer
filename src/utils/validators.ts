@@ -58,6 +58,8 @@ export interface SessionData {
   customSizeDims?: { width: number; height: number; label: string }; // PDF points
   // Font & doc-session state
   selectedFont?: string;
+  docBgColor?: string;
+  docTextColor?: string;
   docState?: 'active' | 'awaiting_custom_img_lines' | null;
   tempImage?: {
     fileId: string;

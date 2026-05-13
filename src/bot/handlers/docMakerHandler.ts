@@ -184,6 +184,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       reply_markup: {
         inline_keyboard: [
           [{ text: '📄 مستند نصي', callback_data: 'doc_type_text' }],
+          [{ text: 'نموذج ملون 🎨', callback_data: 'doc_type_colored' }],
           [{ text: '🖼 مستند مصور 🔒', callback_data: 'doc_type_image_locked' }],
           [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
         ],
@@ -196,6 +197,8 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   if (data === 'doc_type_text' || data === 'doc_type_image') {
     await ctx.answerCallbackQuery();
     ctx.session.docType = data === 'doc_type_text' ? 'text' : 'image';
+    ctx.session.docBgColor = undefined;
+    ctx.session.docTextColor = undefined;
     await ctx.editMessageText(
       '🎨 <b>اختر نموذج التصميم:</b>\n\n' +
       '1️⃣ كلاسيكي نظيف (إطار رفيع)\n' +
@@ -661,7 +664,9 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       const pdfBuffer = await generateDocumentFromLines(
         safeLines,
         ctx.session.pageSize || 'A4',
-        ctx.session.selectedFont || 'Amiri'
+        ctx.session.selectedFont || 'Amiri',
+        ctx.session.docBgColor,
+        ctx.session.docTextColor
       );
 
       if (!pdfBuffer || pdfBuffer.length === 0) {
@@ -907,6 +912,98 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
+  // 1. Show 6 Background Colors
+  if (data === 'doc_type_colored') {
+    await ctx.editMessageText(
+      '🎨 <b>اختر لون خلفية المستند:</b>\n\nألوان هادئة واحترافية:',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'أسود هادئ 🖤', callback_data: 'doc_bg_#1A1A1A' },
+              { text: 'رمادي فاتح 🤍', callback_data: 'doc_bg_#F8F9FA' }
+            ],
+            [
+              { text: 'كحلي ليلي 🌌', callback_data: 'doc_bg_#1B263B' },
+              { text: 'مريمية هادئ 🌿', callback_data: 'doc_bg_#8F9779' }
+            ],
+            [
+              { text: 'بيج كلاسيكي 📜', callback_data: 'doc_bg_#F5F5DC' },
+              { text: 'عنابي داكن 🍷', callback_data: 'doc_bg_#4A232C' }
+            ],
+            [{ text: '❌ إلغاء', callback_data: 'doc_cancel_end' }]
+          ]
+        }
+      }
+    );
+    return true;
+  }
+
+  // 2. Save Background & Show 12 Text Colors
+  if (data.startsWith('doc_bg_')) {
+    ctx.session.docBgColor = data.replace('doc_bg_', '');
+    await ctx.editMessageText(
+      '🔤 <b>اختر لون النص الأساسي:</b>\n\nاختر لوناً متناسقاً مع الخلفية:',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'أبيض ⚪', callback_data: 'doc_txt_#FFFFFF' },
+              { text: 'أسود ⚫', callback_data: 'doc_txt_#000000' },
+              { text: 'رمادي 🔘', callback_data: 'doc_txt_#808080' }
+            ],
+            [
+              { text: 'أحمر 🔴', callback_data: 'doc_txt_#E63946' },
+              { text: 'أزرق 🔵', callback_data: 'doc_txt_#457B9D' },
+              { text: 'أخضر 🟢', callback_data: 'doc_txt_#2A9D8F' }
+            ],
+            [
+              { text: 'أصفر 🟡', callback_data: 'doc_txt_#E9C46A' },
+              { text: 'برتقالي 🟠', callback_data: 'doc_txt_#F4A261' },
+              { text: 'بنفسجي 🟣', callback_data: 'doc_txt_#9D4EDD' }
+            ],
+            [
+              { text: 'وردي 🌸', callback_data: 'doc_txt_#FFB5A7' },
+              { text: 'ذهبي ✨', callback_data: 'doc_txt_#D4AF37' },
+              { text: 'فضي ⚙️', callback_data: 'doc_txt_#C0C0C0' }
+            ],
+            [{ text: '🔙 رجوع للخلفية', callback_data: 'doc_type_colored' }]
+          ]
+        }
+      }
+    );
+    return true;
+  }
+
+  // 3. Save Text Color & Route to Size Selection
+  if (data.startsWith('doc_txt_')) {
+    ctx.session.docTextColor = data.replace('doc_txt_', '');
+    
+    // Directly show the Size Selection menu (A4, A5, etc.) that usually comes after doc_type_text
+    await ctx.editMessageText(
+      '📏 <b>اختر مقاس المستند:</b>',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'A4 (افتراضي)', callback_data: 'doc_size_A4' },
+              { text: 'A5 (كتاب صغير)', callback_data: 'doc_size_A5' }
+            ],
+            [
+              { text: 'مربع (انستجرام)', callback_data: 'doc_size_square' },
+              { text: 'B5 (مذكرة)', callback_data: 'doc_size_B5' }
+            ],
+            [{ text: '❌ إلغاء', callback_data: 'doc_cancel_end' }]
+          ]
+        }
+      }
+    );
+    return true;
+  }
+
   return false;
 }
 
@@ -1066,28 +1163,35 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
 
 // ── Image Format Menu Helper ───────────────────────────────────────────────────
 
-export async function showImageFormatMenu(ctx: BotContext): Promise<void> {
-  await ctx.editMessageText(
-    '🎨 <b>تنسيق الصورة:</b>\n\n' +
-    'اختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:',
-    {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '➡️ يمين',  callback_data: 'doc_img_fmt_right' },
-            { text: '↔️ وسط',  callback_data: 'doc_img_fmt_center' },
-            { text: '⬅️ يسار', callback_data: 'doc_img_fmt_left' },
-          ],
-          [
-            { text: '⭕ دائري',         callback_data: 'doc_img_mask_circle' },
-            { text: '🔲 حواف ناعمة',   callback_data: 'doc_img_mask_rounded' },
-            { text: '⬛ مربع عادي',    callback_data: 'doc_img_mask_square' },
-          ],
-          [{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' }],
+export async function showImageFormatMenu(ctx: any): Promise<void> {
+  const text = '🎨 <b>تنسيق الصورة:</b>\n\nاختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:';
+  const options = {
+    parse_mode: 'HTML' as const,
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '➡️ يمين', callback_data: 'doc_img_fmt_right' },
+          { text: '↔️ وسط', callback_data: 'doc_img_fmt_center' },
+          { text: '⬅️ يسار', callback_data: 'doc_img_fmt_left' }
         ],
-      },
+        [
+          { text: '⭕ دائري', callback_data: 'doc_img_mask_circle' },
+          { text: '🔲 حواف ناعمة', callback_data: 'doc_img_mask_rounded' },
+          { text: '⬛ مربع عادي', callback_data: 'doc_img_mask_square' }
+        ],
+        [{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' }]
+      ]
     }
-  );
+  };
+
+  // If it's a callback query (button press), edit the message safely.
+  // If it's a regular message (like sending custom lines), reply with a new message.
+  if (ctx.callbackQuery) {
+    await ctx.editMessageText(text, options).catch(async () => {
+      await ctx.reply(text, options);
+    });
+  } else {
+    await ctx.reply(text, options);
+  }
 }
 
