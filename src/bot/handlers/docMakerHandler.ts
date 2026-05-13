@@ -381,8 +381,15 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     if (val === 'custom') {
       ctx.session.docState = 'awaiting_custom_img_lines';
       await ctx.editMessageText(
-        '✍️ <b>أرسل عدد الأسطر</b> (رقم بين 1 و 50 فقط):',
-        { parse_mode: 'HTML' }
+        '✍️ <b>أرسل عدد الأسطر</b> (رقم بين 1 و50):',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 إلغاء', callback_data: 'doc_back_to_session' }
+            ]]
+          }
+        }
       );
       return true;
     }
@@ -911,22 +918,16 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
   const text = ctx.message?.text?.trim();
   if (!text || text.startsWith('/')) return false;
 
-
-  // ── GUARD: active session with pending image config ───────────────────────
-  if (ctx.session.docState === 'active' && ctx.session.tempImage?.fileId) {
-    await ctx.reply(
-      '⚠️ <b>أكمل إعدادات الصورة أولاً</b>\nاختر المحاذاة والإطار، أو اضغط رجوع لإلغاء الصورة.',
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }
-          ]]
-        }
-      }
-    );
-    return true;
+  // HARD STOP: never process text as doc-content during image configuration
+  if (ctx.session?.docState === 'awaiting_custom_img_lines') {
+    return false; // number input is handled by the session trap — do not touch it
   }
+  if (ctx.session?.docState === 'active' && ctx.session?.tempImage?.fileId) {
+    return false; // user has a pending image — do not open text format menu
+  }
+
+
+
 
   // ── Custom size: step 1 — awaiting width (cm) ────────────────────────────
   if (ctx.session.awaitingCustomWidth) {
