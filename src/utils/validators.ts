@@ -15,7 +15,7 @@ export interface DocLine {
   size?: 'small' | 'normal' | 'large';
   style?: 'normal' | 'quote' | 'divider' | 'highlight';
   // Image-line fields
-  type?: 'text' | 'image';
+  type?: 'text' | 'image' | 'image_row';
   fileId?: string;
   imageLines?: number;
   imageMask?: 'square' | 'rounded' | 'circle';
@@ -73,6 +73,7 @@ export interface SessionData {
     lines?: number;
     align?: 'right' | 'center' | 'left';   // starts UNDEFINED
     mask?: 'square' | 'rounded' | 'circle'; // starts UNDEFINED
+    caption?: string;
   };
   // Inline row builder
   rowImages?: Array<{
@@ -83,6 +84,7 @@ export interface SessionData {
     caption?: string;
   }>;
   awaitingRowCaption?: number;    // index of image awaiting caption text
+  tempCaptionTarget?: number | 'temp'; // target for caption text
   awaitingNextRowImage?: boolean; // waiting for user to send next image
 }
 

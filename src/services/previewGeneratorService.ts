@@ -14,10 +14,17 @@ export interface PreviewLine {
   size?: 'small' | 'normal' | 'large';
   style?: string;
   // Image-line fields (same as DocLine)
-  type?: 'text' | 'image';
+  type?: 'text' | 'image' | 'image_row';
   fileId?: string;
   imageLines?: number;
   imageMask?: 'square' | 'rounded' | 'circle';
+  rowImages?: Array<{
+    fileId: string;
+    lines: number;
+    align: 'right' | 'center' | 'left';
+    mask: 'square' | 'rounded' | 'circle';
+    caption?: string;
+  }>;
 }
 
 export interface DocPreviewOptions {

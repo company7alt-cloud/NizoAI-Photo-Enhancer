@@ -166,7 +166,6 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     'doc_format_back','doc_custom_size','doc_template_colored',
     'doc_back_to_session',
     'doc_img_align_locked',
-    'doc_cursor_home','doc_cursor_center','doc_cursor_end',
     'doc_row_add_image','doc_row_caption_skip','doc_row_finish',
     'doc_colored_approve','doc_colored_back',
   ];
@@ -1101,19 +1100,27 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── B) Text cursor buttons (set align on tempImage) ───────────────────────
-  if (data === 'doc_cursor_home' || data === 'doc_cursor_center' || data === 'doc_cursor_end') {
+  // ── B) Alignment / Mask buttons (set on tempImage) ───────────────────────
+  if (data.startsWith('doc_img_fmt_')) {
     if (!ctx.session.tempImage?.fileId) {
       await ctx.answerCallbackQuery({ text: '⚠️ لا توجد صورة نشطة', show_alert: true });
       return true;
     }
-    const cursorMap: Record<string, 'right' | 'center' | 'left'> = {
-      doc_cursor_home:   'right',
-      doc_cursor_center: 'center',
-      doc_cursor_end:    'left',
-    };
-    ctx.session.tempImage.align = cursorMap[data];
-    await ctx.answerCallbackQuery({ text: '✅ تم تحديد الموضع' });
+    const align = data.replace('doc_img_fmt_', '') as 'right' | 'center' | 'left';
+    ctx.session.tempImage.align = align;
+    await ctx.answerCallbackQuery({ text: '✅ تم تحديد المحاذاة' });
+    await showImageFormatMenu(ctx);
+    return true;
+  }
+
+  if (data.startsWith('doc_img_mask_')) {
+    if (!ctx.session.tempImage?.fileId) {
+      await ctx.answerCallbackQuery({ text: '⚠️ لا توجد صورة نشطة', show_alert: true });
+      return true;
+    }
+    const mask = data.replace('doc_img_mask_', '') as 'circle' | 'rounded' | 'square';
+    ctx.session.tempImage.mask = mask;
+    await ctx.answerCallbackQuery({ text: '✅ تم تحديد شكل الإطار' });
     await showImageFormatMenu(ctx);
     return true;
   }
@@ -1151,13 +1158,28 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
   // ── D) Request caption for a specific row image ────────────────────
   if (data.startsWith('doc_row_caption_') && data !== 'doc_row_caption_skip') {
-    const idx = parseInt(data.replace('doc_row_caption_', ''), 10);
+    const rawId = data.replace('doc_row_caption_', '');
+    
+    if (rawId === 'temp') {
+      ctx.session.tempCaptionTarget = 'temp';
+      (ctx.session as any).docState = 'awaiting_row_caption';
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageText(
+        `📝 أرسل النص الذي تريده تحت الصورة الحالية:`,
+        { reply_markup: { inline_keyboard: [[
+          { text: '❌ تخطي بدون تسمية', callback_data: 'doc_row_caption_skip' }
+        ]]}}
+      );
+      return true;
+    }
+
+    const idx = parseInt(rawId, 10);
     const rowImages = ctx.session.rowImages || [];
     if (isNaN(idx) || idx < 0 || idx >= rowImages.length) {
       await ctx.answerCallbackQuery({ text: '⚠️ صورة غير موجودة', show_alert: true });
       return true;
     }
-    ctx.session.awaitingRowCaption = idx;
+    ctx.session.tempCaptionTarget = idx;
     (ctx.session as any).docState = 'awaiting_row_caption';
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
@@ -1171,7 +1193,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
   // ── E) Skip caption ──────────────────────────────────────────
   if (data === 'doc_row_caption_skip') {
-    ctx.session.awaitingRowCaption = undefined;
+    ctx.session.tempCaptionTarget = undefined;
     (ctx.session as any).docState = 'active';
     await ctx.answerCallbackQuery();
     await showImageFormatMenu(ctx);
@@ -1180,39 +1202,48 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
   // ── F) Finish the row and commit to documentLines ──────────────────
   if (data === 'doc_row_finish') {
-    const rowImages = ctx.session.rowImages ? [...ctx.session.rowImages] : [];
+    const rowImages = ctx.session.rowImages || [];
     if (ctx.session.tempImage?.fileId && ctx.session.tempImage.align && ctx.session.tempImage.mask) {
       rowImages.push({
         fileId: ctx.session.tempImage.fileId,
         lines:  ctx.session.tempImage.lines || 5,
-        align:  ctx.session.tempImage.align!,
-        mask:   ctx.session.tempImage.mask!,
+        align:  ctx.session.tempImage.align,
+        mask:   ctx.session.tempImage.mask,
+        caption: ctx.session.tempImage.caption
       });
     }
+    
     if (rowImages.length === 0) {
       await ctx.answerCallbackQuery({ text: '⚠️ لا توجد صور لإضافتها', show_alert: true });
       return true;
     }
+    
+    // Safely save to document lines
     ctx.session.documentLines = ctx.session.documentLines || [];
-    ctx.session.documentLines.push({
-      text: '',
-      type: 'image',
-      rowImages,
-      imageLines: rowImages[0].lines,
-      align: 'center',
+    ctx.session.documentLines.push({ 
+      type: 'image_row', 
+      rowImages: rowImages,
+      imageLines: rowImages[0].lines, // Fallback line height
+      align: 'center' 
     } as any);
+    
+    // Wipe all temporary row data
     ctx.session.rowImages = undefined;
     ctx.session.tempImage = undefined;
     ctx.session.awaitingNextRowImage = false;
-    ctx.session.awaitingRowCaption = undefined;
-    (ctx.session as any).docState = 'active';
-    await ctx.answerCallbackQuery();
-    await ctx.editMessageText(
-      `✅ تمت إضافة السطر (${rowImages.length} صورة) للمستند!`,
-      { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[
-        { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }
-      ]]}}
-    );
+    ctx.session.tempCaptionTarget = undefined;
+    ctx.session.docState = 'active';
+    
+    await ctx.answerCallbackQuery({ text: '✅ تمت إضافة السطر للمستند!' });
+    await ctx.deleteMessage().catch(() => {});
+    
+    const lines = ctx.session.documentLines;
+    const preview = lines.map((l, i) => {
+      if (l.type === 'image') return `${i+1}. 🖼 [صورة]`;
+      if (l.type === 'image_row' || l.rowImages) return `${i+1}. 🖼 [سطر صور]`;
+      return `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`;
+    }).join('\n');
+    await ctx.reply(`✅ تمت إضافة سطر الصور للمستند\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() });
     await refreshPreview(ctx);
     return true;
   }
@@ -1377,70 +1408,49 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
 // ── Image Format Menu Helper ───────────────────────────────────────────────────
 
 export async function showImageFormatMenu(ctx: any): Promise<void> {
-  // Compute row-aware state from session
-  const rowImages: Array<{ fileId: string; lines: number; align: string; mask: string; caption?: string }> =
-    ctx.session?.rowImages || [];
+  const rowImages = ctx.session.rowImages || [];
   const usedAligns = rowImages.map((img: any) => img.align).filter(Boolean);
-  const hasRowImages = rowImages.length > 0;
-  const captionButtons = rowImages.map((img: any, idx: number) => ({
-    text: img.caption ? `✏️ تعديل تسمية صورة ${idx + 1}` : `📝 تسمية صورة ${idx + 1}`,
-    callback_data: `doc_row_caption_${idx}`,
-  }));
-
-  const text = '🎨 <b>تنسيق الصورة:</b>\n\nاختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:';
+  const isTempReady = ctx.session.tempImage?.align && ctx.session.tempImage?.mask;
 
   const keyboard: any[][] = [
-    // Row 1: Alignment — lock alignments already used in this row
+    // Row 1: Alignment (Strictly only these 3 buttons)
     [
-      {
-        text: usedAligns.includes('right')  ? '🔒 يمين'  : '➡️ يمين',
-        callback_data: usedAligns.includes('right')  ? 'doc_img_align_locked' : 'doc_img_fmt_right',
-      },
-      {
-        text: usedAligns.includes('center') ? '🔒 وسط'   : '↔️ وسط',
-        callback_data: usedAligns.includes('center') ? 'doc_img_align_locked' : 'doc_img_fmt_center',
-      },
-      {
-        text: usedAligns.includes('left')   ? '🔒 يسار'  : '⬅️ يسار',
-        callback_data: usedAligns.includes('left')   ? 'doc_img_align_locked' : 'doc_img_fmt_left',
-      },
+      { text: usedAligns.includes('right')  ? '🔒 يمين'  : '➡️ يمين',  callback_data: usedAligns.includes('right')  ? 'doc_img_align_locked' : 'doc_img_fmt_right'  },
+      { text: usedAligns.includes('center') ? '🔒 وسط'   : '↔️ وسط',   callback_data: usedAligns.includes('center') ? 'doc_img_align_locked' : 'doc_img_fmt_center' },
+      { text: usedAligns.includes('left')   ? '🔒 يسار'  : '⬅️ يسار',  callback_data: usedAligns.includes('left')   ? 'doc_img_align_locked' : 'doc_img_fmt_left'   },
     ],
-    // Row 2: Mask shape
+    // Row 2: Mask
     [
-      { text: '⭕ دائري',       callback_data: 'doc_img_mask_circle'  },
-      { text: '🔲 حواف ناعمة', callback_data: 'doc_img_mask_rounded' },
-      { text: '⬛ مربع عادي',  callback_data: 'doc_img_mask_square'  },
-    ],
-    // Row 3: Text cursor (position within line)
-    [
-      { text: '⏮ بداية السطر', callback_data: 'doc_cursor_home'   },
-      { text: '⏸ منتصف السطر', callback_data: 'doc_cursor_center' },
-      { text: '⏭ نهاية السطر', callback_data: 'doc_cursor_end'    },
-    ],
+      { text: '⭕ دائري',        callback_data: 'doc_img_mask_circle'  },
+      { text: '🔲 حواف ناعمة',  callback_data: 'doc_img_mask_rounded' },
+      { text: '⬛ مربع عادي',   callback_data: 'doc_img_mask_square'  },
+    ]
   ];
 
-  // Row 4: Add image to same row (only when rowImages has at least one)
-  if (hasRowImages) {
-    keyboard.push([
-      { text: '🖼 إضافة صورة بنفس الحجم في السطر', callback_data: 'doc_row_add_image' },
-    ]);
+  // Reveal row builder actions ONLY when current image is fully configured
+  if (isTempReady) {
+    keyboard.push([{ 
+      text: ctx.session.tempImage?.caption ? '✏️ تعديل النص تحت الصورة' : '📝 إضافة نص تحت الصورة', 
+      callback_data: 'doc_row_caption_temp' 
+    }]);
+
+    if (rowImages.length < 2) { 
+      keyboard.push([{ text: '🖼 إضافة صورة بجانبها في نفس السطر', callback_data: 'doc_row_add_image' }]);
+    }
+    
+    keyboard.push([{ text: '✅ إتمام التعديلات وإضافة للمستند', callback_data: 'doc_row_finish' }]);
   }
 
-  // Row 5: Caption buttons (one per saved row image)
-  if (captionButtons.length > 0) {
-    keyboard.push(captionButtons);
-  }
+  // Row Images Captions (for previously added images in this row)
+  const captionButtons = rowImages.map((img: any, idx: number) => ({
+    text: img.caption ? `✏️ تعديل نص صورة ${idx + 1}` : `📝 نص صورة ${idx + 1}`,
+    callback_data: `doc_row_caption_${idx}`
+  }));
+  if (captionButtons.length > 0) keyboard.push(captionButtons);
 
-  // Row 6: Finish row (only when rowImages has at least one)
-  if (hasRowImages) {
-    keyboard.push([
-      { text: '✅ إتمام التعديلات وإضافة للمستند', callback_data: 'doc_row_finish' },
-    ]);
-  }
-
-  // Row 7: Cancel — always last
   keyboard.push([{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' }]);
 
+  const text = '🎨 <b>تنسيق الصورة:</b>\n\nاختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:';
   const options = { parse_mode: 'HTML' as const, reply_markup: { inline_keyboard: keyboard } };
 
   if (ctx.callbackQuery) {

@@ -269,20 +269,27 @@ bot.on('message', async (ctx, next) => {
     }
 
     // ── Row caption text intercept ──────────────────────────────────────────
-    if (docState === 'awaiting_row_caption' && (ctx.session as any).awaitingRowCaption !== undefined) {
-      const captionText = ctx.message?.text?.trim();
-      if (captionText && !captionText.startsWith('/')) {
-        const idx = (ctx.session as any).awaitingRowCaption;
-        const rowImages = (ctx.session as any).rowImages || [];
-        if (rowImages[idx]) rowImages[idx].caption = captionText;
-        (ctx.session as any).rowImages = rowImages;
-        (ctx.session as any).awaitingRowCaption = undefined;
-        (ctx.session as any).docState = 'active';
-        await ctx.reply(`✅ تم حفظ تسمية الصورة ${idx + 1}`);
-        const { showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
-        await showImageFormatMenu(ctx as any);
-        return;
+    if (docState === 'awaiting_row_caption' && (ctx.session as any).tempCaptionTarget !== undefined) {
+      const text = ctx.message?.text?.trim();
+      if (!text) return;
+      
+      if ((ctx.session as any).tempCaptionTarget === 'temp' && (ctx.session as any).tempImage) {
+        (ctx.session as any).tempImage.caption = text;
+      } else if (typeof (ctx.session as any).tempCaptionTarget === 'number') {
+        const rowImgs = (ctx.session as any).rowImages || [];
+        if (rowImgs[(ctx.session as any).tempCaptionTarget]) {
+          rowImgs[(ctx.session as any).tempCaptionTarget].caption = text;
+        }
       }
+      
+      (ctx.session as any).tempCaptionTarget = undefined;
+      (ctx.session as any).docState = 'active'; // Reset state to active
+      
+      // Immediately re-render the format menu to show the updated caption status
+      await ctx.reply(`✅ تم حفظ النص بنجاح!`);
+      const { showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
+      await showImageFormatMenu(ctx as any);
+      return;
     }
 
     // ── CASE 3: Text during active session with pending tempImage ──
