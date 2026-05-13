@@ -1158,6 +1158,27 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
   if (!ctx.session || !ctx.from) return false;
 
+  // ── CAPTION INTERCEPTOR (MUST BE ABSOLUTE FIRST) ─────────────────────────────
+  if (ctx.session.docState === 'awaiting_row_caption' && ctx.session.tempCaptionTarget !== undefined) {
+    const captionText = ctx.message?.text?.trim();
+    if (!captionText) return false;
+
+    if (ctx.session.tempCaptionTarget === 'temp' && ctx.session.tempImage) {
+      ctx.session.tempImage.caption = captionText;
+    } else if (typeof ctx.session.tempCaptionTarget === 'number') {
+      const rowImgs = ctx.session.rowImages || [];
+      if (rowImgs[ctx.session.tempCaptionTarget]) {
+        rowImgs[ctx.session.tempCaptionTarget].caption = captionText;
+      }
+    }
+
+    ctx.session.tempCaptionTarget = undefined;
+    ctx.session.docState = 'active';
+    await ctx.reply('✅ تم حفظ النص بنجاح!');
+    await showImageFormatMenu(ctx);
+    return true; // HALT — do NOT fall through to any safety trap
+  }
+
   // If tempImage exists and message is a number → it is a line count input
   if (ctx.session?.tempImage?.fileId && ctx.message?.text) {
     const num = parseInt(ctx.message.text.trim());

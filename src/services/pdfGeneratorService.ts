@@ -531,22 +531,24 @@ export async function generateDocumentFromLines(
 
         // ── Image / Image-Row line ──────────────────────────────────────────
         const richLine = line as any;
-        if (richLine.type === 'image' && (richLine.fileId || richLine.rowImages)) {
+        if ((richLine.type === 'image' || richLine.type === 'image_row') && (richLine.fileId || richLine.rowImages)) {
           // Normalise: single image or array of row images
           const images: Array<{ fileId: string; lines: number; align: string; mask?: string; caption?: string }> =
-            richLine.rowImages
+            (richLine.rowImages && richLine.rowImages.length > 0)
               ? richLine.rowImages
-              : [{
+              : (richLine.fileId ? [{
                   fileId:  richLine.fileId,
                   lines:   richLine.imageLines || 5,
                   align:   richLine.align || 'center',
                   mask:    richLine.imageMask,
                   caption: undefined,
-                }];
+                }] : []);
+
+          if (images.length === 0) continue;
 
           const allocH  = (images[0].lines || 5) * 20;
           const pageW   = doc.page.width - PADDING * 2;
-          const gap     = 8;
+          const gap     = 15;
           const imgW    =
             images.length === 1 ? pageW :
             images.length === 2 ? (pageW - gap) / 2 :
@@ -561,7 +563,8 @@ export async function generateDocumentFromLines(
             doc.fontSize(BASE_SIZE).fillColor(txtColor);
           }
 
-          for (const img of images) {
+          for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
+            const img = images[imgIdx];
             try {
               const fileUrl = await getTelegramFileUrl(img.fileId);
               const imgRes  = await fetch(fileUrl);
@@ -590,11 +593,18 @@ export async function generateDocumentFromLines(
                   .png().toBuffer()) as any;
               }
 
-              // X position based on per-image alignment
-              const alignX =
-                img.align === 'left'   ? PADDING :
-                img.align === 'center' ? PADDING + (pageW / 2) - (imgW / 2) :
-                /* right */              PADDING + pageW - imgW;
+              // X position:
+              //  - Single image: respect per-image alignment setting
+              //  - Multiple images: lay out left-to-right (index 0 = leftmost)
+              let alignX: number;
+              if (images.length === 1) {
+                alignX =
+                  img.align === 'left'   ? PADDING :
+                  img.align === 'center' ? PADDING + (pageW / 2) - (imgW / 2) :
+                  /* right */              PADDING + pageW - imgW;
+              } else {
+                alignX = PADDING + imgIdx * (imgW + gap);
+              }
 
               doc.image(imgBuffer, alignX, currentY, { width: imgW, height: allocH });
 
