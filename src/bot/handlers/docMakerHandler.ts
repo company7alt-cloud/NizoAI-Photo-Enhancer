@@ -106,6 +106,21 @@ const SIZE_KB = {
   ],
 };
 
+export async function renderActiveSession(ctx: any): Promise<void> {
+  const lines = ctx.session.documentLines || [];
+  const preview = lines.map((l: any, i: number) => {
+    if (l.type === 'image') return `${i+1}. 🖼 [صورة]`;
+    if (l.type === 'image_row' || l.rowImages) return `${i+1}. 🖼 [سطر صور]`;
+    return `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`;
+  }).join('\n');
+  const text = lines.length > 0
+    ? `📄 <b>المستند:</b>\n${preview}`
+    : `📄 <b>المستند فارغ.</b>\nأرسل نصاً أو صورة للبدء.`;
+    
+  await ctx.reply(text, { parse_mode: 'HTML', reply_markup: controlPanel() });
+  await refreshPreview(ctx);
+}
+
 async function refreshPreview(ctx: BotContext): Promise<void> {
   if (!ctx.session.previewMessageId || !ctx.chat) return;
   try {
@@ -410,113 +425,13 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── Image: Format (align) + Mask handlers ───────────────────────────
-  if (data.startsWith('doc_img_fmt_') || data.startsWith('doc_img_mask_')) {
-    if (!ctx.session.tempImage?.fileId) {
-      await ctx.answerCallbackQuery({ text: '⚠️ انتهت الجلسة، أرسل الصورة مجدداً.' });
-      return true;
-    }
-
-    if (data.startsWith('doc_img_fmt_')) {
-      ctx.session.tempImage.align = data.replace('doc_img_fmt_', '') as 'right' | 'center' | 'left';
-    }
-    if (data.startsWith('doc_img_mask_')) {
-      ctx.session.tempImage.mask = data.replace('doc_img_mask_', '') as 'square' | 'rounded' | 'circle';
-    }
-
-    // CRITICAL: Only save when BOTH values are explicitly set
-    const bothSelected = !!ctx.session.tempImage.align && !!ctx.session.tempImage.mask;
-
-    if (!bothSelected) {
-      await ctx.answerCallbackQuery(); // required silent ACK
-
-      const alignVal  = ctx.session.tempImage?.align;
-      const maskVal   = ctx.session.tempImage?.mask;
-      const alignEmoji: Record<string, string> = { right: '➡️', center: '↔️', left: '⬅️' };
-      const maskEmoji:  Record<string, string> = { circle: '⭕', rounded: '🔲', square: '⬛' };
-
-      const alignStatus = alignVal
-        ? `${alignEmoji[alignVal] ?? ''} <b>${alignVal}</b> ✅`
-        : '⬜ لم يُختَر بعد';
-      const maskStatus = maskVal
-        ? `${maskEmoji[maskVal] ?? ''} <b>${maskVal}</b> ✅`
-        : '⬜ لم يُختَر بعد';
-
-      const missingItem = !alignVal ? 'المحاذاة' : 'شكل الإطار';
-
-      await ctx.editMessageText(
-        '🎨 <b>تنسيق الصورة:</b>\n\n' +
-        `📐 المحاذاة: ${alignStatus}\n` +
-        `🖼 الإطار: ${maskStatus}\n\n` +
-        `<i>اختر ${missingItem} لإتمام الإضافة:</i>`,
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '➡️ يمين',  callback_data: 'doc_img_fmt_right' },
-                { text: '↔️ وسط',  callback_data: 'doc_img_fmt_center' },
-                { text: '⬅️ يسار', callback_data: 'doc_img_fmt_left' },
-              ],
-              [
-                { text: '⭕ دائري',       callback_data: 'doc_img_mask_circle' },
-                { text: '🔲 حواف ناعمة', callback_data: 'doc_img_mask_rounded' },
-                { text: '⬛ مربع عادي',  callback_data: 'doc_img_mask_square' },
-              ],
-              [{ text: '🔙 إلغاء الصورة', callback_data: 'doc_back_to_session' }],
-            ],
-          },
-        }
-      );
-      return true;
-    }
-
-    // Both selected → push image line
-    ctx.session.documentLines = ctx.session.documentLines || [];
-    ctx.session.documentLines.push({
-      text: '',
-      type: 'image',
-      fileId: ctx.session.tempImage.fileId,
-      imageLines: ctx.session.tempImage.lines || 5,
-      align: ctx.session.tempImage.align ?? 'center',
-
-      imageMask: ctx.session.tempImage.mask,
-    });
-
-    ctx.session.tempImage = undefined;
-    ctx.session.docState = 'active';
-
-    await ctx.editMessageText(
-      '✅ <b>تمت إضافة الصورة للمستند!</b>\n\nأرسل المزيد من النصوص أو الصور، أو اضغط تصدير.',
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
-          ],
-        },
-      }
-    );
-    await refreshPreview(ctx);
-    return true;
-  }
-
   // ── Image: Back / cancel ────────────────────────────────────────────
   if (data === 'doc_back_to_session') {
     await ctx.answerCallbackQuery();
     ctx.session.tempImage = undefined;
     ctx.session.docState = 'active';
-    await ctx.editMessageText(
-      '↩️ <b>تم الإلغاء.</b>\n\nأرسل نصاً أو صورة، أو اضغط تصدير.',
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
-          ],
-        },
-      }
-    );
+    await ctx.deleteMessage().catch(() => {});
+    await renderActiveSession(ctx);
     return true;
   }
 
@@ -1237,14 +1152,8 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery({ text: '✅ تمت إضافة السطر للمستند!' });
     await ctx.deleteMessage().catch(() => {});
     
-    const lines = ctx.session.documentLines;
-    const preview = lines.map((l, i) => {
-      if (l.type === 'image') return `${i+1}. 🖼 [صورة]`;
-      if (l.type === 'image_row' || l.rowImages) return `${i+1}. 🖼 [سطر صور]`;
-      return `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`;
-    }).join('\n');
-    await ctx.reply(`✅ تمت إضافة سطر الصور للمستند\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() });
-    await refreshPreview(ctx);
+    await ctx.deleteMessage().catch(() => {});
+    await renderActiveSession(ctx);
     return true;
   }
 
@@ -1413,42 +1322,40 @@ export async function showImageFormatMenu(ctx: any): Promise<void> {
   const isTempReady = ctx.session.tempImage?.align && ctx.session.tempImage?.mask;
 
   const keyboard: any[][] = [
-    // Row 1: Alignment (Strictly only these 3 buttons)
+    // 1. Align
     [
       { text: usedAligns.includes('right')  ? '🔒 يمين'  : '➡️ يمين',  callback_data: usedAligns.includes('right')  ? 'doc_img_align_locked' : 'doc_img_fmt_right'  },
       { text: usedAligns.includes('center') ? '🔒 وسط'   : '↔️ وسط',   callback_data: usedAligns.includes('center') ? 'doc_img_align_locked' : 'doc_img_fmt_center' },
       { text: usedAligns.includes('left')   ? '🔒 يسار'  : '⬅️ يسار',  callback_data: usedAligns.includes('left')   ? 'doc_img_align_locked' : 'doc_img_fmt_left'   },
     ],
-    // Row 2: Mask
+    // 2. Mask
     [
-      { text: '⭕ دائري',        callback_data: 'doc_img_mask_circle'  },
-      { text: '🔲 حواف ناعمة',  callback_data: 'doc_img_mask_rounded' },
-      { text: '⬛ مربع عادي',   callback_data: 'doc_img_mask_square'  },
+      { text: '⭕ دائري', callback_data: 'doc_img_mask_circle' },
+      { text: '🔲 ناعمة', callback_data: 'doc_img_mask_rounded' },
+      { text: '⬛ مربع', callback_data: 'doc_img_mask_square' },
     ]
   ];
 
-  // Reveal row builder actions ONLY when current image is fully configured
   if (isTempReady) {
-    keyboard.push([{ 
-      text: ctx.session.tempImage?.caption ? '✏️ تعديل النص تحت الصورة' : '📝 إضافة نص تحت الصورة', 
-      callback_data: 'doc_row_caption_temp' 
-    }]);
-
+    // Caption
+    keyboard.push([{ text: ctx.session.tempImage?.caption ? '✏️ تعديل النص تحت الصورة' : '📝 إضافة نص تحت الصورة', callback_data: 'doc_row_caption_temp' }]);
+    
+    // Add Image logic (Max 3. But if the first image took up a huge amount of space, standard logic applies. We restrict to 3 max).
     if (rowImages.length < 2) { 
-      keyboard.push([{ text: '🖼 إضافة صورة بجانبها في نفس السطر', callback_data: 'doc_row_add_image' }]);
+      keyboard.push([{ text: '🖼 إضافة صورة بجانبها', callback_data: 'doc_row_add_image' }]);
     }
     
-    keyboard.push([{ text: '✅ إتمام التعديلات وإضافة للمستند', callback_data: 'doc_row_finish' }]);
+    // Finish
+    keyboard.push([{ text: '✅ إتمام وإضافة للمستند', callback_data: 'doc_row_finish' }]);
   }
 
-  // Row Images Captions (for previously added images in this row)
-  const captionButtons = rowImages.map((img: any, idx: number) => ({
-    text: img.caption ? `✏️ تعديل نص صورة ${idx + 1}` : `📝 نص صورة ${idx + 1}`,
-    callback_data: `doc_row_caption_${idx}`
+  // Edit previously added captions in this row
+  const captionBtns = rowImages.map((img: any, idx: number) => ({
+    text: img.caption ? `✏️ تعديل نص (${idx + 1})` : `📝 نص صورة (${idx + 1})`, callback_data: `doc_row_caption_${idx}`
   }));
-  if (captionButtons.length > 0) keyboard.push(captionButtons);
+  if (captionBtns.length > 0) keyboard.push(captionBtns);
 
-  keyboard.push([{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' }]);
+  keyboard.push([{ text: '🔙 إلغاء الصورة', callback_data: 'doc_back_to_session' }]);
 
   const text = '🎨 <b>تنسيق الصورة:</b>\n\nاختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:';
   const options = { parse_mode: 'HTML' as const, reply_markup: { inline_keyboard: keyboard } };
