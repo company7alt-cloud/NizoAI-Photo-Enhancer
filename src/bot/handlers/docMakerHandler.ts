@@ -1016,26 +1016,19 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   }
 
   // ── B) Alignment / Mask buttons (set on tempImage) ───────────────────────
-  if (data.startsWith('doc_img_fmt_')) {
-    if (!ctx.session.tempImage?.fileId) {
-      await ctx.answerCallbackQuery({ text: '⚠️ لا توجد صورة نشطة', show_alert: true });
-      return true;
+  if (data.startsWith('doc_img_fmt_') || data.startsWith('doc_img_mask_')) {
+    if (!ctx.session.tempImage) return true;
+    
+    if (data.startsWith('doc_img_fmt_')) {
+      ctx.session.tempImage.align = data.replace('doc_img_fmt_', '') as 'right' | 'center' | 'left';
+    } else if (data.startsWith('doc_img_mask_')) {
+      ctx.session.tempImage.mask = data.replace('doc_img_mask_', '') as 'square' | 'rounded' | 'circle';
     }
-    const align = data.replace('doc_img_fmt_', '') as 'right' | 'center' | 'left';
-    ctx.session.tempImage.align = align;
-    await ctx.answerCallbackQuery({ text: '✅ تم تحديد المحاذاة' });
-    await showImageFormatMenu(ctx);
-    return true;
-  }
-
-  if (data.startsWith('doc_img_mask_')) {
-    if (!ctx.session.tempImage?.fileId) {
-      await ctx.answerCallbackQuery({ text: '⚠️ لا توجد صورة نشطة', show_alert: true });
-      return true;
-    }
-    const mask = data.replace('doc_img_mask_', '') as 'circle' | 'rounded' | 'square';
-    ctx.session.tempImage.mask = mask;
-    await ctx.answerCallbackQuery({ text: '✅ تم تحديد شكل الإطار' });
+    
+    // Acknowledge the click immediately so the button doesn't load infinitely
+    await ctx.answerCallbackQuery();
+    
+    // Calling this will now correctly UPDATE the existing message with the ✅ checks
     await showImageFormatMenu(ctx);
     return true;
   }
@@ -1319,51 +1312,65 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
 export async function showImageFormatMenu(ctx: any): Promise<void> {
   const rowImages = ctx.session.rowImages || [];
   const usedAligns = rowImages.map((img: any) => img.align).filter(Boolean);
-  const isTempReady = ctx.session.tempImage?.align && ctx.session.tempImage?.mask;
+  
+  // Current active selections
+  const currentAlign = ctx.session.tempImage?.align;
+  const currentMask = ctx.session.tempImage?.mask;
+  const isTempReady = currentAlign && currentMask;
 
-  const keyboard: any[][] = [
-    // 1. Align
+  const keyboard: any[] = [
+    // 1. Align (Show ✅ if currently selected, 🔒 if used in row)
     [
-      { text: usedAligns.includes('right')  ? '🔒 يمين'  : '➡️ يمين',  callback_data: usedAligns.includes('right')  ? 'doc_img_align_locked' : 'doc_img_fmt_right'  },
-      { text: usedAligns.includes('center') ? '🔒 وسط'   : '↔️ وسط',   callback_data: usedAligns.includes('center') ? 'doc_img_align_locked' : 'doc_img_fmt_center' },
-      { text: usedAligns.includes('left')   ? '🔒 يسار'  : '⬅️ يسار',  callback_data: usedAligns.includes('left')   ? 'doc_img_align_locked' : 'doc_img_fmt_left'   },
+      { 
+        text: currentAlign === 'right' ? '✅ يمين' : (usedAligns.includes('right') ? '🔒 يمين' : '➡️ يمين'),  
+        callback_data: usedAligns.includes('right') ? 'doc_img_align_locked' : 'doc_img_fmt_right'  
+      },
+      { 
+        text: currentAlign === 'center' ? '✅ وسط' : (usedAligns.includes('center') ? '🔒 وسط' : '↔️ وسط'),   
+        callback_data: usedAligns.includes('center') ? 'doc_img_align_locked' : 'doc_img_fmt_center' 
+      },
+      { 
+        text: currentAlign === 'left' ? '✅ يسار' : (usedAligns.includes('left') ? '🔒 يسار' : '⬅️ يسار'),  
+        callback_data: usedAligns.includes('left') ? 'doc_img_align_locked' : 'doc_img_fmt_left'   
+      },
     ],
-    // 2. Mask
+    // 2. Mask (Show ✅ if currently selected)
     [
-      { text: '⭕ دائري', callback_data: 'doc_img_mask_circle' },
-      { text: '🔲 ناعمة', callback_data: 'doc_img_mask_rounded' },
-      { text: '⬛ مربع', callback_data: 'doc_img_mask_square' },
+      { text: currentMask === 'circle' ? '✅ دائري' : '⭕ دائري', callback_data: 'doc_img_mask_circle' },
+      { text: currentMask === 'rounded' ? '✅ حواف ناعمة' : '🔲 حواف ناعمة', callback_data: 'doc_img_mask_rounded' },
+      { text: currentMask === 'square' ? '✅ مربع عادي' : '⬛ مربع عادي', callback_data: 'doc_img_mask_square' },
     ]
   ];
 
+  // Reveal advanced options ONLY when both align and mask are selected
   if (isTempReady) {
-    // Caption
     keyboard.push([{ text: ctx.session.tempImage?.caption ? '✏️ تعديل النص تحت الصورة' : '📝 إضافة نص تحت الصورة', callback_data: 'doc_row_caption_temp' }]);
-    
-    // Add Image logic (Max 3. But if the first image took up a huge amount of space, standard logic applies. We restrict to 3 max).
     if (rowImages.length < 2) { 
-      keyboard.push([{ text: '🖼 إضافة صورة بجانبها', callback_data: 'doc_row_add_image' }]);
+      keyboard.push([{ text: '🖼 إضافة صورة بجانبها في نفس السطر', callback_data: 'doc_row_add_image' }]);
     }
-    
-    // Finish
-    keyboard.push([{ text: '✅ إتمام وإضافة للمستند', callback_data: 'doc_row_finish' }]);
+    keyboard.push([{ text: '✅ إتمام التعديلات وإضافة للمستند', callback_data: 'doc_row_finish' }]);
   }
 
-  // Edit previously added captions in this row
+  // Captions for already saved images in this row
   const captionBtns = rowImages.map((img: any, idx: number) => ({
-    text: img.caption ? `✏️ تعديل نص (${idx + 1})` : `📝 نص صورة (${idx + 1})`, callback_data: `doc_row_caption_${idx}`
+    text: img.caption ? `✏️ تعديل نص صورة ${idx + 1}` : `📝 نص صورة ${idx + 1}`, callback_data: `doc_row_caption_${idx}`
   }));
   if (captionBtns.length > 0) keyboard.push(captionBtns);
 
-  keyboard.push([{ text: '🔙 إلغاء الصورة', callback_data: 'doc_back_to_session' }]);
+  keyboard.push([{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' }]);
 
   const text = '🎨 <b>تنسيق الصورة:</b>\n\nاختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:';
   const options = { parse_mode: 'HTML' as const, reply_markup: { inline_keyboard: keyboard } };
 
+  // CRITICAL FIX: Prevent crashes and message duplication.
+  // If it's a button click (callbackQuery), EDIT the message in place.
+  // If it's a photo upload or text message, SEND a new message.
   if (ctx.callbackQuery) {
-    await ctx.editMessageText(text, options).catch(async () => {
-      await ctx.reply(text, options);
-    });
+    try {
+      await ctx.editMessageText(text, options);
+    } catch (err) {
+      await ctx.reply(text, options); // Fallback just in case
+    }
   } else {
     await ctx.reply(text, options);
   }
