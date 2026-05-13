@@ -459,7 +459,7 @@ export async function generateDocumentFromLines(
   selectedFont?: string,
   docBgColor?: string,
   docTextColor?: string
-): Promise<Buffer> {
+): Promise<{ buffer: Buffer; pageCount: number }> {
   if (!lines || !Array.isArray(lines) || lines.length === 0) {
     throw new Error('No lines to generate');
   }
@@ -493,6 +493,7 @@ export async function generateDocumentFromLines(
       doc.on('data', (chunk: Buffer) => buffers.push(chunk));
 
       let pageCount = 0;
+      doc.on('pageAdded', () => { pageCount++; });
 
       const bgColor = docBgColor || '#FFFFFF';
       const txtColor = docTextColor || '#000000';
@@ -527,10 +528,40 @@ export async function generateDocumentFromLines(
 
       for (const line of lines) {
         // CRASH FIX: skip null/undefined entries
-        if (!line || line.text === undefined || line.text === null) continue;
+        if (!line || (line.text === undefined && (line as any).type === undefined)) continue;
 
-        // ── Image / Image-Row line ──────────────────────────────────────────
         const richLine = line as any;
+
+        // ── Full-bleed cover image ───────────────────────────────────────────────
+        if (richLine.type === 'image_cover' && richLine.fileId) {
+          try {
+            const fileUrl = await getTelegramFileUrl(richLine.fileId);
+            const imgRes  = await fetch(fileUrl);
+            if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`);
+            const imgBuffer = Buffer.from(new Uint8Array(await imgRes.arrayBuffer()));
+
+            // Push to a fresh page if we are not at the very start
+            if (currentY > PADDING + 5) {
+              ({ W, H } = addPage());
+              currentY = 0;
+            }
+
+            // Full-bleed: draw from (0,0) to full page dimensions, ignoring margins
+            doc.image(imgBuffer, 0, 0, { width: doc.page.width, height: doc.page.height });
+
+            // Start a fresh page for content that follows
+            ({ W, H } = addPage());
+            currentY = PADDING;
+            doc.y = currentY;
+            try { doc.font(chosenFont); } catch {}
+            doc.fontSize(BASE_SIZE).fillColor(txtColor);
+          } catch (err) {
+            console.error('[PDF] Cover render failed:', err);
+          }
+          continue;
+        }
+
+        // ── Image / Image-Row line ───────────────────────────────────────────────
         if ((richLine.type === 'image' || richLine.type === 'image_row') && (richLine.fileId || richLine.rowImages)) {
           // Normalise: single image or array of row images
           const images: Array<{ fileId: string; lines: number; align: string; mask?: string; caption?: string }> =
@@ -678,7 +709,7 @@ export async function generateDocumentFromLines(
       if (!pdfBuffer || pdfBuffer.length === 0) {
         throw new Error('PDF buffer is empty after generation');
       }
-      resolve(pdfBuffer);
+      resolve({ buffer: pdfBuffer, pageCount });
 
     } catch (err) {
       console.error('[pdfGeneratorService] Error in generateDocumentFromLines:', err);

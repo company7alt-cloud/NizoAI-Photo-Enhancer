@@ -398,7 +398,28 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // ── Image: Spacing selection ────────────────────────────────────────
+  // ── Full-bleed cover image ──────────────────────────────────────────────
+  if (data === 'doc_img_full_cover') {
+    await ctx.answerCallbackQuery();
+    if (!ctx.session.tempImage?.fileId) return true;
+
+    ctx.session.documentLines = ctx.session.documentLines || [];
+    ctx.session.documentLines.push({
+      type: 'image_cover',
+      fileId: ctx.session.tempImage.fileId,
+    } as any);
+
+    ctx.session.tempImage = undefined;
+    ctx.session.rowImages = undefined;
+    ctx.session.docState = 'active';
+
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.reply('✅ تمت إضافة الغلاف للمستند!');
+    await renderActiveSession(ctx);
+    return true;
+  }
+
+  // ── Image: Spacing selection ─────────────────────────────────────
   if (data.startsWith('doc_img_space_')) {
     if (!ctx.session.tempImage?.fileId) {
       await ctx.answerCallbackQuery({ text: '⚠️ انتهت الجلسة، أرسل الصورة مجدداً.' });
@@ -585,13 +606,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       const { generateDocumentFromLines } = await import('../../services/pdfGeneratorService');
       const safeLines = (ctx.session.documentLines ?? []).filter(l => l !== null && l !== undefined);
       
-      const pdfBuffer = await generateDocumentFromLines(
+      const result = await generateDocumentFromLines(
         safeLines,
         ctx.session.pageSize || 'A4',
         ctx.session.selectedFont || 'Amiri',
         ctx.session.docBgColor,
         ctx.session.docTextColor
       );
+
+      const pdfBuffer = result.buffer;
+      const realPages = result.pageCount;
 
       if (!pdfBuffer || pdfBuffer.length === 0) {
         throw new Error('PDF buffer is empty');
@@ -607,7 +631,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
         {
           caption:
             '✅ <b>مستندك جاهز!</b>\n' +
-            `📄 الصفحات: ~${ctx.session.pendingExportPages}\n` +
+            `📄 الصفحات: ${realPages}\n` +
             `🔤 الخط: ${ctx.session.selectedFont || 'Amiri'}\n` +
             `💳 تم خصم: ${cost} محاولة`,
           parse_mode: 'HTML'

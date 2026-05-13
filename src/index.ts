@@ -252,11 +252,12 @@ bot.on('message', async (ctx, next) => {
       (ctx.session as any).tempImage = { fileId };
 
       await ctx.reply(
-        '🖼 <b>تم استلام الصورة!</b>\n\n📏 كم سطراً تريد تخصيصها للصورة في المستند؟',
+        '🖼 <b>تم استلام الصورة!</b>\n\n📏 كم سطراً تريد تخصيصها للصورة في المستند؟\nأو اجعلها غلافاً يملأ الصفحة بالكامل:',
         {
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
+              [{ text: '📄 ملء الصفحة كاملة (غلاف)', callback_data: 'doc_img_full_cover' }],
               [{ text: '📏 افتراضي — 5 أسطر', callback_data: 'doc_img_space_5' }],
               [{ text: '📐 كبير — 10 أسطر', callback_data: 'doc_img_space_10' }],
               [{ text: '✍️ تخصيص العدد...', callback_data: 'doc_img_space_custom' }],
