@@ -14,6 +14,7 @@ export interface DocLine {
   underline?: boolean;
   size?: 'small' | 'normal' | 'large';
   style?: 'normal' | 'quote' | 'divider' | 'highlight';
+  color?: string;
   // Image-line fields
   type?: 'text' | 'image' | 'image_row';
   fileId?: string;
@@ -48,6 +49,8 @@ export interface SessionData {
     underline: boolean;
     size: 'small' | 'normal' | 'large';
     style: 'normal' | 'quote' | 'divider' | 'highlight';
+    color?: string;
+    align?: 'right' | 'center' | 'left';
   } | null;
   documentLines?: DocLine[];
   pendingExportCost?: number;
@@ -86,6 +89,8 @@ export interface SessionData {
   awaitingRowCaption?: number;    // index of image awaiting caption text
   tempCaptionTarget?: number | 'temp'; // target for caption text
   awaitingNextRowImage?: boolean; // waiting for user to send next image
+  awaitingCustomColor?: boolean;
+  customColorPromptId?: number;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

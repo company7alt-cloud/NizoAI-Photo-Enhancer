@@ -280,7 +280,8 @@ function renderRichLine(
     doc.save().lineWidth(0.4);
   }
 
-  doc.fontSize(fontSize).fillColor(textColor);
+  const lineColor = (line as any).color || textColor;
+  doc.fontSize(fontSize).fillColor(lineColor);
   const newY = drawArabicParagraph(
     doc,
     line.text,

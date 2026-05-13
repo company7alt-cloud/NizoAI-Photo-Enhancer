@@ -6,21 +6,37 @@ import { getSettings } from '../../services/settingsService';
 import { generatePreviewPNG, TEMPLATE_NAMES } from '../../services/previewGeneratorService';
 
 function buildFormattingKeyboard(fmt: any): { inline_keyboard: any[][] } {
+  const isR = fmt.align === 'right'  ? '✅ يمين' : '➡️ يمين';
+  const isC = fmt.align === 'center' ? '✅ وسط'  : '↔️ وسط';
+  const isL = fmt.align === 'left'   ? '✅ يسار' : '⬅️ يسار';
+  
   const b = fmt.bold ? '✅ عريض' : '𝐁 عريض';
   const it = fmt.italic ? '✅ مائل' : '𝐼 مائل';
   const ul = fmt.underline ? '✅ تحته خط' : 'U̲ تحته خط';
+  
   const sm = fmt.size === 'small' ? '✅ صغير' : '🔡 صغير';
   const nm = (!fmt.size || fmt.size === 'normal') ? '✅ عادي' : '🔤 عادي';
   const lg = fmt.size === 'large' ? '✅ كبير' : '🔠 كبير';
+  
   const qt = fmt.style === 'quote' ? '✅ اقتباس' : '" اقتباس';
   const dv = fmt.style === 'divider' ? '✅ فاصل' : '— فاصل';
   const hl = fmt.style === 'highlight' ? '✅ مميز' : '★ مميز';
+
+  const clRed = fmt.color === '#FF0000' ? '✅ أحمر'     : '🔴 أحمر';
+  const clYel = fmt.color === '#FFD700' ? '✅ أصفر'     : '🟡 أصفر';
+  const clBlu = fmt.color === '#1565C0' ? '✅ أزرق'     : '🔵 أزرق';
+  const clDef = !fmt.color             ? '✅ افتراضي'   : '⚫ افتراضي';
+
+  const customLabel = (fmt.color && !['#FF0000','#FFD700','#1565C0'].includes(fmt.color))
+    ? `✅ مخصص: ${fmt.color}`
+    : '🎨 اختيار ذاتي (كود اللون)';
+
   return {
     inline_keyboard: [
       [
-        { text: '➡️ يمين', callback_data: 'align_right' },
-        { text: '↔️ وسط', callback_data: 'align_center' },
-        { text: '⬅️ يسار', callback_data: 'align_left' },
+        { text: isR, callback_data: 'fmt_align_right' },
+        { text: isC, callback_data: 'fmt_align_center' },
+        { text: isL, callback_data: 'fmt_align_left' },
       ],
       [
         { text: b, callback_data: 'style_bold' },
@@ -36,6 +52,18 @@ function buildFormattingKeyboard(fmt: any): { inline_keyboard: any[][] } {
         { text: qt, callback_data: 'style_quote' },
         { text: dv, callback_data: 'style_divider' },
         { text: hl, callback_data: 'style_highlight' },
+      ],
+      [
+        { text: clRed, callback_data: 'color_red' },
+        { text: clYel, callback_data: 'color_yellow' },
+        { text: clBlu, callback_data: 'color_blue' },
+        { text: clDef, callback_data: 'color_default' },
+      ],
+      [
+        { text: customLabel, callback_data: 'color_custom' }
+      ],
+      [
+        { text: '✅ تطبيق وإضافة للمستند', callback_data: 'fmt_apply' }
       ],
       [
         { text: '🔙 رجوع', callback_data: 'doc_format_back' }
@@ -183,6 +211,8 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     'doc_img_align_locked',
     'doc_row_add_image','doc_row_caption_skip','doc_row_finish',
     'doc_colored_approve','doc_colored_back',
+    'color_red','color_yellow','color_blue','color_default',
+    'color_custom','color_custom_cancel','fmt_apply'
   ];
   const isDoc =
     docCallbacks.includes(data) ||
@@ -194,7 +224,9 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     data.startsWith('doc_img_space_') ||
     data.startsWith('doc_img_fmt_') ||
     data.startsWith('doc_img_mask_') ||
-    data.startsWith('doc_row_caption_');
+    data.startsWith('doc_row_caption_') ||
+    data.startsWith('fmt_align_') ||
+    data.startsWith('color_');
   if (!isDoc) return false;
 
   const telegramId = ctx.from!.id.toString();
@@ -468,21 +500,83 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  if (data === 'align_right' || data === 'align_center' || data === 'align_left') {
+  if (data === 'align_right' || data === 'align_center' || data === 'align_left' ||
+      data.startsWith('fmt_align_')) {
     await ctx.answerCallbackQuery();
-    const tempLine = ctx.session.tempLine;
-    const tempFormatting = ctx.session.tempFormatting;
-    if (!tempLine || !tempFormatting) {
+    if (!ctx.session.tempLine || !ctx.session.tempFormatting) {
       await ctx.editMessageText('⚠️ انتهت صلاحية النص. أرسل النص مجدداً.').catch(() => {});
       return true;
     }
-    const alignMap: Record<string, 'right' | 'center' | 'left'> = {
-      align_right: 'right', align_center: 'center', align_left: 'left',
+    const alignVal = data.replace('fmt_align_', '').replace('align_', '') as 'right' | 'center' | 'left';
+    ctx.session.tempFormatting = { ...ctx.session.tempFormatting, align: alignVal };
+    await ctx.editMessageReplyMarkup(
+      buildFormattingKeyboard(ctx.session.tempFormatting) as any
+    ).catch(() => {});
+    return true;
+  }
+
+  if (data === 'color_red' || data === 'color_yellow' ||
+      data === 'color_blue' || data === 'color_default') {
+    await ctx.answerCallbackQuery();
+    if (!ctx.session.tempLine || !ctx.session.tempFormatting) return true;
+    const colorMap: Record<string, string | undefined> = {
+      color_red:     '#FF0000',
+      color_yellow:  '#FFD700',
+      color_blue:    '#1565C0',
+      color_default: undefined,
     };
-    if (!ctx.session.documentLines) ctx.session.documentLines = [];
+    ctx.session.tempFormatting = { ...ctx.session.tempFormatting, color: colorMap[data] };
+    await ctx.editMessageReplyMarkup(
+      buildFormattingKeyboard(ctx.session.tempFormatting) as any
+    ).catch(() => {});
+    return true;
+  }
+
+  if (data === 'color_custom') {
+    await ctx.answerCallbackQuery();
+    if (!ctx.session.tempLine || !ctx.session.tempFormatting) return true;
+    ctx.session.awaitingCustomColor = true;
+    const promptMsg = await ctx.reply(
+      '🎨 أرسل كود اللون بصيغة HEX\n\nمثال: #E91E63 أو #4CAF50\n\nرسالة التنسيق ستبقى — فقط أرسل الكود هنا',
+      {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'color_custom_cancel' }]] }
+      }
+    );
+    ctx.session.customColorPromptId = promptMsg.message_id;
+    return true;
+  }
+
+  if (data === 'color_custom_cancel') {
+    await ctx.answerCallbackQuery();
+    ctx.session.awaitingCustomColor = false;
+    ctx.session.customColorPromptId = undefined;
+    await ctx.deleteMessage().catch(() => {});
+    return true;
+  }
+
+  if (data === 'fmt_apply') {
+    await ctx.answerCallbackQuery();
+    const tempLine = ctx.session.tempLine;
+    const tempFmt  = ctx.session.tempFormatting;
+    if (!tempLine || !tempFmt) {
+      await ctx.editMessageText('⚠️ انتهت صلاحية النص. أرسل النص مجدداً.').catch(() => {});
+      return true;
+    }
+    const chosenAlign: 'right' | 'center' | 'left' = tempFmt.align || 'right';
     const pageSize = ctx.session.pageSize || 'A4';
-    const chosenAlign = alignMap[data];
-    const finalLine: DocLine = { text: tempLine, align: chosenAlign, ...tempFormatting };
+    if (!ctx.session.documentLines) ctx.session.documentLines = [];
+
+    const finalLine: DocLine = {
+      text:      tempLine,
+      align:     chosenAlign,
+      bold:      tempFmt.bold,
+      italic:    tempFmt.italic,
+      underline: tempFmt.underline,
+      size:      tempFmt.size,
+      style:     tempFmt.style,
+      color:     tempFmt.color,
+    };
 
     if (ctx.session.editingLineIndex !== undefined) {
       const idx = ctx.session.editingLineIndex;
@@ -491,25 +585,24 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
       }
       ctx.session.editingLineIndex = undefined;
       ctx.session.awaitingLineEditText = false;
-      ctx.session.tempLine = null;
-      ctx.session.tempFormatting = null;
-      const lines = ctx.session.documentLines;
-      const preview = lines.map((l, i) => `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`).join('\n');
-      await ctx.editMessageText(`✅ تم تعديل السطر!\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() }).catch(() => {});
-      await refreshPreview(ctx);
-      return true;
+    } else {
+      const wrapped = smartWrap(finalLine.text, pageSize);
+      for (const chunk of wrapped) {
+        ctx.session.documentLines.push({ ...finalLine, text: chunk });
+      }
     }
 
-    const wrapped = smartWrap(finalLine.text, pageSize);
-    for (const chunk of wrapped) {
-      ctx.session.documentLines.push({ ...finalLine, text: chunk });
-    }
     ctx.session.tempLine = null;
     ctx.session.tempFormatting = null;
 
     const lines = ctx.session.documentLines;
-    const preview = lines.map((l, i) => `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`).join('\n');
-    await ctx.editMessageText(`✅ تمت إضافة النص\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() }).catch(() => {});
+    const preview = lines.map((l: any, i: number) =>
+      `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`
+    ).join('\n');
+    await ctx.editMessageText(
+      `✅ تمت إضافة النص\n\n📄 المستند:\n${preview}`,
+      { parse_mode: 'HTML', reply_markup: controlPanel() }
+    ).catch(() => {});
     await refreshPreview(ctx);
     return true;
   }
@@ -1181,6 +1274,31 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
 export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
   if (!ctx.session || !ctx.from) return false;
+
+  if (ctx.session.awaitingCustomColor) {
+    const hexText = ctx.message?.text?.trim();
+    if (!hexText) return false;
+    if (!/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(hexText)) {
+      await ctx.reply('❌ كود غير صحيح\n\nأرسل بصيغة HEX مثل: #FF5733', { parse_mode: 'HTML' });
+      return true;
+    }
+    if (ctx.session.tempFormatting) {
+      ctx.session.tempFormatting = { ...ctx.session.tempFormatting, color: hexText };
+    }
+    ctx.session.awaitingCustomColor = false;
+    // Delete user's message
+    await ctx.deleteMessage().catch(() => {});
+    // Delete bot's prompt message
+    if (ctx.session.customColorPromptId && ctx.chat) {
+      await ctx.api.deleteMessage(ctx.chat.id, ctx.session.customColorPromptId).catch(() => {});
+      ctx.session.customColorPromptId = undefined;
+    }
+    await ctx.reply(
+      `✅ تم تحديد اللون: ${hexText}\n\nاضغط ✅ تطبيق في رسالة التنسيق للحفظ.`,
+      { parse_mode: 'HTML' }
+    );
+    return true;
+  }
 
   // ── CAPTION INTERCEPTOR (MUST BE ABSOLUTE FIRST) ─────────────────────────────
   if (ctx.session.docState === 'awaiting_row_caption' && ctx.session.tempCaptionTarget !== undefined) {
