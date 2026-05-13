@@ -95,6 +95,72 @@ bot.use(async (ctx, next) => {
 // ─── Commands ──────────────────────────────────────────────────────────────────
 
 bot.command('start', startCommand);
+
+// ── /reset command ────────────────────────────────────────────────────────
+bot.command('reset', async (ctx) => {
+  await ctx.reply(
+    '⚠️ تأكيد إعادة التشغيل\n\n' +
+    'سيتم إلغاء أي عملية جارية (مستند، صورة، إعدادات) والعودة للقائمة الرئيسية.\n\n' +
+    '✅ رصيدك ومعلوماتك محفوظة تماماً — لن يُمس شيء منها.',
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '✅ نعم، أعد التشغيل', callback_data: 'action_confirm_reset' }],
+          [{ text: '❌ تراجع', callback_data: 'action_cancel_reset' }],
+        ],
+      },
+    }
+  );
+});
+
+// ── action_confirm_reset callback ─────────────────────────────────────────
+bot.callbackQuery('action_confirm_reset', async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.deleteMessage().catch(() => {});
+
+  // SURGICAL WIPE — session operational state only
+  // PRESERVE: pendingFile and all fields NOT listed here
+  ctx.session.isInDocMaker        = false;
+  ctx.session.docState            = null;
+  ctx.session.documentLines       = [];
+  ctx.session.tempLine            = null;
+  ctx.session.tempFormatting      = null;
+  ctx.session.tempImage           = undefined;
+  ctx.session.rowImages           = undefined;
+  ctx.session.awaitingNextRowImage = false;
+  ctx.session.awaitingRowCaption  = undefined;
+  ctx.session.tempCaptionTarget   = undefined;
+  ctx.session.editingLineIndex    = undefined;
+  ctx.session.awaitingLineEditIndex = false;
+  ctx.session.awaitingLineEditText  = false;
+  ctx.session.previewMessageId    = undefined;
+  ctx.session.pendingExportCost   = undefined;
+  ctx.session.pendingExportPages  = undefined;
+  ctx.session.selectedFont        = undefined;
+  ctx.session.docBgColor          = undefined;
+  ctx.session.docTextColor        = undefined;
+  ctx.session.pageSize            = undefined;
+  ctx.session.templateId          = undefined;
+  ctx.session.docType             = undefined;
+  ctx.session.pendingFile         = undefined;
+  ctx.session.pendingConversionFileId  = undefined;
+  ctx.session.pendingConversionFormat  = undefined;
+  ctx.session.pendingBatchFiles   = [];
+  ctx.session.awaitingCustomWidth  = false;
+  ctx.session.awaitingCustomHeight = false;
+  ctx.session.customSizeWidth     = undefined;
+  ctx.session.customSizeDims      = undefined;
+
+  // Re-run startCommand to show welcome screen with all buttons
+  await startCommand(ctx as any);
+});
+
+// ── action_cancel_reset callback ──────────────────────────────────────────
+bot.callbackQuery('action_cancel_reset', async (ctx) => {
+  await ctx.answerCallbackQuery({ text: '✅ تم التراجع' });
+  await ctx.deleteMessage().catch(() => {});
+});
 registerAdminCommands(bot);
 bot.command('invite', inviteCommand);
 
@@ -235,9 +301,10 @@ bot.on('message', async (ctx, next) => {
           {
             parse_mode: 'HTML',
             reply_markup: {
-              inline_keyboard: [[
-                { text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }
-              ]]
+              inline_keyboard: [
+                [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }],
+                [{ text: '🔄 إعادة تشغيل البوت', callback_data: 'action_confirm_reset' }]
+              ]
             }
           }
         );
@@ -300,9 +367,10 @@ bot.on('message', async (ctx, next) => {
         {
           parse_mode: 'HTML',
           reply_markup: {
-            inline_keyboard: [[
-              { text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }
-            ]]
+            inline_keyboard: [
+              [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }],
+              [{ text: '🔄 إعادة تشغيل البوت', callback_data: 'action_confirm_reset' }]
+            ]
           }
         }
       );
