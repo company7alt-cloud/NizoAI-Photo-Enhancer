@@ -411,14 +411,15 @@ export async function generateDocument(params: PdfGeneratorParams): Promise<Buff
 function drawArabicParagraph(doc: any, rawText: string, startX: number, startY: number, width: number, align: string, prepareFn: (txt: string) => string): number {
   if (!rawText) return startY;
   
-  // Split raw text by words to maintain natural sentence flow
-  const words = rawText.split(/\s+/);
+  // CRITICAL FIX: .reverse() is absolutely required for RTL word ordering 
+  // before building the line chunks for Bidi processing.
+  const words = rawText.split(/\s+/).reverse();
+  
   let lines: string[] = [];
   let currentLine = '';
 
   for (const word of words) {
     const testLine = currentLine ? currentLine + ' ' + word : word;
-    // Measure the width of the prepared (reshaped) text
     const testWidth = doc.widthOfString(prepareFn(testLine));
     
     if (testWidth > width && currentLine !== '') {
@@ -432,23 +433,13 @@ function drawArabicParagraph(doc: any, rawText: string, startX: number, startY: 
 
   let currentY = startY;
   const lineHeight = doc.currentLineHeight();
+  const pdfAlign = align === 'left' ? 'left' : align === 'center' ? 'center' : 'right';
 
   for (const line of lines) {
-    const preparedLine = prepareFn(line);
-    const lineWidth = doc.widthOfString(preparedLine);
-    
-    // Calculate X position based on requested alignment
-    let x = startX;
-    if (align === 'center') {
-      x = startX + (width / 2) - (lineWidth / 2);
-    } else if (align === 'left') {
-      x = startX;
-    } else {
-      x = startX + width - lineWidth; // Right align (default for Arabic)
-    }
-
-    // CRITICAL: lineBreak MUST be false to prevent PDFKit from interfering
-    doc.text(preparedLine, x, currentY, { lineBreak: false });
+    doc.text(prepareFn(line), startX, currentY, { 
+      width: width, 
+      align: pdfAlign 
+    });
     currentY += lineHeight;
   }
 
