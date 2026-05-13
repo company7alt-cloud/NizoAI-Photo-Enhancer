@@ -166,6 +166,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     'doc_img_align_locked',
     'doc_cursor_home','doc_cursor_center','doc_cursor_end',
     'doc_row_add_image','doc_row_caption_skip','doc_row_finish',
+    'doc_colored_approve','doc_colored_back',
   ];
   const isDoc =
     docCallbacks.includes(data) ||
@@ -979,30 +980,122 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     return true;
   }
 
-  // 3. Save Text Color & Route to Standard Document Flow (Size Selection)
+  // 3. Save Text Color → Generate SVG color preview & show Approve/Back
   if (data.startsWith('doc_txt_')) {
     await ctx.answerCallbackQuery();
     ctx.session.docTextColor = data.replace('doc_txt_', '');
-    (ctx.session as any).selectedTemplate = 'colored'; // Mark template as colored
-    
-    // IMMEDIATELY route the user to the standard Size Selection menu 
-    await ctx.editMessageText(
-      '📏 <b>اختر مقاس المستند:</b>',
+    (ctx.session as any).selectedTemplate = 'colored';
+
+    const bgColor  = ctx.session.docBgColor  || '#FFFFFF';
+    const txtColor = ctx.session.docTextColor || '#000000';
+
+    const svg = [
+      `<svg width="500" height="600" xmlns="http://www.w3.org/2000/svg">`,
+      `  <rect width="100%" height="100%" fill="${bgColor}"/>`,
+      `  <text x="50%" y="45%" font-family="Arial, sans-serif" font-size="28"`,
+      `        fill="${txtColor}" text-anchor="middle" dominant-baseline="middle">`,
+      `    معاينة النموذج الملون`,
+      `  </text>`,
+      `  <text x="50%" y="55%" font-family="Arial, sans-serif" font-size="16"`,
+      `        fill="${txtColor}" text-anchor="middle" dominant-baseline="middle" opacity="0.7">`,
+      `    خلفية: ${bgColor}  ·  نص: ${txtColor}`,
+      `  </text>`,
+      `</svg>`,
+    ].join('\n');
+
+    try {
+      const sharp = (await import('sharp')).default;
+      const previewBuffer = await sharp(Buffer.from(svg)).png().toBuffer();
+
+      await ctx.deleteMessage().catch(() => {});
+      await ctx.replyWithPhoto(
+        new InputFile(previewBuffer, 'preview.png'),
+        {
+          caption:
+            `🎨 <b>معاينة النموذج: ملون</b>\n\n` +
+            `<b>خلفية:</b> <code>${bgColor}</code>  ·  <b>نص:</b> <code>${txtColor}</code>\n\n` +
+            `هذه معاينة مبدئية للألوان. اضغط ✅ موافق للمتابعة.`,
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '✅ موافق', callback_data: 'doc_colored_approve' },
+              { text: '🔙 رجوع',  callback_data: 'doc_colored_back'    },
+            ]],
+          },
+        }
+      );
+    } catch (err) {
+      console.error('[PREVIEW] Failed to generate color preview:', err);
+      // Fallback: text-only confirmation
+      await ctx.editMessageText(
+        '✅ <b>تم حفظ الألوان.</b> اضغط متابعة:',
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: [[
+            { text: 'متابعة ➡️', callback_data: 'doc_colored_approve' },
+          ]]},
+        }
+      ).catch(() => ctx.reply('✅ تم حفظ الألوان. اضغط متابعة:'));
+    }
+    return true;
+  }
+
+  // 4. Colored approve → full Size menu
+  if (data === 'doc_colored_approve') {
+    await ctx.answerCallbackQuery();
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.reply(
+      '📐 <b>اختر مقاس الصفحة:</b>',
       {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
             [
-              { text: 'A4 (كلاسيكي)', callback_data: 'doc_size_A4' },
-              { text: 'A5 (كتاب)', callback_data: 'doc_size_A5' }
+              { text: 'A4 (افتراضي)', callback_data: 'doc_size_A4'        },
+              { text: 'A5',           callback_data: 'doc_size_A5'        },
             ],
             [
-              { text: 'مربع (انستجرام)', callback_data: 'doc_size_square' },
-              { text: 'B5 (مذكرة)', callback_data: 'doc_size_B5' }
+              { text: 'Letter',       callback_data: 'doc_size_Letter'    },
+              { text: 'B5',           callback_data: 'doc_size_B5'        },
             ],
-            [{ text: '❌ إلغاء', callback_data: 'doc_cancel_end' }]
-          ]
-        }
+            [
+              { text: 'Legal',        callback_data: 'doc_size_Legal'     },
+              { text: 'Executive',    callback_data: 'doc_size_Executive' },
+            ],
+            [{ text: '📐 مقاس مخصص',  callback_data: 'doc_custom_size'    }],
+            [{ text: '🔙 رجوع',       callback_data: 'doc_cancel_end'     }],
+          ],
+        },
+      }
+    );
+    return true;
+  }
+
+  // 5. Colored back → re-show text color selection
+  if (data === 'doc_colored_back') {
+    await ctx.answerCallbackQuery();
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.reply(
+      '🔤 <b>تصميم نموذج ملون (خطوة 2/2):</b>\n\nاختر <b>لون النص</b> المتناسق مع الخلفية:',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'أبيض ناصع ⚪', callback_data: 'doc_txt_#FFFFFF' },
+              { text: 'أسود فاحم ⚫', callback_data: 'doc_txt_#000000' },
+            ],
+            [
+              { text: 'رمادي داكن 🔘', callback_data: 'doc_txt_#333333' },
+              { text: 'ذهبي فاخر ✨',  callback_data: 'doc_txt_#D4AF37' },
+            ],
+            [
+              { text: 'أزرق ملكي 🔵', callback_data: 'doc_txt_#1D3557' },
+              { text: 'أحمر قاني 🔴', callback_data: 'doc_txt_#8B0000' },
+            ],
+            [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored' }],
+          ],
+        },
       }
     );
     return true;
