@@ -772,6 +772,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     } catch (e) {
       console.error('[FMT] apply editMessage failed:', e);
     }
+    await refreshPreview(ctx);
     return true;
   }
 
