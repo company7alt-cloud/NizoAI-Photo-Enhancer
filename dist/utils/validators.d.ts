@@ -30,6 +30,7 @@ export interface SessionData {
         fileName: string;
     };
     activeImageFileId?: string;
+    awaitingFilterAction?: string;
     pendingConversionFileId?: string;
     pendingConversionFormat?: string;
     pendingBatchFiles?: string[];

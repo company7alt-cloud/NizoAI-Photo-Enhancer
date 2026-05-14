@@ -138,10 +138,10 @@ async function enhance(telegramFileUrl, resolution) {
         console.log(`[ImageService] Prediction created: ${prediction.id}, status: ${prediction.status}`);
         // Poll until completed or failed
         const startTime = Date.now();
-        const timeout = 90 * 1000; // 90 seconds
+        const timeout = 240 * 1000; // 240 seconds
         while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
             if (Date.now() - startTime > timeout) {
-                throw new Error('Replicate prediction timed out after 90 seconds');
+                throw new Error('Replicate prediction timed out after 240 seconds');
             }
             await new Promise(resolve => setTimeout(resolve, 2000)); // wait 2 seconds
             prediction = await replicate.predictions.get(prediction.id);
@@ -353,8 +353,8 @@ async function processNanoBanana(imageUrl) {
         console.log(`[NanoAI] Prediction created: ${prediction.id}`);
         const startTime = Date.now();
         while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
-            if (Date.now() - startTime > 90000)
-                throw new Error('NanoAI timeout after 90 seconds');
+            if (Date.now() - startTime > 240000)
+                throw new Error('NanoAI timeout after 240 seconds');
             await new Promise(r => setTimeout(r, 2000));
             prediction = await replicate.predictions.get(prediction.id);
             console.log(`[NanoAI] Status: ${prediction.status}`);
@@ -688,11 +688,11 @@ async function processImageFilter(imageUrl, filterType) {
         default:
             throw new Error(`Unknown filter type: ${filterType}`);
     }
-    // Polling loop — 90 second timeout
+    // Polling loop — 240 second timeout
     const startTime = Date.now();
     while (!['succeeded', 'failed', 'canceled'].includes(prediction.status)) {
-        if (Date.now() - startTime > 90_000)
-            throw new Error('Filter timeout after 90s');
+        if (Date.now() - startTime > 240_000)
+            throw new Error('Filter timeout after 240s');
         await new Promise(r => setTimeout(r, 2000));
         prediction = await replicate.predictions.get(prediction.id);
         console.log(`[Filter:${filterType}] Status: ${prediction.status}`);
