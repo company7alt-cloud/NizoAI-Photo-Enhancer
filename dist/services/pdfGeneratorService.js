@@ -235,7 +235,15 @@ function renderRichLine(doc, line, x, currentY, contentW, baseSize, textColor = 
     }
     const lineColor = line.color || textColor;
     doc.fontSize(fontSize).fillColor(lineColor);
+    // ── Typography controls ────────────────────────────────────────────────────
+    const charSpacing = typeof line.letterSpacing === 'number' ? line.letterSpacing : 0;
+    const lineGap = typeof line.lineSpacing === 'number' ? line.lineSpacing : 18;
+    doc.characterSpacing(charSpacing);
+    doc.lineGap(lineGap - fontSize); // pdfkit lineGap is extra space; subtract fontSize for net gap
     const newY = drawArabicParagraph(doc, line.text, effectiveX, currentY, effectiveW, line.align ?? 'right', prepareArabicText);
+    // Reset typography to defaults
+    doc.characterSpacing(0);
+    doc.lineGap(0);
     if (line.bold)
         doc.restore();
     // ── underline: draw line beneath text ────────────────────────────────────────

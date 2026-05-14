@@ -15,6 +15,8 @@ export interface DocLine {
   size?: 'small' | 'normal' | 'large';
   style?: 'normal' | 'quote' | 'divider' | 'highlight';
   color?: string;
+  letterSpacing?: number;
+  lineSpacing?: number;
   // Image-line fields
   type?: 'text' | 'image' | 'image_row';
   fileId?: string;
@@ -51,6 +53,8 @@ export interface SessionData {
     style: 'normal' | 'quote' | 'divider' | 'highlight';
     color?: string;
     align?: 'right' | 'center' | 'left';
+    letterSpacing?: number;
+    lineSpacing?: number;
   } | null;
   documentLines?: DocLine[];
   pendingExportCost?: number;
@@ -91,6 +95,8 @@ export interface SessionData {
   awaitingNextRowImage?: boolean; // waiting for user to send next image
   awaitingCustomColor?: boolean;
   customColorPromptId?: number;
+  awaitingTypographyValue?: 'letter' | 'line';
+  typographyPromptId?: number;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

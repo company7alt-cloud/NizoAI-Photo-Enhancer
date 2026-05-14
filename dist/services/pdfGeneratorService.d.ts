@@ -23,6 +23,8 @@ export interface RichLine {
     underline?: boolean;
     size?: 'small' | 'normal' | 'large';
     style?: 'normal' | 'quote' | 'divider' | 'highlight';
+    letterSpacing?: number;
+    lineSpacing?: number;
 }
 export declare function generateDocument(params: PdfGeneratorParams): Promise<Buffer>;
 export interface AlignedLine {

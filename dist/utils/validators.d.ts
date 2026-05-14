@@ -10,6 +10,8 @@ export interface DocLine {
     size?: 'small' | 'normal' | 'large';
     style?: 'normal' | 'quote' | 'divider' | 'highlight';
     color?: string;
+    letterSpacing?: number;
+    lineSpacing?: number;
     type?: 'text' | 'image' | 'image_row';
     fileId?: string;
     imageLines?: number;
@@ -43,6 +45,8 @@ export interface SessionData {
         style: 'normal' | 'quote' | 'divider' | 'highlight';
         color?: string;
         align?: 'right' | 'center' | 'left';
+        letterSpacing?: number;
+        lineSpacing?: number;
     } | null;
     documentLines?: DocLine[];
     pendingExportCost?: number;
@@ -82,6 +86,8 @@ export interface SessionData {
     awaitingNextRowImage?: boolean;
     awaitingCustomColor?: boolean;
     customColorPromptId?: number;
+    awaitingTypographyValue?: 'letter' | 'line';
+    typographyPromptId?: number;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

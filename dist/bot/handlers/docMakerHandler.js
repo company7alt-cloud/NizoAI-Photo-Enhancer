@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.smartWrap = smartWrap;
 exports.renderActiveSession = renderActiveSession;
 exports.handleDocMakerCallback = handleDocMakerCallback;
+exports.handleTypographyCallback = handleTypographyCallback;
 exports.handleDocMakerMessage = handleDocMakerMessage;
 exports.showImageFormatMenu = showImageFormatMenu;
 const User_1 = require("../../database/models/User");
@@ -43,6 +44,14 @@ const grammy_1 = require("grammy");
 const settingsService_1 = require("../../services/settingsService");
 const previewGeneratorService_1 = require("../../services/previewGeneratorService");
 function buildFormattingKeyboard(fmt) {
+    const lsVal = fmt.letterSpacing;
+    const lhVal = fmt.lineSpacing;
+    const lsTxt = lsVal !== undefined
+        ? `✅ تباعد الأحرف (${lsVal})`
+        : '↔️ تباعد الأحرف';
+    const lhTxt = lhVal !== undefined
+        ? `✅ تباعد الأسطر (${lhVal})`
+        : '↕️ تباعد الأسطر';
     const isR = fmt.align === 'right' ? '✅ يمين' : '➡️ يمين';
     const isC = fmt.align === 'center' ? '✅ وسط' : '↔️ وسط';
     const isL = fmt.align === 'left' ? '✅ يسار' : '⬅️ يسار';
@@ -67,6 +76,10 @@ function buildFormattingKeyboard(fmt) {
             { text: isR, callback_data: 'fmt_align_right' },
             { text: isC, callback_data: 'fmt_align_center' },
             { text: isL, callback_data: 'fmt_align_left' },
+        ],
+        [
+            { text: lsTxt, callback_data: 'typo_letter' },
+            { text: lhTxt, callback_data: 'typo_line' },
         ],
         [
             { text: b, callback_data: 'style_bold' },
@@ -194,11 +207,15 @@ const SIZE_KB = {
 async function renderActiveSession(ctx) {
     const lines = ctx.session.documentLines || [];
     const preview = lines.map((l, i) => {
-        if (l.type === 'image')
-            return `${i + 1}. 🖼 [صورة]`;
+        if (l.type === 'image_cover')
+            return `${i + 1}. 📄 [صورة غلاف]`;
         if (l.type === 'image_row' || l.rowImages)
-            return `${i + 1}. 🖼 [سطر صور]`;
-        return `${i + 1}. ${l.text ? l.text.substring(0, 30) + '...' : '[فارغ]'}`;
+            return `${i + 1}. 🖼️ [مجموعة صور — ${(l.rowImages || []).length} صور]`;
+        if (l.type === 'image')
+            return `${i + 1}. 🖼️ [صورة]`;
+        if (!l.text || l.text.trim() === '')
+            return `${i + 1}. ⬜ [سطر فارغ]`;
+        return `${i + 1}. 📝 ${l.text.substring(0, 35)}${l.text.length > 35 ? '...' : ''}`;
     }).join('\n');
     const text = lines.length > 0
         ? `📄 <b>المستند:</b>\n${preview}`
@@ -267,7 +284,8 @@ async function handleDocMakerCallback(ctx) {
         'doc_row_add_image', 'doc_row_caption_skip', 'doc_row_finish',
         'doc_colored_approve', 'doc_colored_back',
         'color_red', 'color_yellow', 'color_blue', 'color_default',
-        'color_custom', 'color_custom_cancel', 'fmt_apply'
+        'color_custom', 'color_custom_cancel', 'fmt_apply',
+        'typo_letter', 'typo_line', 'typo_cancel'
     ];
     const isDoc = docCallbacks.includes(data) ||
         data.startsWith('doc_bg_') ||
@@ -706,7 +724,9 @@ async function handleDocMakerCallback(ctx) {
             underline: ctx.session.tempFormatting.underline,
             size: ctx.session.tempFormatting.size,
             style: ctx.session.tempFormatting.style,
-            color: ctx.session.tempFormatting.color
+            color: ctx.session.tempFormatting.color,
+            letterSpacing: ctx.session.tempFormatting.letterSpacing,
+            lineSpacing: ctx.session.tempFormatting.lineSpacing
         });
         const total = ctx.session.documentLines.length;
         const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
@@ -1472,8 +1492,48 @@ async function handleDocMakerCallback(ctx) {
         ctx.session.docState = 'active';
         await ctx.answerCallbackQuery({ text: '✅ تمت إضافة السطر للمستند!' });
         await ctx.deleteMessage().catch(() => { });
-        await ctx.deleteMessage().catch(() => { });
+        await refreshPreview(ctx);
         await renderActiveSession(ctx);
+        return true;
+    }
+    // ── Typography callbacks ───────────────────────────────────────────────────────
+    const typoResult = await handleTypographyCallback(ctx, data);
+    if (typoResult)
+        return true;
+    return false;
+}
+// ── TYPOGRAPHY CALLBACKS ─────────────────────────────────────────────────────────
+// These are injected at the END of handleDocMakerCallback (before `return false`)
+// but stored here so they don't get lost in future merges.
+// They are handled inside handleDocMakerCallback via the docCallbacks array.
+async function handleTypographyCallback(ctx, data) {
+    if (data === 'typo_letter' || data === 'typo_line') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery('⚠️ لا يوجد نص نشط');
+            return true;
+        }
+        ctx.session.awaitingTypographyValue = data === 'typo_letter' ? 'letter' : 'line';
+        const isLetter = data === 'typo_letter';
+        const title = isLetter ? '↔️ تباعد الأحرف' : '↕️ تباعد الأسطر';
+        const examples = isLetter
+            ? '• <b>0</b>  = أحرف ملتصقة تماماً\n• <b>1</b>  = تباعد خفيف (افتراضي)\n• <b>3</b>  = تباعد متوسط أنيق\n• <b>6</b>  = تباعد واسع فخم\n• <b>10</b> = تباعد عريض جداً'
+            : '• <b>15</b> = أسطر متقاربة (كتاب)\n• <b>18</b> = تباعد مريح (افتراضي)\n• <b>22</b> = تباعد واسع (مقال)\n• <b>28</b> = تباعد كبير (عنوان)\n• <b>35</b> = تباعد جداً (بوستر)';
+        await ctx.answerCallbackQuery(`⚙️ ${title}`);
+        const promptMsg = await ctx.reply(`${title}\n\nأرسل رقماً للتطبيق:\n\n${examples}\n\n<i>القائمة أعلاه ستبقى — فقط أرسل الرقم.</i>`, {
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'typo_cancel' }]] }
+        });
+        ctx.session.typographyPromptId = promptMsg.message_id;
+        return true;
+    }
+    if (data === 'typo_cancel') {
+        await ctx.answerCallbackQuery('↩️ إلغاء');
+        ctx.session.awaitingTypographyValue = undefined;
+        if (ctx.session.typographyPromptId && ctx.chat) {
+            await ctx.api.deleteMessage(ctx.chat.id, ctx.session.typographyPromptId).catch(() => { });
+            ctx.session.typographyPromptId = undefined;
+        }
+        await ctx.deleteMessage().catch(() => { });
         return true;
     }
     return false;
@@ -1482,6 +1542,39 @@ async function handleDocMakerCallback(ctx) {
 async function handleDocMakerMessage(ctx) {
     if (!ctx.session || !ctx.from)
         return false;
+    // ── TYPOGRAPHY VALUE INTERCEPTOR ─────────────────────────────────────
+    if (ctx.session.awaitingTypographyValue && ctx.message?.text) {
+        const val = parseInt(ctx.message.text.trim());
+        if (isNaN(val) || val < 0 || val > 100) {
+            await ctx.reply('❌ أرسل رقماً صحيحاً بين 0 و100.', { parse_mode: 'HTML' });
+            return true;
+        }
+        if (ctx.session.tempFormatting) {
+            if (ctx.session.awaitingTypographyValue === 'letter') {
+                ctx.session.tempFormatting.letterSpacing = val;
+            }
+            else {
+                ctx.session.tempFormatting.lineSpacing = val;
+            }
+        }
+        ctx.session.awaitingTypographyValue = undefined;
+        await ctx.deleteMessage().catch(() => { });
+        if (ctx.session.typographyPromptId && ctx.chat) {
+            await ctx.api.deleteMessage(ctx.chat.id, ctx.session.typographyPromptId).catch(() => { });
+            ctx.session.typographyPromptId = undefined;
+        }
+        if (ctx.session.tempFormatting && ctx.session.tempLine) {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            try {
+                await ctx.reply(`📝 <b>اختر تنسيق النص:</b>\n\n${ctx.session.tempLine}`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: kb.inline_keyboard } });
+            }
+            catch (e) {
+                console.error('[TYPO] Failed to update keyboard:', e);
+            }
+        }
+        return true;
+    }
+    // ── END TYPOGRAPHY INTERCEPTOR ──────────────────────────────────────
     const rawText = ctx.message?.text || '';
     const trimmedInput = rawText.trim();
     const emptyLineMatch = trimmedInput.match(/^(فارغ|فارع|فراغ|فاضي|فاضية|empty)\s*(\d{1,2})?$/i);

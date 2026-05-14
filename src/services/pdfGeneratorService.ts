@@ -172,6 +172,8 @@ export interface RichLine {
   underline?: boolean;
   size?: 'small' | 'normal' | 'large';
   style?: 'normal' | 'quote' | 'divider' | 'highlight';
+  letterSpacing?: number;
+  lineSpacing?: number;
 }
 
 // ─── Template renderers ────────────────────────────────────────────────────────
@@ -289,6 +291,13 @@ function renderRichLine(
 
   const lineColor = (line as any).color || textColor;
   doc.fontSize(fontSize).fillColor(lineColor);
+
+  // ── Typography controls ────────────────────────────────────────────────────
+  const charSpacing = typeof (line as any).letterSpacing === 'number' ? (line as any).letterSpacing : 0;
+  const lineGap     = typeof (line as any).lineSpacing    === 'number' ? (line as any).lineSpacing    : 18;
+  (doc as any).characterSpacing(charSpacing);
+  doc.lineGap(lineGap - fontSize); // pdfkit lineGap is extra space; subtract fontSize for net gap
+
   const newY = drawArabicParagraph(
     doc,
     line.text,
@@ -298,6 +307,10 @@ function renderRichLine(
     line.align ?? 'right',
     prepareArabicText
   );
+
+  // Reset typography to defaults
+  (doc as any).characterSpacing(0);
+  doc.lineGap(0);
 
   if (line.bold) doc.restore();
 
