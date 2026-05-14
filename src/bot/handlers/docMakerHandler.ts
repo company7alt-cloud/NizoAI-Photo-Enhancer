@@ -539,9 +539,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -555,9 +562,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -571,9 +585,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -587,9 +608,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -603,9 +631,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -619,9 +654,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -635,9 +677,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -1018,9 +1067,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -1034,9 +1090,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -1050,9 +1113,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -1066,9 +1136,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -1082,9 +1159,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -1098,9 +1182,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -1114,9 +1205,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -1130,9 +1228,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
@@ -1146,9 +1251,16 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     await ctx.answerCallbackQuery('✅');
     try {
       const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
-      await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard } as any);
+      const linePreview = ctx.session.tempLine || '';
+      await ctx.editMessageText(
+        `📝 <b>اختر تنسيق النص:</b>\n\n${linePreview}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: kb.inline_keyboard }
+        }
+      );
     } catch (e) {
-      console.error('[FMT] editMarkup failed:', e);
+      console.error('[FMT] editMessage failed:', e);
     }
     return true;
   }
