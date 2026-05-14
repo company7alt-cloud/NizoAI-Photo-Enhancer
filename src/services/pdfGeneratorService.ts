@@ -293,9 +293,7 @@ function renderRichLine(
   doc.fontSize(fontSize).fillColor(lineColor);
 
   // ── Typography controls ────────────────────────────────────────────────────
-  const charSpacing = typeof (line as any).letterSpacing === 'number' ? (line as any).letterSpacing : 0;
   const lineGap     = typeof (line as any).lineSpacing    === 'number' ? (line as any).lineSpacing    : 18;
-  (doc as any).characterSpacing(charSpacing);
   doc.lineGap(lineGap - fontSize); // pdfkit lineGap is extra space; subtract fontSize for net gap
 
   const newY = drawArabicParagraph(
@@ -309,7 +307,6 @@ function renderRichLine(
   );
 
   // Reset typography to defaults
-  (doc as any).characterSpacing(0);
   doc.lineGap(0);
 
   if (line.bold) doc.restore();
