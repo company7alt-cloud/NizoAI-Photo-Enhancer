@@ -1586,12 +1586,6 @@ async function handleDocMakerMessage(ctx) {
     if (ctx.session.awaitingLineEditText) {
         if (ctx.session.tempLine) {
             await ctx.deleteMessage().catch(() => { });
-            await ctx.reply(`📝 <b>اختر تنسيق النص:</b>\n\n${ctx.session.tempLine}`, {
-                parse_mode: 'HTML',
-                reply_markup: {
-                    inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
-                }
-            });
             return true;
         }
         ctx.session.tempLine = text;
@@ -1612,14 +1606,11 @@ async function handleDocMakerMessage(ctx) {
         return true;
     }
     // Enforce Alignment Selection
+    // FIXED: Do NOT delete or resend the formatting message.
+    // Just delete the user's new message silently and do nothing else.
+    // The existing formatting message stays visible with all its buttons.
     if (ctx.session.tempLine) {
         await ctx.deleteMessage().catch(() => { });
-        await ctx.reply(`📝 <b>اختر تنسيق النص:</b>\n\n${ctx.session.tempLine}`, {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
-            }
-        });
         return true;
     }
     ctx.session.tempLine = text;
