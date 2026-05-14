@@ -29,4 +29,7 @@ export interface AlignedLine {
     text: string;
     align: 'right' | 'center' | 'left';
 }
-export declare function generateDocumentFromLines(lines: (RichLine | AlignedLine)[], pageSize?: string, selectedFont?: string): Promise<Buffer>;
+export declare function generateDocumentFromLines(lines: (RichLine | AlignedLine)[], pageSize?: string, selectedFont?: string, docBgColor?: string, docTextColor?: string): Promise<{
+    buffer: Buffer;
+    pageCount: number;
+}>;

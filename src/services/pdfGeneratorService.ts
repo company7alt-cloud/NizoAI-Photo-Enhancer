@@ -10,6 +10,13 @@ import https from 'https';
 // Initialise the bidi engine once (singleton)
 const bidiEngine = bidiFactory();
 
+const EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
+function hasEmoji(str: string): boolean { return EMOJI_REGEX.test(str); }
+function stripEmoji(str: string): string { return str.replace(EMOJI_REGEX, ' '); }
+function extractEmoji(str: string): string[] {
+  return Array.from(str.matchAll(new RegExp(EMOJI_REGEX.source, 'gu'))).map(m => m[0]);
+}
+
 /**
  * Reshapes Arabic characters so they connect properly, then
  * applies the Unicode Bidirectional Algorithm so RTL text is
@@ -437,10 +444,32 @@ function drawArabicParagraph(doc: any, rawText: string, startX: number, startY: 
   const pdfAlign = align === 'left' ? 'left' : align === 'center' ? 'center' : 'right';
 
   for (const line of lines) {
-    doc.text(prepareFn(line), startX, currentY, { 
-      width: width, 
-      align: pdfAlign 
-    });
+    const lineText = line || '';
+    if (hasEmoji(lineText)) {
+      const cleanText = stripEmoji(lineText);
+      if (cleanText.trim()) {
+        doc.text(prepareFn(cleanText), startX, currentY, { width: width, align: pdfAlign });
+      }
+      
+      const emojiFontPath = path.join(process.cwd(), 'src', 'assets', 'fonts', 'NotoEmoji.ttf');
+      if (fs.existsSync(emojiFontPath)) {
+        try {
+          doc.registerFont('NotoEmoji', emojiFontPath);
+          const emojis = extractEmoji(lineText).join(' ');
+          // To enable emoji rendering: download NotoColorEmoji.ttf from
+          // https://github.com/googlefonts/noto-emoji and place at
+          // src/assets/fonts/NotoEmoji.ttf
+          // Bot works without it — emoji are simply omitted from PDF
+          const mainFont = doc._font ? doc._font.name : 'Helvetica';
+          doc.font('NotoEmoji').fontSize(10).text(emojis, startX, currentY, { width: width, align: pdfAlign });
+          doc.font(mainFont);
+        } catch {
+          // emoji font failed — skip emoji silently, text already rendered
+        }
+      }
+    } else {
+      doc.text(prepareFn(lineText), startX, currentY, { width: width, align: pdfAlign });
+    }
     currentY += lineHeight;
   }
 
@@ -597,6 +626,20 @@ export async function generateDocumentFromLines(
 
           for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
             const img = images[imgIdx];
+            
+            // X position:
+            //  - Single image: respect per-image alignment setting
+            //  - Multiple images: lay out left-to-right (index 0 = leftmost)
+            let alignX: number;
+            if (images.length === 1) {
+              alignX =
+                img.align === 'left'   ? PADDING :
+                img.align === 'center' ? PADDING + (pageW / 2) - (imgW / 2) :
+                /* right */              PADDING + pageW - imgW;
+            } else {
+              alignX = PADDING + imgIdx * (imgW + gap);
+            }
+
             try {
               const fileUrl = await getTelegramFileUrl(img.fileId);
               const imgRes  = await fetch(fileUrl);
@@ -625,19 +668,6 @@ export async function generateDocumentFromLines(
                   .png().toBuffer()) as any;
               }
 
-              // X position:
-              //  - Single image: respect per-image alignment setting
-              //  - Multiple images: lay out left-to-right (index 0 = leftmost)
-              let alignX: number;
-              if (images.length === 1) {
-                alignX =
-                  img.align === 'left'   ? PADDING :
-                  img.align === 'center' ? PADDING + (pageW / 2) - (imgW / 2) :
-                  /* right */              PADDING + pageW - imgW;
-              } else {
-                alignX = PADDING + imgIdx * (imgW + gap);
-              }
-
               doc.image(imgBuffer, alignX, currentY, { width: imgW, height: allocH });
 
               // Per-image caption
@@ -656,6 +686,10 @@ export async function generateDocumentFromLines(
               }
             } catch (err) {
               console.error('[PDF] Row image embed failed, skipping:', err);
+              // Add placeholder text so user knows image was there
+              doc.fillColor('#cccccc')
+                 .fontSize(10)
+                 .text('[صورة]', alignX, currentY + allocH / 2 - 5, { align: 'center', width: imgW });
             }
           }
 

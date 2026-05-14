@@ -101,6 +101,34 @@ const DOC_MAKER_INSTRUCTION =
   `▸ أرسل <code>فارغ 3</code> ← لثلاثة أسطر فارغة\n\n` +
   `⚠️ <b>ملاحظة:</b> النص لن يلمس حواف المستند أبداً — هناك هوامش احترافية.`;
 
+function estimatePageCount(
+  lines: any[],
+  _pageSize: string = 'A4'
+): number {
+  const LINES_PER_PAGE = 40;
+
+  let totalLines = 0;
+  for (const line of lines) {
+    if (line.type === 'image' || line.type === 'image_row') {
+      totalLines += (line.imageLines || 5);
+    } else if (line.type === 'text') {
+      if (!line.text || line.text.trim() === '') {
+        totalLines += 1;
+      } else if (line.size === 'large') {
+        totalLines += 2;
+      } else {
+        totalLines += 1;
+      }
+    } else if (line.style === 'divider') {
+      totalLines += 1;
+    } else {
+      totalLines += 1;
+    }
+  }
+
+  return Math.max(1, Math.ceil(totalLines / LINES_PER_PAGE));
+}
+
 const COMPILE_KB = {
   inline_keyboard: [
     [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
@@ -447,7 +475,9 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     ctx.session.docState = 'active';
 
     await ctx.deleteMessage().catch(() => {});
-    await ctx.reply('✅ تمت إضافة الغلاف للمستند!');
+    const total = ctx.session.documentLines.length;
+    const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
+    await ctx.reply(`✅ تمت إضافة الغلاف للمستند!\n📄 الأسطر: ${total} | الصفحات: ~${pages}`);
     await renderActiveSession(ctx);
     return true;
   }
@@ -577,8 +607,12 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     ctx.session.tempFormatting = null;
 
     await ctx.answerCallbackQuery('✅ تمت الإضافة');
+    const total = ctx.session.documentLines.length;
+    const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
     await ctx.editMessageText(
-      `✅ <b>تمت إضافة السطر ${lineNum} للمستند!</b>\n\nأرسل نصاً أو صورة، أو اضغط تصدير.`,
+      `✅ <b>تمت إضافة السطر ${lineNum} للمستند!</b>\n` +
+      `📄 الأسطر: ${total} | الصفحات: ~${pages}\n\n` +
+      `أرسل نصاً أو صورة، أو اضغط تصدير.`,
       {
         parse_mode: 'HTML',
         reply_markup: {
@@ -603,10 +637,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   if (data === 'doc_export_pdf') {
     const lines = ctx.session.documentLines || [];
 
-    const totalLineCount = lines.reduce((acc, l) => {
-      return acc + (l.type === 'image' ? (l.imageLines || 5) : 1);
-    }, 0);
-    const estimatedPages = Math.max(1, Math.ceil(totalLineCount / 30));
+    const estimatedPages = estimatePageCount(lines, ctx.session.pageSize);
 
     if (estimatedPages > 40) {
       await ctx.editMessageText(
@@ -778,23 +809,41 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 
   // ── Redo ───────────────────────────────────────────────────────────────────
   if (data === 'doc_undo_last') {
-    await ctx.answerCallbackQuery();
-    if (!ctx.session.documentLines || ctx.session.documentLines.length === 0) {
-      await ctx.editMessageText('⚠️ المستند فارغ!').catch(() => {});
+    const lines = ctx.session.documentLines || [];
+    if (lines.length === 0) {
+      await ctx.answerCallbackQuery('⚠️ لا يوجد أسطر للحذف');
       return true;
     }
-    ctx.session.documentLines.pop();
-    ctx.session.tempLine = null;
-    ctx.session.tempFormatting = null;
-    ctx.session.awaitingLineEditIndex = false;
-    ctx.session.awaitingLineEditText = false;
-    const lines = ctx.session.documentLines;
-    if (lines.length === 0) {
-      await ctx.editMessageText('🗑️ تم حذف آخر سطر.\n\nالمستند فارغ. أرسل النص البديل:', { reply_markup: COMPILE_KB }).catch(() => {});
-    } else {
-      const preview = lines.map((l, i) => `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`).join('\n');
-      await ctx.editMessageText(`🗑️ تم حذف آخر سطر.\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() }).catch(() => {});
-    }
+    const removed = lines.pop();
+    ctx.session.documentLines = lines;
+
+    const preview = removed?.type === 'image' || removed?.type === 'image_row'
+      ? '[صورة]'
+      : (removed?.text?.substring(0, 30) || '[فارغ]');
+
+    const pages = estimatePageCount(lines, ctx.session.pageSize);
+
+    await ctx.answerCallbackQuery('✅ تم الحذف');
+    await ctx.editMessageText(
+      `↩️ <b>تم حذف السطر الأخير:</b>\n<i>${preview}</i>\n\n` +
+      `📄 الأسطر الآن: ${lines.length} | الصفحات: ~${pages}`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' },
+              { text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }
+            ],
+            [
+              { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' },
+              { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }
+            ],
+            [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+          ]
+        }
+      }
+    ).catch(() => {});
     await refreshPreview(ctx);
     return true;
   }
@@ -806,7 +855,9 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     ctx.session.documentLines.push({ text: '---PAGE_BREAK---', align: 'right' });
     ctx.session.tempLine = null;
     ctx.session.tempFormatting = null;
-    await ctx.reply('✅ تم حفظ الصفحة. ابدأ كتابة الصفحة التالية:', { reply_markup: controlPanel() });
+    const total = ctx.session.documentLines.length;
+    const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
+    await ctx.reply(`✅ تم حفظ الصفحة. ابدأ كتابة الصفحة التالية:\n📄 الأسطر: ${total} | الصفحات: ~${pages}`, { reply_markup: controlPanel() });
     return true;
   }
 
@@ -1275,6 +1326,51 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
 export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
   if (!ctx.session || !ctx.from) return false;
 
+  const rawText = ctx.message?.text || '';
+  const trimmedInput = rawText.trim();
+  const emptyLineMatch = trimmedInput.match(
+    /^(فارغ|فارع|فراغ|فاضي|فاضية|empty)\s*(\d{1,2})?$/i
+  );
+
+  if (emptyLineMatch && ctx.session.isInDocMaker) {
+    const count = Math.min(
+      Math.max(1, parseInt(emptyLineMatch[2] || '1')),
+      20
+    );
+    ctx.session.documentLines = ctx.session.documentLines || [];
+
+    for (let i = 0; i < count; i++) {
+      ctx.session.documentLines.push({ type: 'text', text: '' } as any);
+    }
+
+    const total = ctx.session.documentLines.length;
+    const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
+
+    await ctx.reply(
+      `✅ <b>تمت إضافة ${count} سطر فارغ</b>\n` +
+      `📄 إجمالي الأسطر: ${total} | الصفحات: ~${pages}\n\n` +
+      'أرسل المزيد أو اضغط تصدير.',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' },
+              { text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }
+            ],
+            [
+              { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' },
+              { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }
+            ],
+            [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+          ]
+        }
+      }
+    );
+    await refreshPreview(ctx);
+    return true; // NEVER reaches format menu
+  }
+
   if (ctx.session.awaitingCustomColor) {
     const hexText = ctx.message?.text?.trim();
     if (!hexText) return false;
@@ -1345,7 +1441,7 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
     return true;
   }
 
-  const text = ctx.message?.text?.trim();
+  const text = trimmedInput;
   if (!text || text.startsWith('/')) return false;
 
   // HARD STOP: never process text as doc-content during image configuration
@@ -1455,19 +1551,6 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
         }
       }
     );
-    return true;
-  }
-
-  // Empty line command
-  const emptyMatch = text.match(/^فارغ(\s+(\d+))?$/);
-  if (emptyMatch) {
-    const n = Math.min(Math.max(emptyMatch[2] ? parseInt(emptyMatch[2], 10) : 1, 1), 20);
-    if (!ctx.session.documentLines) ctx.session.documentLines = [];
-    for (let i = 0; i < n; i++) ctx.session.documentLines.push({ text: '', align: 'right' });
-    const lines = ctx.session.documentLines;
-    const preview = lines.map((l, i) => `${i+1}. ${l.text ? l.text.substring(0,30)+'...' : '[فارغ]'}`).join('\n');
-    await ctx.reply(`✅ تمت إضافة ${n} سطر فارغ\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() });
-    await refreshPreview(ctx);
     return true;
   }
 

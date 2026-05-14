@@ -33,13 +33,19 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.smartWrap = smartWrap;
+exports.renderActiveSession = renderActiveSession;
 exports.handleDocMakerCallback = handleDocMakerCallback;
 exports.handleDocMakerMessage = handleDocMakerMessage;
+exports.showImageFormatMenu = showImageFormatMenu;
 const User_1 = require("../../database/models/User");
 const grammy_1 = require("grammy");
 const settingsService_1 = require("../../services/settingsService");
 const previewGeneratorService_1 = require("../../services/previewGeneratorService");
 function buildFormattingKeyboard(fmt) {
+    const isR = fmt.align === 'right' ? '✅ يمين' : '➡️ يمين';
+    const isC = fmt.align === 'center' ? '✅ وسط' : '↔️ وسط';
+    const isL = fmt.align === 'left' ? '✅ يسار' : '⬅️ يسار';
     const b = fmt.bold ? '✅ عريض' : '𝐁 عريض';
     const it = fmt.italic ? '✅ مائل' : '𝐼 مائل';
     const ul = fmt.underline ? '✅ تحته خط' : 'U̲ تحته خط';
@@ -49,12 +55,19 @@ function buildFormattingKeyboard(fmt) {
     const qt = fmt.style === 'quote' ? '✅ اقتباس' : '" اقتباس';
     const dv = fmt.style === 'divider' ? '✅ فاصل' : '— فاصل';
     const hl = fmt.style === 'highlight' ? '✅ مميز' : '★ مميز';
+    const clRed = fmt.color === '#FF0000' ? '✅ أحمر' : '🔴 أحمر';
+    const clYel = fmt.color === '#FFD700' ? '✅ أصفر' : '🟡 أصفر';
+    const clBlu = fmt.color === '#1565C0' ? '✅ أزرق' : '🔵 أزرق';
+    const clDef = !fmt.color ? '✅ افتراضي' : '⚫ افتراضي';
+    const customLabel = (fmt.color && !['#FF0000', '#FFD700', '#1565C0'].includes(fmt.color))
+        ? `✅ مخصص: ${fmt.color}`
+        : '🎨 اختيار ذاتي (كود اللون)';
     return {
         inline_keyboard: [
             [
-                { text: '➡️ يمين', callback_data: 'align_right' },
-                { text: '↔️ وسط', callback_data: 'align_center' },
-                { text: '⬅️ يسار', callback_data: 'align_left' },
+                { text: isR, callback_data: 'fmt_align_right' },
+                { text: isC, callback_data: 'fmt_align_center' },
+                { text: isL, callback_data: 'fmt_align_left' },
             ],
             [
                 { text: b, callback_data: 'style_bold' },
@@ -70,6 +83,18 @@ function buildFormattingKeyboard(fmt) {
                 { text: qt, callback_data: 'style_quote' },
                 { text: dv, callback_data: 'style_divider' },
                 { text: hl, callback_data: 'style_highlight' },
+            ],
+            [
+                { text: clRed, callback_data: 'color_red' },
+                { text: clYel, callback_data: 'color_yellow' },
+                { text: clBlu, callback_data: 'color_blue' },
+                { text: clDef, callback_data: 'color_default' },
+            ],
+            [
+                { text: customLabel, callback_data: 'color_custom' }
+            ],
+            [
+                { text: '✅ تطبيق وإضافة للمستند', callback_data: 'fmt_apply' }
             ],
             [
                 { text: '🔙 رجوع', callback_data: 'doc_format_back' }
@@ -109,6 +134,33 @@ const DOC_MAKER_INSTRUCTION = `✨ <b>صانع المستندات والكتب</
     `▸ أرسل <code>فارغ 2</code> ← لسطرين فارغين\n` +
     `▸ أرسل <code>فارغ 3</code> ← لثلاثة أسطر فارغة\n\n` +
     `⚠️ <b>ملاحظة:</b> النص لن يلمس حواف المستند أبداً — هناك هوامش احترافية.`;
+function estimatePageCount(lines, _pageSize = 'A4') {
+    const LINES_PER_PAGE = 40;
+    let totalLines = 0;
+    for (const line of lines) {
+        if (line.type === 'image' || line.type === 'image_row') {
+            totalLines += (line.imageLines || 5);
+        }
+        else if (line.type === 'text') {
+            if (!line.text || line.text.trim() === '') {
+                totalLines += 1;
+            }
+            else if (line.size === 'large') {
+                totalLines += 2;
+            }
+            else {
+                totalLines += 1;
+            }
+        }
+        else if (line.style === 'divider') {
+            totalLines += 1;
+        }
+        else {
+            totalLines += 1;
+        }
+    }
+    return Math.max(1, Math.ceil(totalLines / LINES_PER_PAGE));
+}
 const COMPILE_KB = {
     inline_keyboard: [
         [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
@@ -140,6 +192,21 @@ const SIZE_KB = {
         [{ text: '🔙 رجوع', callback_data: 'doc_tpl_back' }],
     ],
 };
+async function renderActiveSession(ctx) {
+    const lines = ctx.session.documentLines || [];
+    const preview = lines.map((l, i) => {
+        if (l.type === 'image')
+            return `${i + 1}. 🖼 [صورة]`;
+        if (l.type === 'image_row' || l.rowImages)
+            return `${i + 1}. 🖼 [سطر صور]`;
+        return `${i + 1}. ${l.text ? l.text.substring(0, 30) + '...' : '[فارغ]'}`;
+    }).join('\n');
+    const text = lines.length > 0
+        ? `📄 <b>المستند:</b>\n${preview}`
+        : `📄 <b>المستند فارغ.</b>\nأرسل نصاً أو صورة للبدء.`;
+    await ctx.reply(text, { parse_mode: 'HTML', reply_markup: controlPanel() });
+    await refreshPreview(ctx);
+}
 async function refreshPreview(ctx) {
     if (!ctx.session.previewMessageId || !ctx.chat)
         return;
@@ -149,6 +216,8 @@ async function refreshPreview(ctx) {
             pageSize: ctx.session.pageSize || 'A4',
             lines: ctx.session.documentLines || [],
             selectedFont: ctx.session.selectedFont,
+            docBgColor: ctx.session.docBgColor,
+            docTextColor: ctx.session.docTextColor,
         });
         const tplName = previewGeneratorService_1.TEMPLATE_NAMES[ctx.session.templateId || 1] || '';
         await ctx.api.editMessageMedia(ctx.chat.id, ctx.session.previewMessageId, {
@@ -193,16 +262,26 @@ async function handleDocMakerCallback(ctx) {
         'doc_undo_last', 'doc_edit_line', 'doc_view_lines', 'doc_edit_after', 'doc_new_page',
         'doc_tpl_confirm', 'doc_tpl_back',
         'doc_end_session', 'doc_confirm_end', 'doc_cancel_end',
-        'doc_format_back', 'doc_custom_size',
+        'doc_format_back', 'doc_custom_size', 'doc_template_colored',
         'doc_back_to_session',
+        'doc_img_align_locked',
+        'doc_row_add_image', 'doc_row_caption_skip', 'doc_row_finish',
+        'doc_colored_approve', 'doc_colored_back',
+        'color_red', 'color_yellow', 'color_blue', 'color_default',
+        'color_custom', 'color_custom_cancel', 'fmt_apply'
     ];
     const isDoc = docCallbacks.includes(data) ||
+        data.startsWith('doc_bg_') ||
+        data.startsWith('doc_txt_') ||
         data.startsWith('doc_tpl_') ||
         data.startsWith('doc_size_') ||
         data.startsWith('doc_font_') ||
         data.startsWith('doc_img_space_') ||
         data.startsWith('doc_img_fmt_') ||
-        data.startsWith('doc_img_mask_');
+        data.startsWith('doc_img_mask_') ||
+        data.startsWith('doc_row_caption_') ||
+        data.startsWith('fmt_align_') ||
+        data.startsWith('color_');
     if (!isDoc)
         return false;
     const telegramId = ctx.from.id.toString();
@@ -225,6 +304,8 @@ async function handleDocMakerCallback(ctx) {
     if (data === 'doc_type_text' || data === 'doc_type_image') {
         await ctx.answerCallbackQuery();
         ctx.session.docType = data === 'doc_type_text' ? 'text' : 'image';
+        ctx.session.docBgColor = undefined;
+        ctx.session.docTextColor = undefined;
         await ctx.editMessageText('🎨 <b>اختر نموذج التصميم:</b>\n\n' +
             '1️⃣ كلاسيكي نظيف (إطار رفيع)\n' +
             '2️⃣ احترافي مع رأس وتذييل\n' +
@@ -238,14 +319,16 @@ async function handleDocMakerCallback(ctx) {
                     [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1' }, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2' }],
                     [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3' }, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4' }],
                     [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5' }],
+                    [{ text: '🎨 تصميم نموذج ملون (احترافي)', callback_data: 'doc_template_colored' }],
                     [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
                 ],
             },
         });
         return true;
     }
-    // ── Template Selected → Send Preview Photo ────────────────────────────────
     if (data.startsWith('doc_tpl_') && data !== 'doc_tpl_confirm' && data !== 'doc_tpl_back') {
+        ctx.session.docBgColor = undefined;
+        ctx.session.docTextColor = undefined;
         await ctx.answerCallbackQuery();
         const tplId = parseInt(data.replace('doc_tpl_', ''), 10);
         ctx.session.templateId = tplId;
@@ -383,7 +466,27 @@ async function handleDocMakerCallback(ctx) {
         await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML', reply_markup: COMPILE_KB });
         return true;
     }
-    // ── Image: Spacing selection ────────────────────────────────────────
+    // ── Full-bleed cover image ──────────────────────────────────────────────
+    if (data === 'doc_img_full_cover') {
+        await ctx.answerCallbackQuery();
+        if (!ctx.session.tempImage?.fileId)
+            return true;
+        ctx.session.documentLines = ctx.session.documentLines || [];
+        ctx.session.documentLines.push({
+            type: 'image_cover',
+            fileId: ctx.session.tempImage.fileId,
+        });
+        ctx.session.tempImage = undefined;
+        ctx.session.rowImages = undefined;
+        ctx.session.docState = 'active';
+        await ctx.deleteMessage().catch(() => { });
+        const total = ctx.session.documentLines.length;
+        const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
+        await ctx.reply(`✅ تمت إضافة الغلاف للمستند!\n📄 الأسطر: ${total} | الصفحات: ~${pages}`);
+        await renderActiveSession(ctx);
+        return true;
+    }
+    // ── Image: Spacing selection ─────────────────────────────────────
     if (data.startsWith('doc_img_space_')) {
         if (!ctx.session.tempImage?.fileId) {
             await ctx.answerCallbackQuery({ text: '⚠️ انتهت الجلسة، أرسل الصورة مجدداً.' });
@@ -392,84 +495,18 @@ async function handleDocMakerCallback(ctx) {
         const val = data.replace('doc_img_space_', '');
         if (val === 'custom') {
             ctx.session.docState = 'awaiting_custom_img_lines';
-            await ctx.editMessageText('✍️ <b>أرسل عدد الأسطر</b> (رقم بين 1 و 50 فقط):', { parse_mode: 'HTML' });
+            await ctx.editMessageText('✍️ <b>أرسل عدد الأسطر</b> (رقم بين 1 و50):', {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [[
+                            { text: '🔙 إلغاء', callback_data: 'doc_back_to_session' }
+                        ]]
+                }
+            });
             return true;
         }
         ctx.session.tempImage.lines = parseInt(val);
         await showImageFormatMenu(ctx);
-        return true;
-    }
-    // ── Image: Format (align) + Mask handlers ───────────────────────────
-    if (data.startsWith('doc_img_fmt_') || data.startsWith('doc_img_mask_')) {
-        if (!ctx.session.tempImage?.fileId) {
-            await ctx.answerCallbackQuery({ text: '⚠️ انتهت الجلسة، أرسل الصورة مجدداً.' });
-            return true;
-        }
-        if (data.startsWith('doc_img_fmt_')) {
-            ctx.session.tempImage.align = data.replace('doc_img_fmt_', '');
-        }
-        if (data.startsWith('doc_img_mask_')) {
-            ctx.session.tempImage.mask = data.replace('doc_img_mask_', '');
-        }
-        // CRITICAL: Only save when BOTH values are explicitly set
-        const bothSelected = !!ctx.session.tempImage.align && !!ctx.session.tempImage.mask;
-        if (!bothSelected) {
-            await ctx.answerCallbackQuery(); // required silent ACK
-            const alignVal = ctx.session.tempImage?.align;
-            const maskVal = ctx.session.tempImage?.mask;
-            const alignEmoji = { right: '➡️', center: '↔️', left: '⬅️' };
-            const maskEmoji = { circle: '⭕', rounded: '🔲', square: '⬛' };
-            const alignStatus = alignVal
-                ? `${alignEmoji[alignVal] ?? ''} <b>${alignVal}</b> ✅`
-                : '⬜ لم يُختَر بعد';
-            const maskStatus = maskVal
-                ? `${maskEmoji[maskVal] ?? ''} <b>${maskVal}</b> ✅`
-                : '⬜ لم يُختَر بعد';
-            const missingItem = !alignVal ? 'المحاذاة' : 'شكل الإطار';
-            await ctx.editMessageText('🎨 <b>تنسيق الصورة:</b>\n\n' +
-                `📐 المحاذاة: ${alignStatus}\n` +
-                `🖼 الإطار: ${maskStatus}\n\n` +
-                `<i>اختر ${missingItem} لإتمام الإضافة:</i>`, {
-                parse_mode: 'HTML',
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: '➡️ يمين', callback_data: 'doc_img_fmt_right' },
-                            { text: '↔️ وسط', callback_data: 'doc_img_fmt_center' },
-                            { text: '⬅️ يسار', callback_data: 'doc_img_fmt_left' },
-                        ],
-                        [
-                            { text: '⭕ دائري', callback_data: 'doc_img_mask_circle' },
-                            { text: '🔲 حواف ناعمة', callback_data: 'doc_img_mask_rounded' },
-                            { text: '⬛ مربع عادي', callback_data: 'doc_img_mask_square' },
-                        ],
-                        [{ text: '🔙 إلغاء الصورة', callback_data: 'doc_back_to_session' }],
-                    ],
-                },
-            });
-            return true;
-        }
-        // Both selected → push image line
-        ctx.session.documentLines = ctx.session.documentLines || [];
-        ctx.session.documentLines.push({
-            text: '',
-            type: 'image',
-            fileId: ctx.session.tempImage.fileId,
-            imageLines: ctx.session.tempImage.lines || 5,
-            align: ctx.session.tempImage.align ?? 'center',
-            imageMask: ctx.session.tempImage.mask,
-        });
-        ctx.session.tempImage = undefined;
-        ctx.session.docState = 'active';
-        await ctx.editMessageText('✅ <b>تمت إضافة الصورة للمستند!</b>\n\nأرسل المزيد من النصوص أو الصور، أو اضغط تصدير.', {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
-                ],
-            },
-        });
-        await refreshPreview(ctx);
         return true;
     }
     // ── Image: Back / cancel ────────────────────────────────────────────
@@ -477,14 +514,8 @@ async function handleDocMakerCallback(ctx) {
         await ctx.answerCallbackQuery();
         ctx.session.tempImage = undefined;
         ctx.session.docState = 'active';
-        await ctx.editMessageText('↩️ <b>تم الإلغاء.</b>\n\nأرسل نصاً أو صورة، أو اضغط تصدير.', {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
-                ],
-            },
-        });
+        await ctx.deleteMessage().catch(() => { });
+        await renderActiveSession(ctx);
         return true;
     }
     // ── Cancel ─────────────────────────────────────────────────────────────────────────────
@@ -498,56 +529,102 @@ async function handleDocMakerCallback(ctx) {
         await ctx.deleteMessage().catch(() => { });
         return true;
     }
-    if (data === 'align_right' || data === 'align_center' || data === 'align_left') {
-        await ctx.answerCallbackQuery();
-        const tempLine = ctx.session.tempLine;
-        const tempFormatting = ctx.session.tempFormatting;
-        if (!tempLine || !tempFormatting) {
-            await ctx.editMessageText('⚠️ انتهت صلاحية النص. أرسل النص مجدداً.').catch(() => { });
+    if (data === 'align_right' || data === 'align_center' || data === 'align_left' ||
+        data.startsWith('fmt_align_')) {
+        if (!ctx.session.tempFormatting)
             return true;
-        }
-        const alignMap = {
-            align_right: 'right', align_center: 'center', align_left: 'left',
+        ctx.session.tempFormatting.align = data.replace('fmt_align_', '').replace('align_', '');
+        await ctx.answerCallbackQuery('✅ تم');
+        await ctx.editMessageReplyMarkup({
+            inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+        }).catch(() => { });
+        return true;
+    }
+    if (data === 'color_red' || data === 'color_yellow' ||
+        data === 'color_blue' || data === 'color_default') {
+        if (!ctx.session.tempFormatting)
+            return true;
+        const colorMap = {
+            color_red: '#FF0000',
+            color_yellow: '#FFD700',
+            color_blue: '#1565C0',
+            color_default: undefined,
         };
-        if (!ctx.session.documentLines)
-            ctx.session.documentLines = [];
-        const pageSize = ctx.session.pageSize || 'A4';
-        const chosenAlign = alignMap[data];
-        const finalLine = { text: tempLine, align: chosenAlign, ...tempFormatting };
-        if (ctx.session.editingLineIndex !== undefined) {
-            const idx = ctx.session.editingLineIndex;
-            if (idx >= 0 && idx < ctx.session.documentLines.length) {
-                ctx.session.documentLines[idx] = finalLine;
-            }
-            ctx.session.editingLineIndex = undefined;
-            ctx.session.awaitingLineEditText = false;
-            ctx.session.tempLine = null;
-            ctx.session.tempFormatting = null;
-            const lines = ctx.session.documentLines;
-            const preview = lines.map((l, i) => `${i + 1}. ${l.text ? l.text.substring(0, 30) + '...' : '[فارغ]'}`).join('\n');
-            await ctx.editMessageText(`✅ تم تعديل السطر!\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() }).catch(() => { });
-            await refreshPreview(ctx);
+        ctx.session.tempFormatting.color = colorMap[data];
+        await ctx.answerCallbackQuery('✅ تم');
+        await ctx.editMessageReplyMarkup({
+            inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+        }).catch(() => { });
+        return true;
+    }
+    if (data === 'color_custom') {
+        if (!ctx.session.tempFormatting)
             return true;
-        }
-        const wrapped = smartWrap(finalLine.text, pageSize);
-        for (const chunk of wrapped) {
-            ctx.session.documentLines.push({ ...finalLine, text: chunk });
-        }
+        ctx.session.awaitingCustomColor = true;
+        await ctx.answerCallbackQuery('🎨 أرسل كود اللون الآن');
+        const promptMsg = await ctx.reply('🎨 <b>أرسل كود اللون بصيغة HEX</b>\nمثال: #E91E63', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[
+                        { text: '❌ إلغاء', callback_data: 'color_custom_cancel' }
+                    ]]
+            }
+        });
+        ctx.session.customColorPromptId = promptMsg.message_id;
+        return true;
+    }
+    if (data === 'color_custom_cancel') {
+        await ctx.answerCallbackQuery();
+        ctx.session.awaitingCustomColor = false;
+        ctx.session.customColorPromptId = undefined;
+        await ctx.deleteMessage().catch(() => { });
+        return true;
+    }
+    if (data === 'fmt_apply') {
+        if (!ctx.session.tempLine || !ctx.session.tempFormatting)
+            return true;
+        ctx.session.documentLines = ctx.session.documentLines || [];
+        ctx.session.documentLines.push({
+            type: 'text',
+            text: ctx.session.tempLine,
+            align: ctx.session.tempFormatting.align || 'right',
+            bold: ctx.session.tempFormatting.bold,
+            italic: ctx.session.tempFormatting.italic,
+            underline: ctx.session.tempFormatting.underline,
+            size: ctx.session.tempFormatting.size,
+            style: ctx.session.tempFormatting.style,
+            color: ctx.session.tempFormatting.color
+        });
+        const lineNum = ctx.session.documentLines.length;
         ctx.session.tempLine = null;
         ctx.session.tempFormatting = null;
-        const lines = ctx.session.documentLines;
-        const preview = lines.map((l, i) => `${i + 1}. ${l.text ? l.text.substring(0, 30) + '...' : '[فارغ]'}`).join('\n');
-        await ctx.editMessageText(`✅ تمت إضافة النص\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() }).catch(() => { });
-        await refreshPreview(ctx);
+        await ctx.answerCallbackQuery('✅ تمت الإضافة');
+        const total = ctx.session.documentLines.length;
+        const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
+        await ctx.editMessageText(`✅ <b>تمت إضافة السطر ${lineNum} للمستند!</b>\n` +
+            `📄 الأسطر: ${total} | الصفحات: ~${pages}\n\n` +
+            `أرسل نصاً أو صورة، أو اضغط تصدير.`, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' },
+                        { text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }
+                    ],
+                    [
+                        { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' },
+                        { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }
+                    ],
+                    [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+                ]
+            }
+        }).catch(() => { });
         return true;
     }
     // ── Smart Export Confirmation ──────────────────────────────────────────────
     if (data === 'doc_export_pdf') {
         const lines = ctx.session.documentLines || [];
-        const totalLineCount = lines.reduce((acc, l) => {
-            return acc + (l.type === 'image' ? (l.imageLines || 5) : 1);
-        }, 0);
-        const estimatedPages = Math.max(1, Math.ceil(totalLineCount / 30));
+        const estimatedPages = estimatePageCount(lines, ctx.session.pageSize);
         if (estimatedPages > 40) {
             await ctx.editMessageText('🚫 <b>المستند كبير جداً!</b>\n\n' +
                 `📄 عدد الصفحات المتوقع: <b>${estimatedPages} صفحة</b>\n\n` +
@@ -615,7 +692,9 @@ async function handleDocMakerCallback(ctx) {
         try {
             const { generateDocumentFromLines } = await Promise.resolve().then(() => __importStar(require('../../services/pdfGeneratorService')));
             const safeLines = (ctx.session.documentLines ?? []).filter(l => l !== null && l !== undefined);
-            const pdfBuffer = await generateDocumentFromLines(safeLines, ctx.session.pageSize || 'A4', ctx.session.selectedFont || 'Amiri');
+            const result = await generateDocumentFromLines(safeLines, ctx.session.pageSize || 'A4', ctx.session.selectedFont || 'Amiri', ctx.session.docBgColor, ctx.session.docTextColor);
+            const pdfBuffer = result.buffer;
+            const realPages = result.pageCount;
             if (!pdfBuffer || pdfBuffer.length === 0) {
                 throw new Error('PDF buffer is empty');
             }
@@ -625,7 +704,7 @@ async function handleDocMakerCallback(ctx) {
             const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
             await ctx.replyWithDocument(new InputFile(pdfBuffer, fileName), {
                 caption: '✅ <b>مستندك جاهز!</b>\n' +
-                    `📄 الصفحات: ~${ctx.session.pendingExportPages}\n` +
+                    `📄 الصفحات: ${realPages}\n` +
                     `🔤 الخط: ${ctx.session.selectedFont || 'Amiri'}\n` +
                     `💳 تم خصم: ${cost} محاولة`,
                 parse_mode: 'HTML'
@@ -672,24 +751,35 @@ async function handleDocMakerCallback(ctx) {
     }
     // ── Redo ───────────────────────────────────────────────────────────────────
     if (data === 'doc_undo_last') {
-        await ctx.answerCallbackQuery();
-        if (!ctx.session.documentLines || ctx.session.documentLines.length === 0) {
-            await ctx.editMessageText('⚠️ المستند فارغ!').catch(() => { });
+        const lines = ctx.session.documentLines || [];
+        if (lines.length === 0) {
+            await ctx.answerCallbackQuery('⚠️ لا يوجد أسطر للحذف');
             return true;
         }
-        ctx.session.documentLines.pop();
-        ctx.session.tempLine = null;
-        ctx.session.tempFormatting = null;
-        ctx.session.awaitingLineEditIndex = false;
-        ctx.session.awaitingLineEditText = false;
-        const lines = ctx.session.documentLines;
-        if (lines.length === 0) {
-            await ctx.editMessageText('🗑️ تم حذف آخر سطر.\n\nالمستند فارغ. أرسل النص البديل:', { reply_markup: COMPILE_KB }).catch(() => { });
-        }
-        else {
-            const preview = lines.map((l, i) => `${i + 1}. ${l.text ? l.text.substring(0, 30) + '...' : '[فارغ]'}`).join('\n');
-            await ctx.editMessageText(`🗑️ تم حذف آخر سطر.\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() }).catch(() => { });
-        }
+        const removed = lines.pop();
+        ctx.session.documentLines = lines;
+        const preview = removed?.type === 'image' || removed?.type === 'image_row'
+            ? '[صورة]'
+            : (removed?.text?.substring(0, 30) || '[فارغ]');
+        const pages = estimatePageCount(lines, ctx.session.pageSize);
+        await ctx.answerCallbackQuery('✅ تم الحذف');
+        await ctx.editMessageText(`↩️ <b>تم حذف السطر الأخير:</b>\n<i>${preview}</i>\n\n` +
+            `📄 الأسطر الآن: ${lines.length} | الصفحات: ~${pages}`, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' },
+                        { text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }
+                    ],
+                    [
+                        { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' },
+                        { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }
+                    ],
+                    [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+                ]
+            }
+        }).catch(() => { });
         await refreshPreview(ctx);
         return true;
     }
@@ -701,7 +791,9 @@ async function handleDocMakerCallback(ctx) {
         ctx.session.documentLines.push({ text: '---PAGE_BREAK---', align: 'right' });
         ctx.session.tempLine = null;
         ctx.session.tempFormatting = null;
-        await ctx.reply('✅ تم حفظ الصفحة. ابدأ كتابة الصفحة التالية:', { reply_markup: controlPanel() });
+        const total = ctx.session.documentLines.length;
+        const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
+        await ctx.reply(`✅ تم حفظ الصفحة. ابدأ كتابة الصفحة التالية:\n📄 الأسطر: ${total} | الصفحات: ~${pages}`, { reply_markup: controlPanel() });
         return true;
     }
     // ── Edit Line ──────────────────────────────────────────────────────────────
@@ -770,13 +862,14 @@ async function handleDocMakerCallback(ctx) {
     };
     if (fmtToggles[data]) {
         try {
-            await ctx.answerCallbackQuery();
+            await ctx.answerCallbackQuery('✅ تم');
             if (!ctx.session.tempLine || !ctx.session.tempFormatting) {
-                await ctx.answerCallbackQuery({ text: '⚠️ أرسل النص أولاً', show_alert: true }).catch(() => { });
                 return true;
             }
             ctx.session.tempFormatting = fmtToggles[data](ctx.session.tempFormatting);
-            await ctx.editMessageReplyMarkup(buildFormattingKeyboard(ctx.session.tempFormatting)).catch(() => { });
+            await ctx.editMessageReplyMarkup({
+                inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+            }).catch(() => { });
         }
         catch (e) {
             console.error('[DocMaker] fmt toggle error:', e);
@@ -785,16 +878,17 @@ async function handleDocMakerCallback(ctx) {
     }
     // ── Format Back Button ───────────────────────────────────────────────────────
     if (data === 'doc_format_back') {
-        try {
-            await ctx.answerCallbackQuery();
-            ctx.session.tempLine = null;
-            ctx.session.tempFormatting = null;
-            await ctx.deleteMessage().catch(() => { });
-            await ctx.reply('↩️ تم الإلغاء. أرسل النص الذي تريد إضافته:');
-        }
-        catch (e) {
-            console.error('[DocMaker] format_back error:', e);
-        }
+        ctx.session.tempLine = undefined;
+        ctx.session.tempFormatting = undefined;
+        await ctx.answerCallbackQuery('↩️ تم الإلغاء');
+        await ctx.editMessageText('↩️ <b>تم إلغاء النص.</b>\nأرسل نصاً جديداً أو صورة.', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[
+                        { text: '📤 تصدير PDF', callback_data: 'doc_export_pdf' }
+                    ]]
+            }
+        }).catch(() => { });
         return true;
     }
     // ── End Session ───────────────────────────────────────────────────────────
@@ -842,35 +936,361 @@ async function handleDocMakerCallback(ctx) {
         }
         return true;
     }
+    // 1. Trigger Background Color Selection
+    if (data === 'doc_template_colored') {
+        await ctx.answerCallbackQuery();
+        await ctx.editMessageText('🎨 <b>تصميم نموذج ملون (خطوة 1/2):</b>\n\nاختر <b>لون خلفية</b> المستند (ألوان هادئة واحترافية):', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: 'أسود هادئ 🖤', callback_data: 'doc_bg_#1A1A1A' },
+                        { text: 'رمادي فاتح 🤍', callback_data: 'doc_bg_#F0F2F5' }
+                    ],
+                    [
+                        { text: 'كحلي ليلي 🌌', callback_data: 'doc_bg_#1B263B' },
+                        { text: 'مريمية هادئ 🌿', callback_data: 'doc_bg_#8F9779' }
+                    ],
+                    [
+                        { text: 'بيج كلاسيكي 📜', callback_data: 'doc_bg_#FDF5E6' },
+                        { text: 'عنابي داكن 🍷', callback_data: 'doc_bg_#4A232C' }
+                    ],
+                    [{ text: '🔙 رجوع للنماذج', callback_data: 'doc_type_text' }]
+                ]
+            }
+        });
+        return true;
+    }
+    // 2. Save Background & Trigger Text Color Selection
+    if (data.startsWith('doc_bg_')) {
+        await ctx.answerCallbackQuery();
+        ctx.session.docBgColor = data.replace('doc_bg_', '');
+        await ctx.editMessageText('🔤 <b>تصميم نموذج ملون (خطوة 2/2):</b>\n\nاختر <b>لون النص</b> المتناسق مع الخلفية:', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: 'أبيض ناصع ⚪', callback_data: 'doc_txt_#FFFFFF' },
+                        { text: 'أسود فاحم ⚫', callback_data: 'doc_txt_#000000' }
+                    ],
+                    [
+                        { text: 'رمادي داكن 🔘', callback_data: 'doc_txt_#333333' },
+                        { text: 'ذهبي فاخر ✨', callback_data: 'doc_txt_#D4AF37' }
+                    ],
+                    [
+                        { text: 'أزرق ملكي 🔵', callback_data: 'doc_txt_#1D3557' },
+                        { text: 'أحمر قاني 🔴', callback_data: 'doc_txt_#8B0000' }
+                    ],
+                    [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored' }]
+                ]
+            }
+        });
+        return true;
+    }
+    // 3. Save Text Color → Bulletproof color preview via sharp { create }
+    if (data.startsWith('doc_txt_')) {
+        await ctx.answerCallbackQuery();
+        ctx.session.docTextColor = data.replace('doc_txt_', '');
+        ctx.session.selectedTemplate = 'colored';
+        const bgColor = ctx.session.docBgColor || '#FFFFFF';
+        const txtColor = ctx.session.docTextColor || '#000000';
+        // Bulletproof: create solid background via { create }, composite SVG text on top.
+        // sharp does NOT support %-based SVG dims reliably — always use absolute px.
+        const W = 600, H = 800;
+        const midY = Math.round(H * 0.45);
+        const subY = Math.round(H * 0.56);
+        const svgText = [
+            `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`,
+            `  <text x="${W / 2}" y="${midY}" font-family="sans-serif" font-size="38" font-weight="bold"`,
+            `        fill="${txtColor}" text-anchor="middle" dominant-baseline="middle">معاينة النموذج الملون</text>`,
+            `  <text x="${W / 2}" y="${subY}" font-family="sans-serif" font-size="18"`,
+            `        fill="${txtColor}" text-anchor="middle" dominant-baseline="middle" opacity="0.75">خلفية: ${bgColor}  ·  نص: ${txtColor}</text>`,
+            `</svg>`,
+        ].join('\n');
+        try {
+            const sharpLib = (await Promise.resolve().then(() => __importStar(require('sharp')))).default;
+            // Parse hex color → RGBA for sharp background
+            const hex = bgColor.replace('#', '');
+            const r = parseInt(hex.slice(0, 2), 16) || 0;
+            const g = parseInt(hex.slice(2, 4), 16) || 0;
+            const b = parseInt(hex.slice(4, 6), 16) || 0;
+            const previewBuffer = await sharpLib({
+                create: { width: W, height: H, channels: 4, background: { r, g, b, alpha: 1 } },
+            })
+                .composite([{ input: Buffer.from(svgText), blend: 'over' }])
+                .png()
+                .toBuffer();
+            await ctx.deleteMessage().catch(() => { });
+            const sent = await ctx.replyWithPhoto(new grammy_1.InputFile(previewBuffer, 'color_preview.png'), {
+                caption: `🎨 <b>معاينة النموذج: ملون</b>\n\n` +
+                    `<b>خلفية:</b> <code>${bgColor}</code>  ·  <b>نص:</b> <code>${txtColor}</code>\n\n` +
+                    `هذه معاينة مبدئية للألوان. اضغط ✅ موافق للمتابعة.`,
+                parse_mode: 'HTML',
+                reply_markup: { inline_keyboard: [[
+                            { text: '✅ موافق', callback_data: 'doc_colored_approve' },
+                            { text: '🔙 رجوع', callback_data: 'doc_colored_back' },
+                        ]] },
+            });
+            // Store as previewMessageId so native doc_custom_size can editMessageCaption on it
+            ctx.session.previewMessageId = sent.message_id;
+        }
+        catch (err) {
+            console.error('[PREVIEW] Color preview failed:', err);
+            await ctx.editMessageText(`✅ <b>تم حفظ الألوان</b> (خلفية: ${bgColor} · نص: ${txtColor})\n\nاضغط متابعة للمتابعة:`, {
+                parse_mode: 'HTML',
+                reply_markup: { inline_keyboard: [[
+                            { text: 'متابعة ➡️', callback_data: 'doc_colored_approve' },
+                        ]] },
+            }).catch(() => ctx.reply(`✅ تم حفظ الألوان. اضغط متابعة:`));
+        }
+        return true;
+    }
+    // 4. Colored approve → EXACTLY the same as doc_tpl_confirm: editMessageCaption + SIZE_KB
+    if (data === 'doc_colored_approve') {
+        await ctx.answerCallbackQuery();
+        // Use editMessageCaption on the preview photo (same as native doc_tpl_confirm flow)
+        await ctx.editMessageCaption({
+            caption: '📐 <b>اختر مقاس الصفحة:</b>',
+            parse_mode: 'HTML',
+            reply_markup: SIZE_KB,
+        }).catch(() => { });
+        return true;
+    }
+    // 5. Colored back → re-show text color selection
+    if (data === 'doc_colored_back') {
+        await ctx.answerCallbackQuery();
+        await ctx.deleteMessage().catch(() => { });
+        await ctx.reply('🔤 <b>تصميم نموذج ملون (خطوة 2/2):</b>\n\nاختر <b>لون النص</b> المتناسق مع الخلفية:', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: 'أبيض ناصع ⚪', callback_data: 'doc_txt_#FFFFFF' },
+                        { text: 'أسود فاحم ⚫', callback_data: 'doc_txt_#000000' },
+                    ],
+                    [
+                        { text: 'رمادي داكن 🔘', callback_data: 'doc_txt_#333333' },
+                        { text: 'ذهبي فاخر ✨', callback_data: 'doc_txt_#D4AF37' },
+                    ],
+                    [
+                        { text: 'أزرق ملكي 🔵', callback_data: 'doc_txt_#1D3557' },
+                        { text: 'أحمر قاني 🔴', callback_data: 'doc_txt_#8B0000' },
+                    ],
+                    [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored' }],
+                ],
+            },
+        });
+        return true;
+    }
+    // ── A) Locked alignment (used in row) ────────────────────────────────────
+    if (data === 'doc_img_align_locked') {
+        await ctx.answerCallbackQuery({ text: '🔒 هذه المحاذاة مستخدمة في هذا السطر', show_alert: true });
+        return true;
+    }
+    // ── B) Alignment / Mask buttons (set on tempImage) ───────────────────────
+    if (data.startsWith('doc_img_fmt_') || data.startsWith('doc_img_mask_')) {
+        if (!ctx.session.tempImage)
+            return true;
+        if (data.startsWith('doc_img_fmt_')) {
+            ctx.session.tempImage.align = data.replace('doc_img_fmt_', '');
+        }
+        else if (data.startsWith('doc_img_mask_')) {
+            ctx.session.tempImage.mask = data.replace('doc_img_mask_', '');
+        }
+        // Acknowledge the click immediately so the button doesn't load infinitely
+        await ctx.answerCallbackQuery();
+        // Calling this will now correctly UPDATE the existing message with the ✅ checks
+        await showImageFormatMenu(ctx);
+        return true;
+    }
+    // ── C) Add current image to row, await next image ────────────────────
+    if (data === 'doc_row_add_image') {
+        if (!ctx.session.tempImage?.fileId || !ctx.session.tempImage.align || !ctx.session.tempImage.mask) {
+            await ctx.answerCallbackQuery({ text: '⚠️ أكمل إعداد الصورة الحالية أولاً', show_alert: true });
+            return true;
+        }
+        const rowImages = ctx.session.rowImages || [];
+        if (rowImages.length >= 3) {
+            await ctx.answerCallbackQuery({ text: '⚠️ لا يمكن إضافة أكثر من 3 صور في سطر واحد', show_alert: true });
+            return true;
+        }
+        rowImages.push({
+            fileId: ctx.session.tempImage.fileId,
+            lines: ctx.session.tempImage.lines || 5,
+            align: ctx.session.tempImage.align,
+            mask: ctx.session.tempImage.mask,
+        });
+        ctx.session.rowImages = rowImages;
+        ctx.session.tempImage = undefined;
+        ctx.session.awaitingNextRowImage = true;
+        await ctx.answerCallbackQuery();
+        await ctx.editMessageText(`✅ تم حفظ الصورة ${rowImages.length}\n\n🖼 أرسل الصورة الإضافية الآن:\n` +
+            `تنبيه: يجب ألا يتجاوز حجمها ${rowImages[0].lines} سطر (نفس حجم الأولى)`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[
+                        { text: '🔙 إلغاء وإنهاء السطر', callback_data: 'doc_row_finish' }
+                    ]] } });
+        return true;
+    }
+    // ── D) Request caption for a specific row image ────────────────────
+    if (data.startsWith('doc_row_caption_') && data !== 'doc_row_caption_skip') {
+        const rawId = data.replace('doc_row_caption_', '');
+        if (rawId === 'temp') {
+            ctx.session.tempCaptionTarget = 'temp';
+            ctx.session.docState = 'awaiting_row_caption';
+            await ctx.answerCallbackQuery();
+            await ctx.editMessageText(`📝 أرسل النص الذي تريده تحت الصورة الحالية:`, { reply_markup: { inline_keyboard: [[
+                            { text: '❌ تخطي بدون تسمية', callback_data: 'doc_row_caption_skip' }
+                        ]] } });
+            return true;
+        }
+        const idx = parseInt(rawId, 10);
+        const rowImages = ctx.session.rowImages || [];
+        if (isNaN(idx) || idx < 0 || idx >= rowImages.length) {
+            await ctx.answerCallbackQuery({ text: '⚠️ صورة غير موجودة', show_alert: true });
+            return true;
+        }
+        ctx.session.tempCaptionTarget = idx;
+        ctx.session.docState = 'awaiting_row_caption';
+        await ctx.answerCallbackQuery();
+        await ctx.editMessageText(`📝 أرسل النص الذي تريده تحت الصورة ${idx + 1}:`, { reply_markup: { inline_keyboard: [[
+                        { text: '❌ تخطي بدون تسمية', callback_data: 'doc_row_caption_skip' }
+                    ]] } });
+        return true;
+    }
+    // ── E) Skip caption ──────────────────────────────────────────
+    if (data === 'doc_row_caption_skip') {
+        ctx.session.tempCaptionTarget = undefined;
+        ctx.session.docState = 'active';
+        await ctx.answerCallbackQuery();
+        await showImageFormatMenu(ctx);
+        return true;
+    }
+    // ── F) Finish the row and commit to documentLines ──────────────────
+    if (data === 'doc_row_finish') {
+        const rowImages = ctx.session.rowImages || [];
+        if (ctx.session.tempImage?.fileId && ctx.session.tempImage.align && ctx.session.tempImage.mask) {
+            rowImages.push({
+                fileId: ctx.session.tempImage.fileId,
+                lines: ctx.session.tempImage.lines || 5,
+                align: ctx.session.tempImage.align,
+                mask: ctx.session.tempImage.mask,
+                caption: ctx.session.tempImage.caption
+            });
+        }
+        if (rowImages.length === 0) {
+            await ctx.answerCallbackQuery({ text: '⚠️ لا توجد صور لإضافتها', show_alert: true });
+            return true;
+        }
+        // Safely save to document lines
+        ctx.session.documentLines = ctx.session.documentLines || [];
+        ctx.session.documentLines.push({
+            type: 'image_row',
+            rowImages: rowImages,
+            imageLines: rowImages[0].lines, // Fallback line height
+            align: 'center'
+        });
+        // Wipe all temporary row data
+        ctx.session.rowImages = undefined;
+        ctx.session.tempImage = undefined;
+        ctx.session.awaitingNextRowImage = false;
+        ctx.session.tempCaptionTarget = undefined;
+        ctx.session.docState = 'active';
+        await ctx.answerCallbackQuery({ text: '✅ تمت إضافة السطر للمستند!' });
+        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(() => { });
+        await renderActiveSession(ctx);
+        return true;
+    }
     return false;
 }
 // ── MESSAGE HANDLER ────────────────────────────────────────────────────────────
 async function handleDocMakerMessage(ctx) {
     if (!ctx.session || !ctx.from)
         return false;
-    const text = ctx.message?.text?.trim();
-    if (!text || text.startsWith('/'))
-        return false;
-    // ── GUARD: awaiting custom image line count ───────────────────────────────
-    if (ctx.session.docState === 'awaiting_custom_img_lines') {
-        if (!ctx.session.tempImage?.fileId) {
-            await ctx.reply('⚠️ انتهت الجلسة، أرسل الصورة مجدداً.');
-            ctx.session.docState = 'active';
+    const rawText = ctx.message?.text || '';
+    const trimmedInput = rawText.trim();
+    const emptyLineMatch = trimmedInput.match(/^(فارغ|فارع|فراغ|فاضي|فاضية|empty)\s*(\d{1,2})?$/i);
+    if (emptyLineMatch && ctx.session.isInDocMaker) {
+        const count = Math.min(Math.max(1, parseInt(emptyLineMatch[2] || '1')), 20);
+        ctx.session.documentLines = ctx.session.documentLines || [];
+        for (let i = 0; i < count; i++) {
+            ctx.session.documentLines.push({ type: 'text', text: '' });
+        }
+        const total = ctx.session.documentLines.length;
+        const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
+        await ctx.reply(`✅ <b>تمت إضافة ${count} سطر فارغ</b>\n` +
+            `📄 إجمالي الأسطر: ${total} | الصفحات: ~${pages}\n\n` +
+            'أرسل المزيد أو اضغط تصدير.', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' },
+                        { text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }
+                    ],
+                    [
+                        { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' },
+                        { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }
+                    ],
+                    [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+                ]
+            }
+        });
+        await refreshPreview(ctx);
+        return true; // NEVER reaches format menu
+    }
+    if (ctx.session.awaitingCustomColor) {
+        const hexText = ctx.message?.text?.trim();
+        if (!hexText)
+            return false;
+        if (!/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(hexText)) {
+            await ctx.reply('❌ كود غير صحيح\n\nأرسل بصيغة HEX مثل: #FF5733', { parse_mode: 'HTML' });
             return true;
         }
-        const num = parseInt(text);
-        if (isNaN(num) || num < 1 || num > 50) {
-            await ctx.reply('⚠️ أرسل رقماً صحيحاً بين 1 و50 فقط.');
-            return true;
+        if (ctx.session.tempFormatting) {
+            ctx.session.tempFormatting = { ...ctx.session.tempFormatting, color: hexText };
         }
-        ctx.session.tempImage.lines = num;
-        ctx.session.docState = 'active';
-        await showImageFormatMenu(ctx);
+        ctx.session.awaitingCustomColor = false;
+        // Delete user's message
+        await ctx.deleteMessage().catch(() => { });
+        // Delete bot's prompt message
+        if (ctx.session.customColorPromptId && ctx.chat) {
+            await ctx.api.deleteMessage(ctx.chat.id, ctx.session.customColorPromptId).catch(() => { });
+            ctx.session.customColorPromptId = undefined;
+        }
+        await ctx.reply(`✅ تم تحديد اللون: ${hexText}\n\nاضغط ✅ تطبيق في رسالة التنسيق للحفظ.`, { parse_mode: 'HTML' });
         return true;
     }
-    // ── GUARD: active session with pending image config ───────────────────────
-    if (ctx.session.docState === 'active' && ctx.session.tempImage?.fileId) {
-        await ctx.reply('⚠️ <b>أكمل إعدادات الصورة أولاً</b>\nاختر المحاذاة والإطار، أو اضغط رجوع لإلغاء الصورة.', {
+    // ── CAPTION INTERCEPTOR (MUST BE ABSOLUTE FIRST) ─────────────────────────────
+    if (ctx.session.docState === 'awaiting_row_caption' && ctx.session.tempCaptionTarget !== undefined) {
+        const captionText = ctx.message?.text?.trim();
+        if (!captionText)
+            return false;
+        if (ctx.session.tempCaptionTarget === 'temp' && ctx.session.tempImage) {
+            ctx.session.tempImage.caption = captionText;
+        }
+        else if (typeof ctx.session.tempCaptionTarget === 'number') {
+            const rowImgs = ctx.session.rowImages || [];
+            if (rowImgs[ctx.session.tempCaptionTarget]) {
+                rowImgs[ctx.session.tempCaptionTarget].caption = captionText;
+            }
+        }
+        ctx.session.tempCaptionTarget = undefined;
+        ctx.session.docState = 'active';
+        await ctx.reply('✅ تم حفظ النص بنجاح!');
+        await showImageFormatMenu(ctx);
+        return true; // HALT — do NOT fall through to any safety trap
+    }
+    // If tempImage exists and message is a number → it is a line count input
+    if (ctx.session?.tempImage?.fileId && ctx.message?.text) {
+        const num = parseInt(ctx.message.text.trim());
+        if (!isNaN(num) && num >= 1 && num <= 50) {
+            ctx.session.tempImage.lines = num;
+            ctx.session.docState = 'active';
+            await showImageFormatMenu(ctx);
+            return true;
+        }
+        // Non-number text while image pending → block it
+        await ctx.reply('⚠️ <b>أكمل إعدادات الصورة أولاً</b>\nأو اضغط إلغاء.', {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [[
@@ -879,6 +1299,16 @@ async function handleDocMakerMessage(ctx) {
             }
         });
         return true;
+    }
+    const text = trimmedInput;
+    if (!text || text.startsWith('/'))
+        return false;
+    // HARD STOP: never process text as doc-content during image configuration
+    if (ctx.session?.docState === 'awaiting_custom_img_lines') {
+        return false; // number input is handled by the session trap — do not touch it
+    }
+    if (ctx.session?.docState === 'active' && ctx.session?.tempImage?.fileId) {
+        return false; // user has a pending image — do not open text format menu
     }
     // ── Custom size: step 1 — awaiting width (cm) ────────────────────────────
     if (ctx.session.awaitingCustomWidth) {
@@ -944,69 +1374,121 @@ async function handleDocMakerMessage(ctx) {
     // Awaiting replacement text
     if (ctx.session.awaitingLineEditText) {
         if (ctx.session.tempLine) {
-            await ctx.reply('⚠️ الرجاء اختيار المحاذاة أولاً من الأزرار أدناه', {
-                reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting),
+            await ctx.deleteMessage().catch(() => { });
+            await ctx.reply(`📝 <b>اختر تنسيق النص:</b>\n\n${ctx.session.tempLine}`, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+                }
             });
             return true;
         }
         ctx.session.tempLine = text;
-        ctx.session.tempFormatting = { bold: false, italic: false, underline: false, size: 'normal', style: 'normal' };
-        await ctx.reply(`📝 <b>اختر تنسيق النص الجديد:</b>\n\n<code>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`, {
+        ctx.session.tempFormatting = ctx.session.tempFormatting || {
+            align: 'right',
+            bold: false,
+            italic: false,
+            underline: false,
+            size: 'normal',
+            style: 'normal'
+        };
+        await ctx.reply(`📝 <b>اختر تنسيق النص الجديد:</b>\n\n${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}`, {
             parse_mode: 'HTML',
-            reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting),
+            reply_markup: {
+                inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+            }
         });
-        return true;
-    }
-    // Empty line command
-    const emptyMatch = text.match(/^فارغ(\s+(\d+))?$/);
-    if (emptyMatch) {
-        const n = Math.min(Math.max(emptyMatch[2] ? parseInt(emptyMatch[2], 10) : 1, 1), 20);
-        if (!ctx.session.documentLines)
-            ctx.session.documentLines = [];
-        for (let i = 0; i < n; i++)
-            ctx.session.documentLines.push({ text: '', align: 'right' });
-        const lines = ctx.session.documentLines;
-        const preview = lines.map((l, i) => `${i + 1}. ${l.text ? l.text.substring(0, 30) + '...' : '[فارغ]'}`).join('\n');
-        await ctx.reply(`✅ تمت إضافة ${n} سطر فارغ\n\n📄 <b>المستند:</b>\n${preview}`, { parse_mode: 'HTML', reply_markup: controlPanel() });
-        await refreshPreview(ctx);
         return true;
     }
     // Enforce Alignment Selection
     if (ctx.session.tempLine) {
-        await ctx.reply('⚠️ الرجاء اختيار المحاذاة أولاً من الأزرار أدناه', {
-            reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting),
+        await ctx.deleteMessage().catch(() => { });
+        await ctx.reply(`📝 <b>اختر تنسيق النص:</b>\n\n${ctx.session.tempLine}`, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+            }
         });
         return true;
     }
-    // Normal text → show full formatting keyboard
     ctx.session.tempLine = text;
-    ctx.session.tempFormatting = { bold: false, italic: false, underline: false, size: 'normal', style: 'normal' };
-    await ctx.reply(`📝 <b>اختر تنسيق النص:</b>\n\n<code>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`, {
+    ctx.session.tempFormatting = ctx.session.tempFormatting || {
+        align: 'right',
+        bold: false,
+        italic: false,
+        underline: false,
+        size: 'normal',
+        style: 'normal'
+    };
+    await ctx.reply(`📝 <b>اختر تنسيق النص:</b>\n\n${text}`, {
         parse_mode: 'HTML',
-        reply_markup: buildFormattingKeyboard(ctx.session.tempFormatting),
+        reply_markup: {
+            inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
+        }
     });
     return true;
 }
 // ── Image Format Menu Helper ───────────────────────────────────────────────────
 async function showImageFormatMenu(ctx) {
-    await ctx.editMessageText('🎨 <b>تنسيق الصورة:</b>\n\n' +
-        'اختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:', {
-        parse_mode: 'HTML',
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: '➡️ يمين', callback_data: 'doc_img_fmt_right' },
-                    { text: '↔️ وسط', callback_data: 'doc_img_fmt_center' },
-                    { text: '⬅️ يسار', callback_data: 'doc_img_fmt_left' },
-                ],
-                [
-                    { text: '⭕ دائري', callback_data: 'doc_img_mask_circle' },
-                    { text: '🔲 حواف ناعمة', callback_data: 'doc_img_mask_rounded' },
-                    { text: '⬛ مربع عادي', callback_data: 'doc_img_mask_square' },
-                ],
-                [{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' }],
-            ],
-        },
-    });
+    const rowImages = ctx.session.rowImages || [];
+    const usedAligns = rowImages.map((img) => img.align).filter(Boolean);
+    // Current active selections
+    const currentAlign = ctx.session.tempImage?.align;
+    const currentMask = ctx.session.tempImage?.mask;
+    const isTempReady = currentAlign && currentMask;
+    const keyboard = [
+        // 1. Align (Show ✅ if currently selected, 🔒 if used in row)
+        [
+            {
+                text: currentAlign === 'right' ? '✅ يمين' : (usedAligns.includes('right') ? '🔒 يمين' : '➡️ يمين'),
+                callback_data: usedAligns.includes('right') ? 'doc_img_align_locked' : 'doc_img_fmt_right'
+            },
+            {
+                text: currentAlign === 'center' ? '✅ وسط' : (usedAligns.includes('center') ? '🔒 وسط' : '↔️ وسط'),
+                callback_data: usedAligns.includes('center') ? 'doc_img_align_locked' : 'doc_img_fmt_center'
+            },
+            {
+                text: currentAlign === 'left' ? '✅ يسار' : (usedAligns.includes('left') ? '🔒 يسار' : '⬅️ يسار'),
+                callback_data: usedAligns.includes('left') ? 'doc_img_align_locked' : 'doc_img_fmt_left'
+            },
+        ],
+        // 2. Mask (Show ✅ if currently selected)
+        [
+            { text: currentMask === 'circle' ? '✅ دائري' : '⭕ دائري', callback_data: 'doc_img_mask_circle' },
+            { text: currentMask === 'rounded' ? '✅ حواف ناعمة' : '🔲 حواف ناعمة', callback_data: 'doc_img_mask_rounded' },
+            { text: currentMask === 'square' ? '✅ مربع عادي' : '⬛ مربع عادي', callback_data: 'doc_img_mask_square' },
+        ]
+    ];
+    // Reveal advanced options ONLY when both align and mask are selected
+    if (isTempReady) {
+        keyboard.push([{ text: ctx.session.tempImage?.caption ? '✏️ تعديل النص تحت الصورة' : '📝 إضافة نص تحت الصورة', callback_data: 'doc_row_caption_temp' }]);
+        if (rowImages.length < 2) {
+            keyboard.push([{ text: '🖼 إضافة صورة بجانبها في نفس السطر', callback_data: 'doc_row_add_image' }]);
+        }
+        keyboard.push([{ text: '✅ إتمام التعديلات وإضافة للمستند', callback_data: 'doc_row_finish' }]);
+    }
+    // Captions for already saved images in this row
+    const captionBtns = rowImages.map((img, idx) => ({
+        text: img.caption ? `✏️ تعديل نص صورة ${idx + 1}` : `📝 نص صورة ${idx + 1}`, callback_data: `doc_row_caption_${idx}`
+    }));
+    if (captionBtns.length > 0)
+        keyboard.push(captionBtns);
+    keyboard.push([{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' }]);
+    const text = '🎨 <b>تنسيق الصورة:</b>\n\nاختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:';
+    const options = { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } };
+    // CRITICAL FIX: Prevent crashes and message duplication.
+    // If it's a button click (callbackQuery), EDIT the message in place.
+    // If it's a photo upload or text message, SEND a new message.
+    if (ctx.callbackQuery) {
+        try {
+            await ctx.editMessageText(text, options);
+        }
+        catch (err) {
+            await ctx.reply(text, options); // Fallback just in case
+        }
+    }
+    else {
+        await ctx.reply(text, options);
+    }
 }
 //# sourceMappingURL=docMakerHandler.js.map

@@ -16,6 +16,12 @@ const bidi_js_1 = __importDefault(require("bidi-js"));
 const https_1 = __importDefault(require("https"));
 // Initialise the bidi engine once (singleton)
 const bidiEngine = (0, bidi_js_1.default)();
+const EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
+function hasEmoji(str) { return EMOJI_REGEX.test(str); }
+function stripEmoji(str) { return str.replace(EMOJI_REGEX, ' '); }
+function extractEmoji(str) {
+    return Array.from(str.matchAll(new RegExp(EMOJI_REGEX.source, 'gu'))).map(m => m[0]);
+}
 /**
  * Reshapes Arabic characters so they connect properly, then
  * applies the Unicode Bidirectional Algorithm so RTL text is
@@ -184,7 +190,7 @@ function getContentBounds(templateId, pageWidth, pageHeight) {
  * FONT SAFETY: Only Amiri-Regular is ever called. Bold/italic are simulated.
  * Returns the Y advance (lineHeight for the line).
  */
-function renderRichLine(doc, line, x, currentY, contentW, baseSize) {
+function renderRichLine(doc, line, x, currentY, contentW, baseSize, textColor = 'black') {
     const style = line.style ?? 'normal';
     // ── divider: draw line, skip text ───────────────────────────────────────────
     if (style === 'divider') {
@@ -227,18 +233,15 @@ function renderRichLine(doc, line, x, currentY, contentW, baseSize) {
     if (line.bold) {
         doc.save().lineWidth(0.4);
     }
-    const prepared = prepareArabicText(line.text);
-    doc.fontSize(fontSize).fillColor('black');
-    doc.text(prepared, effectiveX, currentY, {
-        width: effectiveW,
-        align: line.align ?? 'right',
-        lineBreak: false,
-    });
+    const lineColor = line.color || textColor;
+    doc.fontSize(fontSize).fillColor(lineColor);
+    const newY = drawArabicParagraph(doc, line.text, effectiveX, currentY, effectiveW, line.align ?? 'right', prepareArabicText);
     if (line.bold)
         doc.restore();
     // ── underline: draw line beneath text ────────────────────────────────────────
     if (line.underline) {
         try {
+            const prepared = prepareArabicText(line.text);
             const tw = Math.min(doc.widthOfString(prepared), effectiveW);
             const lineY = currentY + fontSize + 1;
             // For RTL text the rendered start depends on alignment; approximate
@@ -260,7 +263,7 @@ function renderRichLine(doc, line, x, currentY, contentW, baseSize) {
     }
     // italic note: pdfkit with a non-italic font variant cannot tilt glyphs;
     // we skip the effect silently to avoid font registration errors.
-    return lineH;
+    return newY > currentY ? (newY - currentY) : lineH;
 }
 // ─── Main generator (wizard flow) ─────────────────────────────────────────────
 async function generateDocument(params) {
@@ -351,7 +354,63 @@ async function generateDocument(params) {
         }
     });
 }
-async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont) {
+function drawArabicParagraph(doc, rawText, startX, startY, width, align, prepareFn) {
+    if (!rawText)
+        return startY;
+    // CRITICAL FIX: .reverse() is absolutely required for RTL word ordering 
+    // before building the line chunks for Bidi processing.
+    const words = rawText.split(/\s+/).reverse();
+    let lines = [];
+    let currentLine = '';
+    for (const word of words) {
+        const testLine = currentLine ? currentLine + ' ' + word : word;
+        const testWidth = doc.widthOfString(prepareFn(testLine));
+        if (testWidth > width && currentLine !== '') {
+            lines.push(currentLine);
+            currentLine = word;
+        }
+        else {
+            currentLine = testLine;
+        }
+    }
+    if (currentLine)
+        lines.push(currentLine);
+    let currentY = startY;
+    const lineHeight = doc.currentLineHeight();
+    const pdfAlign = align === 'left' ? 'left' : align === 'center' ? 'center' : 'right';
+    for (const line of lines) {
+        const lineText = line || '';
+        if (hasEmoji(lineText)) {
+            const cleanText = stripEmoji(lineText);
+            if (cleanText.trim()) {
+                doc.text(prepareFn(cleanText), startX, currentY, { width: width, align: pdfAlign });
+            }
+            const emojiFontPath = path_1.default.join(process.cwd(), 'src', 'assets', 'fonts', 'NotoEmoji.ttf');
+            if (fs_1.default.existsSync(emojiFontPath)) {
+                try {
+                    doc.registerFont('NotoEmoji', emojiFontPath);
+                    const emojis = extractEmoji(lineText).join(' ');
+                    // To enable emoji rendering: download NotoColorEmoji.ttf from
+                    // https://github.com/googlefonts/noto-emoji and place at
+                    // src/assets/fonts/NotoEmoji.ttf
+                    // Bot works without it — emoji are simply omitted from PDF
+                    const mainFont = doc._font ? doc._font.name : 'Helvetica';
+                    doc.font('NotoEmoji').fontSize(10).text(emojis, startX, currentY, { width: width, align: pdfAlign });
+                    doc.font(mainFont);
+                }
+                catch {
+                    // emoji font failed — skip emoji silently, text already rendered
+                }
+            }
+        }
+        else {
+            doc.text(prepareFn(lineText), startX, currentY, { width: width, align: pdfAlign });
+        }
+        currentY += lineHeight;
+    }
+    return currentY;
+}
+async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, docBgColor, docTextColor) {
     if (!lines || !Array.isArray(lines) || lines.length === 0) {
         throw new Error('No lines to generate');
     }
@@ -380,8 +439,19 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont) {
             const buffers = [];
             doc.on('data', (chunk) => buffers.push(chunk));
             let pageCount = 0;
+            doc.on('pageAdded', () => { pageCount++; });
+            const bgColor = docBgColor || '#FFFFFF';
+            const txtColor = docTextColor || '#000000';
+            const drawBackground = () => {
+                if (bgColor !== '#FFFFFF') {
+                    doc.save();
+                    doc.rect(0, 0, doc.page.width, doc.page.height).fill(bgColor);
+                    doc.restore();
+                }
+            };
             const addPage = () => {
                 doc.addPage();
+                drawBackground();
                 pageCount++;
                 const W = doc.page.width;
                 const H = doc.page.height;
@@ -397,26 +467,98 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont) {
                 doc.font(chosenFont);
             }
             catch { }
-            doc.fontSize(BASE_SIZE).fillColor('black');
+            doc.fontSize(BASE_SIZE).fillColor(txtColor);
             for (const line of lines) {
                 // CRASH FIX: skip null/undefined entries
-                if (!line || line.text === undefined || line.text === null)
+                if (!line || (line.text === undefined && line.type === undefined))
                     continue;
-                // ── Image line ──────────────────────────────────────────────────────────
-                {
-                    const richLine = line;
-                    if (richLine.type === 'image' && richLine.fileId) {
+                const richLine = line;
+                // ── Full-bleed cover image ───────────────────────────────────────────────
+                if (richLine.type === 'image_cover' && richLine.fileId) {
+                    try {
+                        const fileUrl = await getTelegramFileUrl(richLine.fileId);
+                        const imgRes = await fetch(fileUrl);
+                        if (!imgRes.ok)
+                            throw new Error(`HTTP ${imgRes.status}`);
+                        const imgBuffer = Buffer.from(new Uint8Array(await imgRes.arrayBuffer()));
+                        // Push to a fresh page if we are not at the very start
+                        if (currentY > PADDING + 5) {
+                            ({ W, H } = addPage());
+                            currentY = 0;
+                        }
+                        // Full-bleed: draw from (0,0) to full page dimensions, ignoring margins
+                        doc.image(imgBuffer, 0, 0, { width: doc.page.width, height: doc.page.height });
+                        // Start a fresh page for content that follows
+                        ({ W, H } = addPage());
+                        currentY = PADDING;
+                        doc.y = currentY;
                         try {
-                            const fileUrl = await getTelegramFileUrl(richLine.fileId);
+                            doc.font(chosenFont);
+                        }
+                        catch { }
+                        doc.fontSize(BASE_SIZE).fillColor(txtColor);
+                    }
+                    catch (err) {
+                        console.error('[PDF] Cover render failed:', err);
+                    }
+                    continue;
+                }
+                // ── Image / Image-Row line ───────────────────────────────────────────────
+                if ((richLine.type === 'image' || richLine.type === 'image_row') && (richLine.fileId || richLine.rowImages)) {
+                    // Normalise: single image or array of row images
+                    const images = (richLine.rowImages && richLine.rowImages.length > 0)
+                        ? richLine.rowImages
+                        : (richLine.fileId ? [{
+                                fileId: richLine.fileId,
+                                lines: richLine.imageLines || 5,
+                                align: richLine.align || 'center',
+                                mask: richLine.imageMask,
+                                caption: undefined,
+                            }] : []);
+                    if (images.length === 0)
+                        continue;
+                    const allocH = (images[0].lines || 5) * 20;
+                    const pageW = doc.page.width - PADDING * 2;
+                    const gap = 15;
+                    const imgW = images.length === 1 ? pageW :
+                        images.length === 2 ? (pageW - gap) / 2 :
+                            (pageW - gap * 2) / 3;
+                    // Paginate if needed
+                    if (currentY + allocH > maxY) {
+                        ({ W, H } = addPage());
+                        currentY = PADDING;
+                        doc.y = currentY;
+                        try {
+                            doc.font(chosenFont);
+                        }
+                        catch { }
+                        doc.fontSize(BASE_SIZE).fillColor(txtColor);
+                    }
+                    for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
+                        const img = images[imgIdx];
+                        // X position:
+                        //  - Single image: respect per-image alignment setting
+                        //  - Multiple images: lay out left-to-right (index 0 = leftmost)
+                        let alignX;
+                        if (images.length === 1) {
+                            alignX =
+                                img.align === 'left' ? PADDING :
+                                    img.align === 'center' ? PADDING + (pageW / 2) - (imgW / 2) :
+                                        /* right */ PADDING + pageW - imgW;
+                        }
+                        else {
+                            alignX = PADDING + imgIdx * (imgW + gap);
+                        }
+                        try {
+                            const fileUrl = await getTelegramFileUrl(img.fileId);
                             const imgRes = await fetch(fileUrl);
                             if (!imgRes.ok)
                                 throw new Error(`HTTP ${imgRes.status} fetching image`);
-                            const rawBuf = await imgRes.arrayBuffer();
-                            let imgBuffer = Buffer.from(new Uint8Array(rawBuf));
+                            let imgBuffer = Buffer.from(new Uint8Array(await imgRes.arrayBuffer()));
                             const meta = await (0, sharp_1.default)(imgBuffer).metadata();
                             const iw = meta.width ?? 500;
                             const ih = meta.height ?? 500;
-                            if (richLine.imageMask === 'circle') {
+                            if (img.mask === 'circle') {
                                 const size = Math.min(iw, ih);
                                 const r = Math.floor(size / 2);
                                 const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">` +
@@ -426,7 +568,7 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont) {
                                     .composite([{ input: Buffer.from(svg), blend: 'dest-in' }])
                                     .png().toBuffer());
                             }
-                            else if (richLine.imageMask === 'rounded') {
+                            else if (img.mask === 'rounded') {
                                 const rx = Math.round(Math.min(iw, ih) * 0.1);
                                 const svg = `<svg width="${iw}" height="${ih}" xmlns="http://www.w3.org/2000/svg">` +
                                     `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${rx}" ry="${rx}"/></svg>`;
@@ -434,31 +576,26 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont) {
                                     .composite([{ input: Buffer.from(svg), blend: 'dest-in' }])
                                     .png().toBuffer());
                             }
-                            const pageW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-                            const allocH = (richLine.imageLines || 5) * 20;
-                            if (doc.y + allocH > doc.page.height - doc.page.margins.bottom) {
-                                ({ W, H } = addPage());
-                                currentY = doc.page.margins.top ?? PADDING;
-                                doc.y = currentY;
-                                try {
-                                    doc.font(chosenFont);
-                                }
-                                catch { }
-                                doc.fontSize(BASE_SIZE).fillColor('black');
+                            doc.image(imgBuffer, alignX, currentY, { width: imgW, height: allocH });
+                            // Per-image caption
+                            if (img.caption) {
+                                doc.fontSize(10).fillColor('#444444');
+                                drawArabicParagraph(doc, img.caption, alignX, currentY + allocH + 2, imgW, 'center', prepareArabicText);
+                                doc.fontSize(BASE_SIZE).fillColor(txtColor);
                             }
-                            doc.image(imgBuffer, doc.page.margins.left, doc.y, {
-                                fit: [pageW, allocH],
-                                align: (richLine.align === 'left' ? undefined : (richLine.align ?? 'center')),
-                                valign: 'center',
-                            });
-                            currentY = doc.y + allocH + 12;
-                            doc.y = currentY;
                         }
                         catch (err) {
-                            console.error('[PDF] Image embed failed, skipping:', err);
+                            console.error('[PDF] Row image embed failed, skipping:', err);
+                            // Add placeholder text so user knows image was there
+                            doc.fillColor('#cccccc')
+                                .fontSize(10)
+                                .text('[صورة]', alignX, currentY + allocH / 2 - 5, { align: 'center', width: imgW });
                         }
-                        continue;
                     }
+                    const hasCaption = images.some(i => i.caption);
+                    currentY += allocH + (hasCaption ? 18 : 0) + 12;
+                    doc.y = currentY;
+                    continue;
                 }
                 const raw = String(line.text).trim();
                 if (raw === '---PAGE_BREAK---') {
@@ -468,11 +605,10 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont) {
                         doc.font(chosenFont);
                     }
                     catch { }
-                    doc.fontSize(BASE_SIZE).fillColor('black');
+                    doc.fontSize(BASE_SIZE).fillColor(txtColor);
                     continue;
                 }
                 // Determine effective line height for this line (may vary by size)
-                const richLine = line;
                 const sizeMap = { small: BASE_SIZE - 4, normal: BASE_SIZE, large: BASE_SIZE + 6 };
                 const effectiveFontSize = sizeMap[richLine.size ?? 'normal'] ?? BASE_SIZE;
                 const effectiveLineH = effectiveFontSize * 1.6;
@@ -485,14 +621,14 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont) {
                         doc.font(chosenFont);
                     }
                     catch { }
-                    doc.fontSize(BASE_SIZE).fillColor('black');
+                    doc.fontSize(BASE_SIZE).fillColor(txtColor);
                 }
                 if (raw === '') {
                     currentY += LINE_H;
                     continue;
                 }
                 // Render rich line
-                const advance = renderRichLine(doc, richLine, PADDING, currentY, contentW, BASE_SIZE);
+                const advance = renderRichLine(doc, richLine, PADDING, currentY, contentW, BASE_SIZE, txtColor);
                 currentY += advance;
             }
             await new Promise((res, rej) => {
@@ -504,7 +640,7 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont) {
             if (!pdfBuffer || pdfBuffer.length === 0) {
                 throw new Error('PDF buffer is empty after generation');
             }
-            resolve(pdfBuffer);
+            resolve({ buffer: pdfBuffer, pageCount });
         }
         catch (err) {
             console.error('[pdfGeneratorService] Error in generateDocumentFromLines:', err);

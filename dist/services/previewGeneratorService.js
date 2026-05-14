@@ -108,6 +108,8 @@ async function fetchImageBase64(fileId, maxW, maxH, mask) {
 async function buildSVG(opts, w, h) {
     const { templateId, lines = [] } = opts;
     const S = SCALE;
+    const bgColor = opts.docBgColor || '#FFFFFF';
+    const txtColor = opts.docTextColor || '#1a1a1a';
     // Content area defaults (scaled from old 20px margin)
     let cx = 40, cy = 40, cw = w - 80, ch = h - 80;
     let deco = '';
@@ -218,7 +220,7 @@ async function buildSVG(opts, w, h) {
             y += LH * 0.5;
             continue;
         }
-        textSVG += `<text x="${x}" y="${y}" font-family="'${opts.selectedFont || 'Amiri'}','Noto Naskh Arabic','Arabic Typesetting',serif" font-size="${FS}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="#1a1a1a" text-anchor="${anchor}">${prepared}</text>\n`;
+        textSVG += `<text x="${x}" y="${y}" font-family="'${opts.selectedFont || 'Amiri'}','Noto Naskh Arabic','Arabic Typesetting',serif" font-size="${FS}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="${txtColor}" text-anchor="${anchor}">${prepared}</text>\n`;
         if (line.underline) {
             const approxWidth = Math.min(prepared.length * FS * 0.55, cw);
             const ulX = anchor === 'end' ? x - approxWidth : anchor === 'middle' ? x - approxWidth / 2 : x;
@@ -235,7 +237,7 @@ async function buildSVG(opts, w, h) {
     const tplLabel = escXml(exports.TEMPLATE_NAMES[templateId] || '');
     return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="#FFFFFF"/>
+  <rect width="${w}" height="${h}" fill="${bgColor}"/>
   ${deco}
   ${textSVG}
   ${watermark}

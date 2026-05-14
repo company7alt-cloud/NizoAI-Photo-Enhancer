@@ -9,10 +9,18 @@ export interface DocLine {
     underline?: boolean;
     size?: 'small' | 'normal' | 'large';
     style?: 'normal' | 'quote' | 'divider' | 'highlight';
-    type?: 'text' | 'image';
+    color?: string;
+    type?: 'text' | 'image' | 'image_row';
     fileId?: string;
     imageLines?: number;
     imageMask?: 'square' | 'rounded' | 'circle';
+    rowImages?: Array<{
+        fileId: string;
+        lines: number;
+        align: 'right' | 'center' | 'left';
+        mask: 'square' | 'rounded' | 'circle';
+        caption?: string;
+    }>;
 }
 export interface SessionData {
     pendingFile?: {
@@ -33,6 +41,8 @@ export interface SessionData {
         underline: boolean;
         size: 'small' | 'normal' | 'large';
         style: 'normal' | 'quote' | 'divider' | 'highlight';
+        color?: string;
+        align?: 'right' | 'center' | 'left';
     } | null;
     documentLines?: DocLine[];
     pendingExportCost?: number;
@@ -50,13 +60,28 @@ export interface SessionData {
         label: string;
     };
     selectedFont?: string;
-    docState?: 'active' | 'awaiting_custom_img_lines' | null;
+    docBgColor?: string;
+    docTextColor?: string;
+    docState?: 'active' | 'awaiting_custom_img_lines' | 'awaiting_row_caption' | null;
     tempImage?: {
         fileId: string;
         lines?: number;
         align?: 'right' | 'center' | 'left';
         mask?: 'square' | 'rounded' | 'circle';
+        caption?: string;
     };
+    rowImages?: Array<{
+        fileId: string;
+        lines: number;
+        align: 'right' | 'center' | 'left';
+        mask: 'square' | 'rounded' | 'circle';
+        caption?: string;
+    }>;
+    awaitingRowCaption?: number;
+    tempCaptionTarget?: number | 'temp';
+    awaitingNextRowImage?: boolean;
+    awaitingCustomColor?: boolean;
+    customColorPromptId?: number;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;
