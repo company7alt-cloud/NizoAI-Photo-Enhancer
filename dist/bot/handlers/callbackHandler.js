@@ -205,17 +205,17 @@ async function callbackHandler(ctx) {
     if (data.startsWith('filter_')) {
         const originalFileId = ctx.session?.activeImageFileId || ctx.session?.pendingFile?.fileId;
         if (!originalFileId) {
-            if (data === 'filter_restore') {
-                if (ctx.session)
-                    ctx.session.awaitingFilterAction = 'filter_restore';
-                await ctx.editMessageText(`📸 <b>أرسل الصورة الآن:</b>\n\nقم بإرسال الصورة القديمة أو المشققة ليتم ترميمها وإصلاحها فوراً.`, { parse_mode: 'HTML' }).catch(() => { });
-                return;
-            }
-            await ctx.answerCallbackQuery({
-                text: '⚠️ لم يتم العثور على صورة في الجلسة. أرسل الصورة أولاً ثم حاول مرة أخرى.',
-                show_alert: true
-            });
-            return;
+            ctx.session.awaitingFilterAction = data; // e.g., 'filter_face', 'filter_restore'
+            const filterNames = {
+                'filter_restore': '🪄 ترميم الصور القديمة',
+                'filter_face': '👤 تصفية الوجه',
+                'filter_color': '🎨 تلوين الصور',
+                'filter_anime': '🌸 تحويل أنمي',
+                'filter_ghibli': '✨ تأثير جيبلي'
+            };
+            const fName = filterNames[data] || 'هذا الفلتر';
+            await ctx.editMessageText(`📸 <b>أرسل الصورة الآن:</b>\n\nقم بإرسال الصورة التي تريد تطبيق ( <b>${fName}</b> ) عليها ليتم معالجتها فوراً.`, { parse_mode: 'HTML' }).catch(() => { });
+            return; // HALT EXECUTION
         }
         if (data === 'filter_restore') {
             await ctx.answerCallbackQuery('⏳ جاري ترميم وإصلاح الصورة...');
