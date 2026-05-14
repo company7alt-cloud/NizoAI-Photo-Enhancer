@@ -62,45 +62,44 @@ function buildFormattingKeyboard(fmt) {
     const customLabel = (fmt.color && !['#FF0000', '#FFD700', '#1565C0'].includes(fmt.color))
         ? `✅ مخصص: ${fmt.color}`
         : '🎨 اختيار ذاتي (كود اللون)';
-    return {
-        inline_keyboard: [
-            [
-                { text: isR, callback_data: 'fmt_align_right' },
-                { text: isC, callback_data: 'fmt_align_center' },
-                { text: isL, callback_data: 'fmt_align_left' },
-            ],
-            [
-                { text: b, callback_data: 'style_bold' },
-                { text: it, callback_data: 'style_italic' },
-                { text: ul, callback_data: 'style_underline' },
-            ],
-            [
-                { text: sm, callback_data: 'size_small' },
-                { text: nm, callback_data: 'size_normal' },
-                { text: lg, callback_data: 'size_large' },
-            ],
-            [
-                { text: qt, callback_data: 'style_quote' },
-                { text: dv, callback_data: 'style_divider' },
-                { text: hl, callback_data: 'style_highlight' },
-            ],
-            [
-                { text: clRed, callback_data: 'color_red' },
-                { text: clYel, callback_data: 'color_yellow' },
-                { text: clBlu, callback_data: 'color_blue' },
-                { text: clDef, callback_data: 'color_default' },
-            ],
-            [
-                { text: customLabel, callback_data: 'color_custom' }
-            ],
-            [
-                { text: '✅ تطبيق وإضافة للمستند', callback_data: 'fmt_apply' }
-            ],
-            [
-                { text: '🔙 رجوع', callback_data: 'doc_format_back' }
-            ]
+    const rows = [
+        [
+            { text: isR, callback_data: 'fmt_align_right' },
+            { text: isC, callback_data: 'fmt_align_center' },
+            { text: isL, callback_data: 'fmt_align_left' },
         ],
-    };
+        [
+            { text: b, callback_data: 'style_bold' },
+            { text: it, callback_data: 'style_italic' },
+            { text: ul, callback_data: 'style_underline' },
+        ],
+        [
+            { text: sm, callback_data: 'size_small' },
+            { text: nm, callback_data: 'size_normal' },
+            { text: lg, callback_data: 'size_large' },
+        ],
+        [
+            { text: qt, callback_data: 'style_quote' },
+            { text: dv, callback_data: 'style_divider' },
+            { text: hl, callback_data: 'style_highlight' },
+        ],
+        [
+            { text: clRed, callback_data: 'color_red' },
+            { text: clYel, callback_data: 'color_yellow' },
+            { text: clBlu, callback_data: 'color_blue' },
+            { text: clDef, callback_data: 'color_default' },
+        ],
+        [
+            { text: customLabel, callback_data: 'color_custom' }
+        ],
+        [
+            { text: '✅ تطبيق وإضافة للمستند', callback_data: 'fmt_apply' }
+        ],
+        [
+            { text: '🔙 رجوع', callback_data: 'doc_format_back' }
+        ]
+    ];
+    return { inline_keyboard: rows };
 }
 const BACKUP_CHANNEL_ID = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID || '';
 function smartWrap(text, pageSize) {
@@ -529,32 +528,116 @@ async function handleDocMakerCallback(ctx) {
         await ctx.deleteMessage().catch(() => { });
         return true;
     }
-    if (data === 'align_right' || data === 'align_center' || data === 'align_left' ||
-        data.startsWith('fmt_align_')) {
-        if (!ctx.session.tempFormatting)
+    if (data === 'fmt_align_right') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
             return true;
-        ctx.session.tempFormatting.align = data.replace('fmt_align_', '').replace('align_', '');
-        await ctx.answerCallbackQuery('✅ تم');
-        await ctx.editMessageReplyMarkup({
-            inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
-        }).catch(() => { });
+        }
+        ctx.session.tempFormatting.align = 'right';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
         return true;
     }
-    if (data === 'color_red' || data === 'color_yellow' ||
-        data === 'color_blue' || data === 'color_default') {
-        if (!ctx.session.tempFormatting)
+    if (data === 'fmt_align_center') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
             return true;
-        const colorMap = {
-            color_red: '#FF0000',
-            color_yellow: '#FFD700',
-            color_blue: '#1565C0',
-            color_default: undefined,
-        };
-        ctx.session.tempFormatting.color = colorMap[data];
-        await ctx.answerCallbackQuery('✅ تم');
-        await ctx.editMessageReplyMarkup({
-            inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
-        }).catch(() => { });
+        }
+        ctx.session.tempFormatting.align = 'center';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'fmt_align_left') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.align = 'left';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'color_red') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.color = '#FF0000';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'color_yellow') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.color = '#FFD700';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'color_blue') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.color = '#1565C0';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'color_default') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.color = undefined;
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
         return true;
     }
     if (data === 'color_custom') {
@@ -581,13 +664,15 @@ async function handleDocMakerCallback(ctx) {
         return true;
     }
     if (data === 'fmt_apply') {
-        if (!ctx.session.tempLine || !ctx.session.tempFormatting)
+        if (!ctx.session.tempLine || !ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery('⚠️ لا يوجد نص للحفظ');
             return true;
+        }
         ctx.session.documentLines = ctx.session.documentLines || [];
         ctx.session.documentLines.push({
             type: 'text',
             text: ctx.session.tempLine,
-            align: ctx.session.tempFormatting.align || 'right',
+            align: ctx.session.tempFormatting.align,
             bold: ctx.session.tempFormatting.bold,
             italic: ctx.session.tempFormatting.italic,
             underline: ctx.session.tempFormatting.underline,
@@ -595,30 +680,34 @@ async function handleDocMakerCallback(ctx) {
             style: ctx.session.tempFormatting.style,
             color: ctx.session.tempFormatting.color
         });
-        const lineNum = ctx.session.documentLines.length;
-        ctx.session.tempLine = null;
-        ctx.session.tempFormatting = null;
-        await ctx.answerCallbackQuery('✅ تمت الإضافة');
         const total = ctx.session.documentLines.length;
         const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
-        await ctx.editMessageText(`✅ <b>تمت إضافة السطر ${lineNum} للمستند!</b>\n` +
-            `📄 الأسطر: ${total} | الصفحات: ~${pages}\n\n` +
-            `أرسل نصاً أو صورة، أو اضغط تصدير.`, {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' },
-                        { text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }
-                    ],
-                    [
-                        { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' },
-                        { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }
-                    ],
-                    [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
-                ]
-            }
-        }).catch(() => { });
+        ctx.session.tempLine = undefined;
+        ctx.session.tempFormatting = undefined;
+        await ctx.answerCallbackQuery('✅ تمت الإضافة');
+        try {
+            await ctx.editMessageText(`✅ <b>تمت إضافة السطر للمستند!</b>\n\n` +
+                `📄 الأسطر: ${total} | الصفحات: ~${pages}\n\n` +
+                'أرسل نصاً أو صورة، أو اضغط تصدير.', {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' },
+                            { text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }
+                        ],
+                        [
+                            { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' },
+                            { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }
+                        ],
+                        [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+                    ]
+                }
+            });
+        }
+        catch (e) {
+            console.error('[FMT] apply editMessage failed:', e);
+        }
         return true;
     }
     // ── Smart Export Confirmation ──────────────────────────────────────────────
@@ -849,30 +938,147 @@ async function handleDocMakerCallback(ctx) {
         return true;
     }
     // ── Formatting toggles ─────────────────────────────────────────────────────
-    const fmtToggles = {
-        style_bold: fmt => ({ ...fmt, bold: !fmt.bold }),
-        style_italic: fmt => ({ ...fmt, italic: !fmt.italic }),
-        style_underline: fmt => ({ ...fmt, underline: !fmt.underline }),
-        size_small: fmt => ({ ...fmt, size: 'small' }),
-        size_normal: fmt => ({ ...fmt, size: 'normal' }),
-        size_large: fmt => ({ ...fmt, size: 'large' }),
-        style_quote: fmt => ({ ...fmt, style: fmt.style === 'quote' ? 'normal' : 'quote' }),
-        style_divider: fmt => ({ ...fmt, style: fmt.style === 'divider' ? 'normal' : 'divider' }),
-        style_highlight: fmt => ({ ...fmt, style: fmt.style === 'highlight' ? 'normal' : 'highlight' }),
-    };
-    if (fmtToggles[data]) {
+    if (data === 'style_bold') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.bold = !ctx.session.tempFormatting.bold;
+        await ctx.answerCallbackQuery('✅');
         try {
-            await ctx.answerCallbackQuery('✅ تم');
-            if (!ctx.session.tempLine || !ctx.session.tempFormatting) {
-                return true;
-            }
-            ctx.session.tempFormatting = fmtToggles[data](ctx.session.tempFormatting);
-            await ctx.editMessageReplyMarkup({
-                inline_keyboard: buildFormattingKeyboard(ctx.session.tempFormatting).inline_keyboard
-            }).catch(() => { });
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
         }
         catch (e) {
-            console.error('[DocMaker] fmt toggle error:', e);
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'style_italic') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.italic = !ctx.session.tempFormatting.italic;
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'style_underline') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.underline = !ctx.session.tempFormatting.underline;
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'size_small') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.size = 'small';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'size_normal') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.size = 'normal';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'size_large') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.size = 'large';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'style_quote') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.style = ctx.session.tempFormatting.style === 'quote' ? 'normal' : 'quote';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'style_divider') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.style = ctx.session.tempFormatting.style === 'divider' ? 'normal' : 'divider';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
+        }
+        return true;
+    }
+    if (data === 'style_highlight') {
+        if (!ctx.session.tempFormatting) {
+            await ctx.answerCallbackQuery();
+            return true;
+        }
+        ctx.session.tempFormatting.style = ctx.session.tempFormatting.style === 'highlight' ? 'normal' : 'highlight';
+        await ctx.answerCallbackQuery('✅');
+        try {
+            const kb = buildFormattingKeyboard(ctx.session.tempFormatting);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: kb.inline_keyboard });
+        }
+        catch (e) {
+            console.error('[FMT] editMarkup failed:', e);
         }
         return true;
     }
@@ -880,15 +1086,20 @@ async function handleDocMakerCallback(ctx) {
     if (data === 'doc_format_back') {
         ctx.session.tempLine = undefined;
         ctx.session.tempFormatting = undefined;
-        await ctx.answerCallbackQuery('↩️ تم الإلغاء');
-        await ctx.editMessageText('↩️ <b>تم إلغاء النص.</b>\nأرسل نصاً جديداً أو صورة.', {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [[
-                        { text: '📤 تصدير PDF', callback_data: 'doc_export_pdf' }
-                    ]]
-            }
-        }).catch(() => { });
+        await ctx.answerCallbackQuery('↩️ إلغاء');
+        try {
+            await ctx.editMessageText('↩️ <b>تم إلغاء النص.</b>\nأرسل نصاً جديداً أو صورة.', {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [[
+                            { text: '📤 تصدير PDF', callback_data: 'doc_export_pdf' }
+                        ]]
+                }
+            });
+        }
+        catch (e) {
+            console.error('[FMT] back editMessage failed:', e);
+        }
         return true;
     }
     // ── End Session ───────────────────────────────────────────────────────────
