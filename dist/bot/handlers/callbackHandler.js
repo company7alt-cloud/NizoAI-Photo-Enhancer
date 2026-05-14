@@ -196,8 +196,55 @@ async function callbackHandler(ctx) {
             reply_markup: new grammy_1.InlineKeyboard()
                 .text('👤 تصفية الوجه', 'filter_face').text('🎨 تلوين الصور', 'filter_color').row()
                 .text('🌸 تحويل أنمي', 'filter_anime').text('✨ تأثير جيبلي', 'filter_ghibli').row()
+                .text('🪄 ترميم الصور القديمة', 'filter_restore').row()
                 .text('❌ إلغاء', 'cancel_filter')
         });
+        return;
+    }
+    // ── Handle custom restore filter ──────────────────────────────────────────────
+    if (data === 'filter_restore') {
+        await ctx.answerCallbackQuery('⏳ جاري ترميم وإصلاح الصورة...');
+        const originalFileId = ctx.session?.activeImageFileId || ctx.session?.pendingFile?.fileId;
+        if (!originalFileId) {
+            await ctx.reply('⚠️ لم يتم العثور على صورة في الجلسة. أرسل الصورة أولاً ثم حاول مرة أخرى.');
+            return;
+        }
+        try {
+            const tgFile = await ctx.api.getFile(originalFileId);
+            const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
+            const { processImageFilter } = await Promise.resolve().then(() => __importStar(require('../../services/imageService')));
+            const processedImageBuffer = await processImageFilter(imageUrl, 'restore');
+            const archiveChatId = process.env.ARCHIVE_CHANNEL_ID || process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+            if (archiveChatId) {
+                await ctx.api.sendMediaGroup(archiveChatId, [
+                    { type: 'photo', media: originalFileId, caption: `👤 العميل: ${ctx.from?.id}\n📷 الصورة الأصلية (قبل)` },
+                    { type: 'photo', media: new grammy_1.InputFile(processedImageBuffer, 'Restored_Photo.jpg'), caption: `✨ الصورة المرممة (بعد)` }
+                ]).catch((err) => console.error('[ARCHIVE ERROR]', err));
+            }
+            const docInputFile = new grammy_1.InputFile(processedImageBuffer, 'Restored_Photo.jpg');
+            await ctx.replyWithDocument(docInputFile, {
+                caption: '✅ <b>تم ترميم وإصلاح الصورة بنجاح!</b>\n\nاختر الصيغة التي تريد تحويل الصورة إليها:',
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🖼 PNG', callback_data: 'conv_png' },
+                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
+                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                        ],
+                        [
+                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                        ],
+                    ]
+                }
+            });
+            await ctx.deleteMessage().catch(() => { });
+        }
+        catch (err) {
+            console.error('[RESTORE FILTER ERROR]', err);
+            await ctx.reply('❌ عذراً، حدث خطأ أثناء عملية ترميم الصورة.');
+        }
         return;
     }
     // ── Handle filter selection ───────────────────────────────────────────────────

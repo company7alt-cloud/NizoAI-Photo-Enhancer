@@ -675,6 +675,16 @@ async function processImageFilter(imageUrl, filterType) {
                 }
             });
             break;
+        case 'restore':
+            prediction = await replicate.predictions.create({
+                version: "c75db81db6cbd809d93cc3b7e7a088a351a3349c9fa02b6d393e35e0d51ba799",
+                input: {
+                    image: base64Image,
+                    HR: true,
+                    with_scratch: true
+                }
+            });
+            break;
         default:
             throw new Error(`Unknown filter type: ${filterType}`);
     }
