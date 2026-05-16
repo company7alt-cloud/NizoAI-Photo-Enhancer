@@ -50,6 +50,7 @@ if (!process.env.CHANNEL_ID)
 if (!process.env.MONGODB_URI)
     throw new Error('❌ MONGODB_URI is missing');
 const http_1 = __importDefault(require("http"));
+const openai_1 = __importDefault(require("openai"));
 const grammy_1 = require("grammy");
 const path_1 = __importDefault(require("path"));
 const validators_1 = require("./utils/validators");
@@ -88,6 +89,13 @@ function rateLimitMiddleware(limitMs, map) {
         return next();
     };
 }
+// ─── OpenRouter AI Client ─────────────────────────────────────────────────────
+const aiClient = new openai_1.default({
+    baseURL: 'https://openrouter.ai/api/v1',
+    apiKey: process.env.OPENROUTER_API_KEY ?? '',
+});
+// ─── Shared emoji strip regex (used by AI output cleaning) ────────────────────
+const AI_EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu;
 // ─── docBot Maintenance Flag ───────────────────────────────────────────────────
 let docBotLocked = false;
 const docAdminState = new Map();
@@ -1018,7 +1026,9 @@ docBot.command('start', async (ctx) => {
         caption: `مرحباً ${firstName}! 👋\n\nأنا بوت صانع المستندات الاحترافي 📝\nيمكنك إنشاء مستندات PDF احترافية بسهولة تامة.\n\n💰 رصيدك الحالي: ${points} نقطة\n\nاضغط الزر بالأسفل للبدء:`,
         parse_mode: 'HTML',
         reply_markup: new grammy_1.InlineKeyboard()
-            .text('📝 صانع المستندات', 'start_doc_maker')
+            .text('📝 الدخول لصانع المستندات', 'start_doc_maker').row()
+            .text('🤖 NizoAI PDF', 'start_premium_ai')
+            .text('🆓 Ai Free PDF', 'start_free_ai')
     });
 });
 docBot.command('admin', async (ctx) => {
@@ -1084,60 +1094,183 @@ docBot.callbackQuery('doc_admin_broadcast', async (ctx) => {
     docAdminState.set(ctx.from.id, 'awaiting_broadcast');
     await ctx.reply('📢 أرسل نص الإشعار الجماعي:');
 });
-// ─── docBot: Admin text input handler ─────────────────────────────────────────
+// ─── docBot: Free AI Flow ──────────────────────────────────────────────────────
+docBot.callbackQuery('start_free_ai', async (ctx) => {
+    ctx.session.awaitingFreeAiTopic = true;
+    await ctx.answerCallbackQuery();
+    await ctx.reply('🆓 أرسل لي الموضوع الذي تريد كتابته وسأنشئ لك مستنداً مجاناً:');
+});
+// ─── docBot: Premium AI Flow ────────────────────────────────────────────────────
+docBot.callbackQuery('start_premium_ai', async (ctx) => {
+    ctx.session.awaitingPremiumAiTopic = true;
+    await ctx.answerCallbackQuery();
+    await ctx.reply('🤖 أرسل لي تفاصيل المستند الذي تريده وسيقوم NizoAI بتحليله وكتابته:');
+});
+docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
+    const cost = ctx.session.pendingPremiumCost ?? 3;
+    const prompt = ctx.session.pendingPremiumPrompt ?? '';
+    const telegramId = ctx.from.id.toString();
+    const user = await User_1.User.findOne({ telegramId });
+    if (!user || user.dailyQuota < cost) {
+        await ctx.answerCallbackQuery('❌ رصيدك غير كافٍ!');
+        await ctx.reply(`❌ رصيدك الحالي ${user?.dailyQuota ?? 0} نقطة، وتحتاج ${cost} نقطة.`);
+        return;
+    }
+    // Deduct points before generation
+    await User_1.User.updateOne({ telegramId }, { $inc: { dailyQuota: -cost } });
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText('⏳ جاري التفكير المعمق وكتابة مستندك عبر NizoAI...');
+    try {
+        const response = await aiClient.chat.completions.create({
+            model: 'anthropic/claude-3-haiku',
+            messages: [
+                { role: 'system', content: 'أنت كاتب محتوى احترافي متخصص. اكتب محتوى منظم ومفصل بدون رموز تعبيرية. استخدم العناوين والفقرات والتنسيق المناسب.' },
+                { role: 'user', content: prompt },
+            ],
+        });
+        const rawText = response.choices[0]?.message?.content ?? '';
+        const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
+        if (!cleanedText)
+            throw new Error('AI returned empty content');
+        const { generateDocumentFromLines } = await Promise.resolve().then(() => __importStar(require('./services/pdfGeneratorService')));
+        const lines = cleanedText.split('\n').map(l => ({ text: l, align: 'right' }));
+        const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, 'A4');
+        const fileName = `nizoai_premium_${Date.now()}.pdf`;
+        await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), { caption: `✅ <b>تم إنشاء مستندك عبر NizoAI!</b>\n📄 الصفحات: ${pageCount}\n💰 تم خصم ${cost} نقطة.`, parse_mode: 'HTML' });
+    }
+    catch (err) {
+        // Refund on failure
+        await User_1.User.updateOne({ telegramId }, { $inc: { dailyQuota: cost } });
+        console.error('[DocBot Premium AI] Error:', err?.message);
+        await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\nتم استرداد نقاطك.\n<code>${err?.message ?? 'unknown error'}</code>`, { parse_mode: 'HTML' });
+    }
+    ctx.session.pendingPremiumPrompt = undefined;
+    ctx.session.pendingPremiumCost = undefined;
+    ctx.session.pendingPremiumPages = undefined;
+});
+docBot.callbackQuery('cancel_premium_ai', async (ctx) => {
+    await ctx.answerCallbackQuery('تم الإلغاء');
+    await ctx.editMessageText('❌ تم إلغاء الطلب.');
+    ctx.session.pendingPremiumPrompt = undefined;
+    ctx.session.pendingPremiumCost = undefined;
+    ctx.session.pendingPremiumPages = undefined;
+});
+// ─── docBot: Admin + AI text input handler ────────────────────────────────────
 docBot.on('message:text', async (ctx, next) => {
     const userId = ctx.from?.id;
-    if (!userId || !(0, validators_1.isAdmin)(userId))
-        return next();
-    const state = docAdminState.get(userId);
-    if (!state)
+    if (!userId)
         return next();
     const text = ctx.message.text.trim();
-    docAdminState.delete(userId);
-    if (state === 'awaiting_user_id') {
-        const targetUser = await User_1.User.findOne({ telegramId: text });
-        if (!targetUser) {
-            await ctx.reply('❌ المستخدم غير موجود.');
-            return;
+    // ── Admin state machine (admin only) ──────────────────────────────────────
+    if ((0, validators_1.isAdmin)(userId)) {
+        const state = docAdminState.get(userId);
+        if (state) {
+            docAdminState.delete(userId);
+            if (state === 'awaiting_user_id') {
+                const targetUser = await User_1.User.findOne({ telegramId: text });
+                if (!targetUser) {
+                    await ctx.reply('❌ المستخدم غير موجود.');
+                    return;
+                }
+                await ctx.reply(`ℹ️ <b>معلومات العميل</b>\n\n` +
+                    `🆔 ID: <code>${targetUser.telegramId}</code>\n` +
+                    `👤 Username: @${targetUser.username || 'غير محدد'}\n` +
+                    `🚫 محظور: ${targetUser.isBanned ? 'نعم' : 'لا'}`, { parse_mode: 'HTML' });
+                return;
+            }
+            if (state === 'awaiting_points') {
+                const parts = text.split(/\s+/);
+                if (parts.length !== 2 || isNaN(parseInt(parts[1]))) {
+                    await ctx.reply('❌ الصيغة غير صحيحة. مثال: 123456789 10');
+                    return;
+                }
+                const [targetId, amountStr] = parts;
+                const amount = parseInt(amountStr);
+                const updated = await User_1.User.findOneAndUpdate({ telegramId: targetId }, { $inc: { dailyQuota: amount } }, { new: true });
+                if (!updated) {
+                    await ctx.reply('❌ المستخدم غير موجود.');
+                    return;
+                }
+                await ctx.reply(`✅ تمت إضافة <b>${amount}</b> نقطة للمستخدم <code>${targetId}</code>. الرصيد: ${updated.dailyQuota}`, { parse_mode: 'HTML' });
+                return;
+            }
+            if (state === 'awaiting_broadcast') {
+                const allUsers = await User_1.User.find({ isBanned: { $ne: true } }).select('telegramId').lean();
+                let ok = 0;
+                let fail = 0;
+                for (const u of allUsers) {
+                    try {
+                        await docBot.api.sendMessage(u.telegramId, text);
+                        ok++;
+                    }
+                    catch {
+                        fail++;
+                    }
+                    if ((ok + fail) % 25 === 0)
+                        await new Promise(r => setTimeout(r, 1000));
+                }
+                await ctx.reply(`📢 <b>تم إرسال الإشعار</b>\n✅ نجح: ${ok}\n❌ فشل: ${fail}`, { parse_mode: 'HTML' });
+                return;
+            }
         }
-        await ctx.reply(`ℹ️ <b>معلومات العميل</b>\n\n` +
-            `🆔 ID: <code>${targetUser.telegramId}</code>\n` +
-            `👤 Username: @${targetUser.username || 'غير محدد'}\n` +
-            `🚫 محظور: ${targetUser.isBanned ? 'نعم' : 'لا'}`, { parse_mode: 'HTML' });
+    }
+    // ── Free AI Topic Interceptor ──────────────────────────────────────────────
+    if (ctx.session.awaitingFreeAiTopic) {
+        ctx.session.awaitingFreeAiTopic = false;
+        const waitMsg = await ctx.reply('⏳ جاري الكتابة بالذكاء الاصطناعي...');
+        try {
+            const response = await aiClient.chat.completions.create({
+                model: 'meta-llama/llama-3-8b-instruct:free',
+                messages: [
+                    { role: 'system', content: 'أنت كاتب محتوى محترف. اكتب محتوى منظم واضح بدون رموز تعبيرية. استخدم العناوين والفقرات بشكل منظم.' },
+                    { role: 'user', content: text },
+                ],
+            });
+            const rawText = response.choices[0]?.message?.content ?? '';
+            const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
+            if (!cleanedText)
+                throw new Error('AI returned empty content');
+            const { generateDocumentFromLines } = await Promise.resolve().then(() => __importStar(require('./services/pdfGeneratorService')));
+            const lines = cleanedText.split('\n').map(l => ({ text: l, align: 'right' }));
+            const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, 'A4');
+            const fileName = `nizoai_free_${Date.now()}.pdf`;
+            await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), { caption: `✅ <b>تم إنشاء مستندك المجاني!</b>\n📄 الصفحات: ${pageCount}`, parse_mode: 'HTML' });
+        }
+        catch (err) {
+            console.error('[DocBot Free AI] Error:', err?.message);
+            await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message ?? 'unknown error'}</code>`, { parse_mode: 'HTML' });
+        }
+        // Clean up waiting message
+        await ctx.api.deleteMessage(ctx.chat.id, waitMsg.message_id).catch(() => { });
         return;
     }
-    if (state === 'awaiting_points') {
-        const parts = text.split(/\s+/);
-        if (parts.length !== 2 || isNaN(parseInt(parts[1]))) {
-            await ctx.reply('❌ الصيغة غير صحيحة. مثال: 123456789 10');
-            return;
+    // ── Premium AI Topic Interceptor ───────────────────────────────────────────
+    if (ctx.session.awaitingPremiumAiTopic) {
+        ctx.session.awaitingPremiumAiTopic = false;
+        const wordCount = text.split(' ').length;
+        const isDetailed = /طويل|مفصل|بحث|تفصيل|صفحات|شامل/.test(text);
+        let pages = 1;
+        let cost = 3;
+        if (wordCount > 50 || isDetailed) {
+            pages = 3;
+            cost = 6;
         }
-        const [targetId, amountStr] = parts;
-        const amount = parseInt(amountStr);
-        const updated = await User_1.User.findOneAndUpdate({ telegramId: targetId }, { $inc: { dailyQuota: amount } }, { new: true });
-        if (!updated) {
-            await ctx.reply('❌ المستخدم غير موجود.');
-            return;
+        else if (wordCount > 25) {
+            pages = 2;
+            cost = 5;
         }
-        await ctx.reply(`✅ تمت إضافة <b>${amount}</b> نقطة للمستخدم <code>${targetId}</code>. الرصيد: ${updated.dailyQuota}`, { parse_mode: 'HTML' });
-        return;
-    }
-    if (state === 'awaiting_broadcast') {
-        const allUsers = await User_1.User.find({ isBanned: { $ne: true } }).select('telegramId').lean();
-        let ok = 0;
-        let fail = 0;
-        for (const u of allUsers) {
-            try {
-                await docBot.api.sendMessage(u.telegramId, text);
-                ok++;
-            }
-            catch {
-                fail++;
-            }
-            if ((ok + fail) % 25 === 0)
-                await new Promise(r => setTimeout(r, 1000));
-        }
-        await ctx.reply(`📢 <b>تم إرسال الإشعار</b>\n✅ نجح: ${ok}\n❌ فشل: ${fail}`, { parse_mode: 'HTML' });
+        ctx.session.pendingPremiumPrompt = text;
+        ctx.session.pendingPremiumCost = cost;
+        ctx.session.pendingPremiumPages = pages;
+        await ctx.reply(`📊 <b>تحليل الطلب:</b>\n\n` +
+            `📄 المحتوى المتوقع: <b>${pages} صفحة</b>\n` +
+            `💰 التكلفة: <b>${cost} نقاط</b>\n\n` +
+            `هل تريد المتابعة؟`, {
+            parse_mode: 'HTML',
+            reply_markup: new grammy_1.InlineKeyboard()
+                .text('✅ تأكيد وإنشاء المستند', 'confirm_premium_ai')
+                .text('❌ إلغاء', 'cancel_premium_ai'),
+        });
         return;
     }
     return next();
@@ -1154,7 +1287,10 @@ docBot.on(['message', 'callback_query'], async (ctx, next) => {
     if (ctx.message) {
         const docState = ctx.session?.docState;
         // ── Session Closed Notification ──
-        if (!ctx.session?.isInDocMaker) {
+        // Skip if user is actively in an AI topic collection flow
+        if (!ctx.session?.isInDocMaker &&
+            !ctx.session?.awaitingFreeAiTopic &&
+            !ctx.session?.awaitingPremiumAiTopic) {
             const txt = ctx.message.text || ctx.message.caption || '';
             if (txt.startsWith('/'))
                 return next();

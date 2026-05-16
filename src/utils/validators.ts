@@ -99,6 +99,12 @@ export interface SessionData {
   customColorPromptId?: number;
   awaitingTypographyValue?: 'letter' | 'line';
   typographyPromptId?: number;
+  // AI Document Generation
+  awaitingFreeAiTopic?: boolean;
+  awaitingPremiumAiTopic?: boolean;
+  pendingPremiumPrompt?: string;
+  pendingPremiumCost?: number;
+  pendingPremiumPages?: number;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

@@ -90,6 +90,11 @@ export interface SessionData {
     customColorPromptId?: number;
     awaitingTypographyValue?: 'letter' | 'line';
     typographyPromptId?: number;
+    awaitingFreeAiTopic?: boolean;
+    awaitingPremiumAiTopic?: boolean;
+    pendingPremiumPrompt?: string;
+    pendingPremiumCost?: number;
+    pendingPremiumPages?: number;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;
