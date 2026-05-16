@@ -452,6 +452,9 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
             }
             const buffers = [];
             doc.on('data', (chunk) => buffers.push(chunk));
+            // Declare colors BEFORE pageAdded listener so txtColor is defined when it fires
+            const bgColor = docBgColor || '#FFFFFF';
+            const txtColor = docTextColor || '#000000';
             let pageCount = 0;
             doc.on('pageAdded', () => {
                 pageCount++;
@@ -461,8 +464,6 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                 catch { }
                 doc.fontSize(BASE_SIZE).fillColor(txtColor);
             });
-            const bgColor = docBgColor || '#FFFFFF';
-            const txtColor = docTextColor || '#000000';
             const drawBackground = () => {
                 if (bgColor !== '#FFFFFF') {
                     doc.save();

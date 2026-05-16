@@ -562,15 +562,16 @@ export async function generateDocumentFromLines(
       const buffers: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => buffers.push(chunk));
 
+      // Declare colors BEFORE pageAdded listener so txtColor is defined when it fires
+      const bgColor  = docBgColor  || '#FFFFFF';
+      const txtColor = docTextColor || '#000000';
+
       let pageCount = 0;
       doc.on('pageAdded', () => {
         pageCount++;
         try { doc.font(chosenFont); } catch {}
         doc.fontSize(BASE_SIZE).fillColor(txtColor);
       });
-
-      const bgColor = docBgColor || '#FFFFFF';
-      const txtColor = docTextColor || '#000000';
 
       const drawBackground = () => {
         if (bgColor !== '#FFFFFF') {
