@@ -265,10 +265,13 @@ async function buildSVG(opts: DocPreviewOptions, w: number, h: number): Promise<
     if (y + LH > cy + ch) break;
     if (!line.text?.trim()) { y += LH * 0.6; continue; }
 
-    const prepared = escXml(prepareArabic(line.text));
-    let anchor = 'end', x = cx + cw;
+    const isArabic = /[\u0600-\u06FF]/.test(line.text || '');
+    const prepared = escXml(isArabic ? prepareArabic(line.text) : line.text);
+    
+    let anchor = isArabic ? 'end' : 'start';
+    let x = isArabic ? cx + cw : cx;
+    
     if (line.align === 'center') { anchor = 'middle'; x = cx + cw / 2; }
-    else if (line.align === 'left') { anchor = 'start'; x = cx; }
 
     const fontWeight = line.bold ? 'bold' : 'normal';
     const fontStyle = line.italic ? 'italic' : 'normal';

@@ -300,8 +300,7 @@ function renderRichLine(
     effectiveX,
     currentY,
     effectiveW,
-    line.align ?? 'right',
-    prepareArabicText
+    line.align ?? 'right'
   );
 
   // Reset typography to defaults
@@ -393,8 +392,7 @@ export async function generateDocument(params: PdfGeneratorParams): Promise<Buff
               bounds.x,
               currentY,
               bounds.width,
-              'right',
-              prepareArabicText
+              'right'
             );
           }
         } else if (page.type === 'image' && page.imageBuffer) {
@@ -435,12 +433,9 @@ function drawArabicParagraph(
   startX: number,
   startY: number,
   width: number,
-  align: string,
-  prepareFn: (txt: string) => string
+  align: string
 ): number {
   if (!rawText) return startY;
-
-  // Preserve explicit \n line breaks the user typed
   const inputLines = rawText.split('\n');
   let currentY = startY;
 
@@ -450,23 +445,21 @@ function drawArabicParagraph(
       continue;
     }
 
-    // Per-line direction detection: Arabic → force right align
-    const lineHasArabic = /[\u0600-\u06FF]/.test(inputLine);
-    let pdfAlign: string;
-    if (align === 'center') {
-      pdfAlign = 'center';
-    } else if (lineHasArabic) {
-      pdfAlign = 'right';
-    } else {
-      pdfAlign = align === 'left' ? 'left' : 'right';
-    }
+    const isArabic = /[\u0600-\u06FF]/.test(inputLine);
+    let pdfAlign = isArabic ? 'right' : 'left';
+    if (align === 'center') pdfAlign = 'center';
 
     if (hasEmoji(inputLine)) {
       const mainFont = doc._font ? doc._font.name : 'Amiri';
       const mainSize = doc._fontSize || 12;
       try {
         doc.font('NotoEmoji');
-        doc.text(inputLine, startX, currentY, { width, align: pdfAlign, lineBreak: true });
+        doc.text(inputLine, startX, currentY, { 
+          width, 
+          align: pdfAlign, 
+          lineBreak: false,
+          features: isArabic ? ['rtla', 'arab'] : [] 
+        });
         doc.font(mainFont).fontSize(mainSize);
       } catch {
         doc.font(mainFont).fontSize(mainSize);
@@ -474,15 +467,23 @@ function drawArabicParagraph(
           /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu,
           ''
         );
-        doc.text(prepareFn(stripped), startX, currentY, { width, align: pdfAlign, lineBreak: true });
+        doc.text(stripped, startX, currentY, { 
+          width, 
+          align: pdfAlign, 
+          lineBreak: false,
+          features: isArabic ? ['rtla', 'arab'] : []
+        });
       }
     } else {
-      // Apply reshaper + BiDi, then hand off to PDFKit's native line-wrapper.
-      // NEVER manually split/reverse words — that double-corrupts BiDi output.
-      doc.text(prepareFn(inputLine), startX, currentY, { width, align: pdfAlign, lineBreak: true });
+      doc.text(inputLine, startX, currentY, { 
+        width, 
+        align: pdfAlign, 
+        lineBreak: false,
+        features: isArabic ? ['rtla', 'arab'] : []
+      });
     }
 
-    currentY = doc.y; // sync with PDFKit's Y cursor after wrapping
+    currentY = doc.y; 
   }
 
   return currentY;
@@ -716,8 +717,7 @@ export async function generateDocumentFromLines(
                   alignX, 
                   currentY + allocH + 2, 
                   imgW, 
-                  'center', 
-                  prepareArabicText
+                  'center'
                 );
                 doc.fontSize(BASE_SIZE).fillColor(txtColor);
               }

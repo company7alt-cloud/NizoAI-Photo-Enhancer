@@ -235,7 +235,7 @@ function renderRichLine(doc, line, x, currentY, contentW, baseSize, textColor = 
     // ── Typography controls ────────────────────────────────────────────────────
     const lineGap = typeof line.lineSpacing === 'number' ? line.lineSpacing : 18;
     doc.lineGap(lineGap - fontSize); // pdfkit lineGap is extra space; subtract fontSize for net gap
-    const newY = drawArabicParagraph(doc, line.text, effectiveX, currentY, effectiveW, line.align ?? 'right', prepareArabicText);
+    const newY = drawArabicParagraph(doc, line.text, effectiveX, currentY, effectiveW, line.align ?? 'right');
     // Reset typography to defaults
     doc.lineGap(0);
     if (line.bold)
@@ -318,7 +318,7 @@ async function generateDocument(params) {
                             currentY += lineHeight;
                             continue;
                         }
-                        currentY = drawArabicParagraph(doc, raw, bounds.x, currentY, bounds.width, 'right', prepareArabicText);
+                        currentY = drawArabicParagraph(doc, raw, bounds.x, currentY, bounds.width, 'right');
                     }
                 }
                 else if (page.type === 'image' && page.imageBuffer) {
@@ -352,10 +352,9 @@ async function generateDocument(params) {
         }
     });
 }
-function drawArabicParagraph(doc, rawText, startX, startY, width, align, prepareFn) {
+function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
     if (!rawText)
         return startY;
-    // Preserve explicit \n line breaks the user typed
     const inputLines = rawText.split('\n');
     let currentY = startY;
     for (const inputLine of inputLines) {
@@ -363,38 +362,43 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align, prepare
             currentY += doc.currentLineHeight();
             continue;
         }
-        // Per-line direction detection: Arabic → force right align
-        const lineHasArabic = /[\u0600-\u06FF]/.test(inputLine);
-        let pdfAlign;
-        if (align === 'center') {
+        const isArabic = /[\u0600-\u06FF]/.test(inputLine);
+        let pdfAlign = isArabic ? 'right' : 'left';
+        if (align === 'center')
             pdfAlign = 'center';
-        }
-        else if (lineHasArabic) {
-            pdfAlign = 'right';
-        }
-        else {
-            pdfAlign = align === 'left' ? 'left' : 'right';
-        }
         if (hasEmoji(inputLine)) {
             const mainFont = doc._font ? doc._font.name : 'Amiri';
             const mainSize = doc._fontSize || 12;
             try {
                 doc.font('NotoEmoji');
-                doc.text(inputLine, startX, currentY, { width, align: pdfAlign, lineBreak: true });
+                doc.text(inputLine, startX, currentY, {
+                    width,
+                    align: pdfAlign,
+                    lineBreak: false,
+                    features: isArabic ? ['rtla', 'arab'] : []
+                });
                 doc.font(mainFont).fontSize(mainSize);
             }
             catch {
                 doc.font(mainFont).fontSize(mainSize);
                 const stripped = inputLine.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu, '');
-                doc.text(prepareFn(stripped), startX, currentY, { width, align: pdfAlign, lineBreak: true });
+                doc.text(stripped, startX, currentY, {
+                    width,
+                    align: pdfAlign,
+                    lineBreak: false,
+                    features: isArabic ? ['rtla', 'arab'] : []
+                });
             }
         }
         else {
-            // Apply reshaper + BiDi, then hand off to PDFKit's native line-wrapper.
-            // NEVER manually split/reverse words — that double-corrupts BiDi output.
-            doc.text(prepareFn(inputLine), startX, currentY, { width, align: pdfAlign, lineBreak: true });
+            doc.text(inputLine, startX, currentY, {
+                width,
+                align: pdfAlign,
+                lineBreak: false,
+                features: isArabic ? ['rtla', 'arab'] : []
+            });
         }
-        currentY = doc.y; // sync with PDFKit's Y cursor after wrapping
+        currentY = doc.y;
     }
     return currentY;
 }
@@ -587,7 +591,7 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                             // Per-image caption
                             if (img.caption) {
                                 doc.fontSize(10).fillColor('#444444');
-                                drawArabicParagraph(doc, img.caption, alignX, currentY + allocH + 2, imgW, 'center', prepareArabicText);
+                                drawArabicParagraph(doc, img.caption, alignX, currentY + allocH + 2, imgW, 'center');
                                 doc.fontSize(BASE_SIZE).fillColor(txtColor);
                             }
                         }
