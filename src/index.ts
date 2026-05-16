@@ -2,11 +2,11 @@
 import 'dotenv/config';
 
 // ─── Environment Guards ────────────────────────────────────────────────────────
-if (!process.env.BOT_TOKEN)     throw new Error('❌ BOT_TOKEN is missing');
+if (!process.env.BOT_TOKEN) throw new Error('❌ BOT_TOKEN is missing');
 if (!process.env.DOC_BOT_TOKEN) throw new Error('❌ DOC_BOT_TOKEN is missing — create a second bot via @BotFather and add it to .env');
-if (!process.env.ADMIN_IDS)     throw new Error('❌ ADMIN_IDS is missing');
-if (!process.env.CHANNEL_ID)    throw new Error('❌ CHANNEL_ID is missing');
-if (!process.env.MONGODB_URI)   throw new Error('❌ MONGODB_URI is missing');
+if (!process.env.ADMIN_IDS) throw new Error('❌ ADMIN_IDS is missing');
+if (!process.env.CHANNEL_ID) throw new Error('❌ CHANNEL_ID is missing');
+if (!process.env.MONGODB_URI) throw new Error('❌ MONGODB_URI is missing');
 
 import http from 'http';
 import { Bot, session, NextFunction, InlineKeyboard, InputFile } from 'grammy';
@@ -28,11 +28,11 @@ import { getSettings } from './services/settingsService';
 
 // ─── Bot Instances ─────────────────────────────────────────────────────────────
 const imageBot = new Bot<BotContext>(process.env.BOT_TOKEN!);
-const docBot   = new Bot<BotContext>(process.env.DOC_BOT_TOKEN!);
+const docBot = new Bot<BotContext>(process.env.DOC_BOT_TOKEN!);
 
 // ─── Rate Limiting ─────────────────────────────────────────────────────────────
 const imageBotRateMap = new Map<number, number>();
-const docBotRateMap   = new Map<number, number>();
+const docBotRateMap = new Map<number, number>();
 
 function rateLimitMiddleware(limitMs: number, map: Map<number, number>) {
   return async (ctx: BotContext, next: NextFunction): Promise<void> => {
@@ -41,8 +41,8 @@ function rateLimitMiddleware(limitMs: number, map: Map<number, number>) {
     if (isAdmin(userId)) return next(); // Admin always exempt
     const now = Date.now();
     if (now - (map.get(userId) ?? 0) < limitMs) {
-      await ctx.reply('⚠️ أرسل ببطء قليل، لا تضغط بسرعة!').catch(() => {});
-      if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => {});
+      await ctx.reply('⚠️ أرسل ببطء قليل، لا تضغط بسرعة!').catch(() => { });
+      if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => { });
       return;
     }
     map.set(userId, now);
@@ -60,10 +60,10 @@ const docAdminState = new Map<number, DocAdminInputState>();
 // ─── docBot Admin Panel Keyboard ──────────────────────────────────────────────
 const docAdminKeyboard = new InlineKeyboard()
   .text('👤 التحكم بالعميل', 'doc_admin_users')
-  .text('🔒 قفل/فتح البوت',  'doc_admin_lock').row()
-  .text('📊 الإحصائيات',     'doc_admin_stats')
-  .text('💰 إدارة النقاط',   'doc_admin_points').row()
-  .text('📢 إشعار جماعي',    'doc_admin_broadcast');
+  .text('🔒 قفل/فتح البوت', 'doc_admin_lock').row()
+  .text('📊 الإحصائيات', 'doc_admin_stats')
+  .text('💰 إدارة النقاط', 'doc_admin_points').row()
+  .text('📢 إشعار جماعي', 'doc_admin_broadcast');
 
 // ══════════════════════════════════════════════════════════════════════════════
 // IMAGE BOT — MIDDLEWARE STACK
@@ -89,13 +89,13 @@ imageBot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
     const user = await User.findOne({ telegramId: userId });
     if (user?.isBanned) {
       const msg = '🚫 أنت محظور من استخدام البوت.';
-      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => {}); return; }
+      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => { }); return; }
       await ctx.reply(msg); return;
     }
     const botStatus = (await Settings.get('bot_status')) as boolean;
     if (botStatus === false && !isAdmin(userId)) {
       const msg = '🔧 البوت في وضع الصيانة حالياً. سنعود قريباً!';
-      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => {}); return; }
+      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => { }); return; }
       await ctx.reply(msg); return;
     }
     if (user) { user.lastSeen = new Date(); await user.save(); }
@@ -130,40 +130,40 @@ imageBot.command('reset', async (ctx) => {
 // ── action_confirm_reset callback ─────────────────────────────────────────
 imageBot.callbackQuery('action_confirm_reset', async (ctx) => {
   await ctx.answerCallbackQuery();
-  await ctx.deleteMessage().catch(() => {});
+  await ctx.deleteMessage().catch(() => { });
 
   // SURGICAL WIPE — session operational state only
   // PRESERVE: pendingFile and all fields NOT listed here
-  ctx.session.isInDocMaker        = false;
-  ctx.session.docState            = null;
-  ctx.session.documentLines       = [];
-  ctx.session.tempLine            = null;
-  ctx.session.tempFormatting      = null;
-  ctx.session.tempImage           = undefined;
-  ctx.session.rowImages           = undefined;
+  ctx.session.isInDocMaker = false;
+  ctx.session.docState = null;
+  ctx.session.documentLines = [];
+  ctx.session.tempLine = null;
+  ctx.session.tempFormatting = null;
+  ctx.session.tempImage = undefined;
+  ctx.session.rowImages = undefined;
   ctx.session.awaitingNextRowImage = false;
-  ctx.session.awaitingRowCaption  = undefined;
-  ctx.session.tempCaptionTarget   = undefined;
-  ctx.session.editingLineIndex    = undefined;
+  ctx.session.awaitingRowCaption = undefined;
+  ctx.session.tempCaptionTarget = undefined;
+  ctx.session.editingLineIndex = undefined;
   ctx.session.awaitingLineEditIndex = false;
-  ctx.session.awaitingLineEditText  = false;
-  ctx.session.previewMessageId    = undefined;
-  ctx.session.pendingExportCost   = undefined;
-  ctx.session.pendingExportPages  = undefined;
-  ctx.session.selectedFont        = undefined;
-  ctx.session.docBgColor          = undefined;
-  ctx.session.docTextColor        = undefined;
-  ctx.session.pageSize            = undefined;
-  ctx.session.templateId          = undefined;
-  ctx.session.docType             = undefined;
-  ctx.session.pendingFile         = undefined;
-  ctx.session.pendingConversionFileId  = undefined;
-  ctx.session.pendingConversionFormat  = undefined;
-  ctx.session.pendingBatchFiles   = [];
-  ctx.session.awaitingCustomWidth  = false;
+  ctx.session.awaitingLineEditText = false;
+  ctx.session.previewMessageId = undefined;
+  ctx.session.pendingExportCost = undefined;
+  ctx.session.pendingExportPages = undefined;
+  ctx.session.selectedFont = undefined;
+  ctx.session.docBgColor = undefined;
+  ctx.session.docTextColor = undefined;
+  ctx.session.pageSize = undefined;
+  ctx.session.templateId = undefined;
+  ctx.session.docType = undefined;
+  ctx.session.pendingFile = undefined;
+  ctx.session.pendingConversionFileId = undefined;
+  ctx.session.pendingConversionFormat = undefined;
+  ctx.session.pendingBatchFiles = [];
+  ctx.session.awaitingCustomWidth = false;
   ctx.session.awaitingCustomHeight = false;
-  ctx.session.customSizeWidth     = undefined;
-  ctx.session.customSizeDims      = undefined;
+  ctx.session.customSizeWidth = undefined;
+  ctx.session.customSizeDims = undefined;
 
   // Re-run startCommand to show welcome screen with all buttons
   await startCommand(ctx as any);
@@ -172,7 +172,7 @@ imageBot.callbackQuery('action_confirm_reset', async (ctx) => {
 // ── action_cancel_reset callback ──────────────────────────────────────────
 imageBot.callbackQuery('action_cancel_reset', async (ctx) => {
   await ctx.answerCallbackQuery({ text: '✅ تم التراجع' });
-  await ctx.deleteMessage().catch(() => {});
+  await ctx.deleteMessage().catch(() => { });
 });
 registerAdminCommands(imageBot);
 imageBot.command('invite', inviteCommand);
@@ -794,8 +794,8 @@ imageBot.on('message:text', async (ctx, next) => {
           channelId,
           messageId: msg.message_id,
           maxWinners: gwSetup.maxWinners,
-          minReward:  gwSetup.minReward,
-          maxReward:  gwSetup.maxReward,
+          minReward: gwSetup.minReward,
+          maxReward: gwSetup.maxReward,
         });
 
         await User.updateOne({ telegramId }, { $set: { 'giveawaySetup.step': null } });
@@ -1202,12 +1202,12 @@ docBot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
     const user = await User.findOne({ telegramId: userId });
     if (user?.isBanned) {
       const msg = '🚫 أنت محظور من استخدام البوت.';
-      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => {}); return; }
+      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => { }); return; }
       await ctx.reply(msg); return;
     }
     if (docBotLocked && !isAdmin(userId)) {
       const msg = '🔧 بوت صانع المستندات تحت الصيانة حالياً. سنعود قريباً!';
-      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => {}); return; }
+      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => { }); return; }
       await ctx.reply(msg); return;
     }
     if (user) { user.lastSeen = new Date(); await user.save(); }
@@ -1242,7 +1242,7 @@ docBot.callbackQuery('doc_admin_lock', async (ctx) => {
   await ctx.editMessageText(
     `🔧 <b>لوحة تحكم المشرف</b>\n\nحالة البوت: ${docBotLocked ? '🔒 مقفول' : '🔓 مفتوح'}`,
     { parse_mode: 'HTML', reply_markup: docAdminKeyboard }
-  ).catch(() => {});
+  ).catch(() => { });
 });
 
 docBot.callbackQuery('doc_admin_stats', async (ctx) => {
@@ -1355,7 +1355,7 @@ docBot.on(['message', 'callback_query'], async (ctx, next) => {
     if (!(ctx.session as any)?.isInDocMaker) {
       const txt = ctx.message.text || ctx.message.caption || '';
       if (txt.startsWith('/')) return next();
-      
+
       await ctx.reply('⚠️ الجلسة السابقة مغلقة.\n\nإذا أردت إنشاء مستند جديد اضغط الزر أدناه:', {
         reply_markup: new InlineKeyboard().text('🆕 بدء مستند جديد', 'start_doc_maker')
       });
@@ -1443,7 +1443,7 @@ docBot.on(['message', 'callback_query'], async (ctx, next) => {
     if (docState === 'awaiting_row_caption' && (ctx.session as any).tempCaptionTarget !== undefined) {
       const text = ctx.message?.text?.trim();
       if (!text) return;
-      
+
       if ((ctx.session as any).tempCaptionTarget === 'temp' && (ctx.session as any).tempImage) {
         (ctx.session as any).tempImage.caption = text;
       } else if (typeof (ctx.session as any).tempCaptionTarget === 'number') {
@@ -1452,10 +1452,10 @@ docBot.on(['message', 'callback_query'], async (ctx, next) => {
           rowImgs[(ctx.session as any).tempCaptionTarget].caption = text;
         }
       }
-      
+
       (ctx.session as any).tempCaptionTarget = undefined;
       (ctx.session as any).docState = 'active';
-      
+
       await ctx.reply(`✅ تم حفظ النص بنجاح!`);
       await showImageFormatMenu(ctx as any);
       return;
@@ -1556,7 +1556,7 @@ async function bootstrap(): Promise<void> {
         // Preload ONNX model in background (non-blocking)
         import('./services/onnxEnhanceService')
           .then(({ warmupONNX }) => warmupONNX?.())
-          .catch(() => {});
+          .catch(() => { });
         // Start fake counter engine
         import('./services/fakeCounterService')
           .then(({ startFakeCounterEngine }) => startFakeCounterEngine())
