@@ -92,6 +92,7 @@ export interface SessionData {
     typographyPromptId?: number;
     awaitingFreeAiTopic?: boolean;
     awaitingPremiumAiTopic?: boolean;
+    premiumAutoMode?: boolean;
     awaitingPremiumImage?: boolean;
     awaitingPremiumText?: boolean;
     awaitingCustomPages?: boolean;

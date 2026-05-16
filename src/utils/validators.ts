@@ -102,6 +102,7 @@ export interface SessionData {
   // AI Document Generation
   awaitingFreeAiTopic?: boolean;
   awaitingPremiumAiTopic?: boolean;
+  premiumAutoMode?: boolean;
   awaitingPremiumImage?: boolean;
   awaitingPremiumText?: boolean;
   awaitingCustomPages?: boolean;

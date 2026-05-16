@@ -1340,6 +1340,7 @@ function buildPageSelectorKeyboard(): InlineKeyboard {
 
 docBot.callbackQuery('start_premium_ai', async (ctx) => {
   // Clear any leftover premium state
+  ctx.session.premiumAutoMode       = false;
   ctx.session.awaitingPremiumImage  = true;
   ctx.session.awaitingPremiumText   = false;
   ctx.session.awaitingCustomPages   = false;
@@ -1357,11 +1358,25 @@ docBot.callbackQuery('start_premium_ai', async (ctx) => {
     `- <code>business letter template PDF</code>\n\n` +
     `🖼 أرسل صورة النموذج الذي تريد تصميمه\n\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
-    `أو اضغط الزر أدناه لاستخدام النموذج الاحترافي الافتراضي:`,
+    `أو اختر من الخيارات أدناه:`,
     { 
       parse_mode: 'HTML',
-      reply_markup: new InlineKeyboard().text('📄 استخدام النموذج الافتراضي', 'premium_use_default')
+      reply_markup: new InlineKeyboard()
+        .text('⚡ تحليل تلقائي وخصم النقاط', 'premium_auto_analyze').row()
+        .text('📄 استخدام النموذج الافتراضي', 'premium_use_default')
     }
+  );
+});
+
+docBot.callbackQuery('premium_auto_analyze', async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.premiumAutoMode = true;
+  ctx.session.awaitingPremiumImage = true;
+  await ctx.reply(
+    '⚡ <b>وضع التحليل التلقائي</b>\n\n' +
+    '🖼 أرسل صورة النموذج أو المستند المطلوب\n' +
+    'سيقوم NizoAI بتحليله تلقائياً وتحديد عدد الصفحات وخصم النقاط',
+    { parse_mode: 'HTML' }
   );
 });
 
@@ -1420,6 +1435,7 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
   const pages       = ctx.session.pendingPremiumPages   ?? 1;
   const prompt      = ctx.session.pendingPremiumPrompt  ?? '';
   const imageB64    = ctx.session.pendingPremiumImage;
+  const isAutoMode  = ctx.session.premiumAutoMode       ?? false;
   const telegramId  = ctx.from.id.toString();
 
   const user = await User.findOne({ telegramId });
@@ -1437,8 +1453,51 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
     let systemPrompt = '';
     let messages: any[] = [];
 
+    const criticalLanguageRule = `CRITICAL LANGUAGE RULE: 
+- If user writes in Arabic → respond in Arabic only
+- If user writes in English → respond in English only  
+- If mixed → keep each part in its original language
+- NEVER translate or change the language of the content
+- Keep all technical terms as the user wrote them`;
+
+    const pageCountRule = `PAGE COUNT RULE (ABSOLUTE):
+- Requested pages: ${pages}
+- Each page = exactly 350-400 words
+- Total words allowed = ${pages * 375} words MAXIMUM
+- If content is longer: summarize and cut — do NOT exceed ${pages} pages
+- If content is shorter: expand with relevant details to fill exactly ${pages} pages
+- Mark page breaks with: ===PAGE BREAK===`;
+
     if (imageB64) {
-      systemPrompt = `أنت مصمم مستندات PDF احترافي متخصص. مهمتك:\n\n1. تحليل صورة النموذج المرسلة بدقة عالية:\n   - استخرج هيكل الصفحة (ترويسة، تذييل، أعمدة، مناطق النص)\n   - حدد نظام الألوان المستخدم\n   - لاحظ نوع الخط وحجمه وتنسيقه\n   - افهم التخطيط العام والمسافات\n\n2. إنشاء مستند يطابق النموذج تماماً:\n   - نفس الهيكل والتخطيط\n   - نفس نظام الألوان\n   - نفس أسلوب العناوين والفقرات\n   - نفس تنسيق الترويسة والتذييل\n\n3. ملء المستند بالمحتوى المطلوب بشكل احترافي\n\n4. الالتزام الصارم بـ ${pages} صفحة فقط:\n   - كل صفحة = 400-500 كلمة تقريباً\n   - إذا المحتوى أطول: اختصر واقتطع\n   - إذا المحتوى أقصر: وسّع وأضف تفاصيل ذات قيمة\n\n5. القواعد الصارمة:\n   - لا رموز تعبيرية أبداً\n   - نص منظم بعناوين رئيسية وفرعية واضحة\n   - فقرات متسقة ومرتبة\n   - جودة أكاديمية/مهنية عالية\n\nالإخراج: نص المستند فقط، منظم بـ === صفحة X === كفاصل بين الصفحات`;
+      systemPrompt = `أنت مصمم مستندات PDF احترافي متخصص.
+
+TEMPLATE MATCHING RULES (STRICT):
+1. Analyze the template image carefully:
+   - Extract EXACT colors (background, text, headers, accents)
+   - Extract EXACT layout (margins, columns, header position, footer)
+   - Extract EXACT typography style (bold headers, italic subtitles, body text size)
+   - Extract decorative elements (lines, shapes, curves)
+
+2. REPLACE only the TEXT content with the user's content
+3. KEEP everything else EXACTLY the same:
+   - Same color scheme
+   - Same layout structure  
+   - Same header/footer design
+   - Same decorative elements
+   - Same font weights and styles
+
+Output format: structured text with clear markers for:
+=== HEADER ===, === BODY ===, === FOOTER ===
+So pdfGeneratorService can apply the correct styling
+
+${criticalLanguageRule}
+
+${pageCountRule}
+
+القواعد الصارمة:
+- لا رموز تعبيرية أبداً
+- جودة أكاديمية/مهنية عالية`;
+
       messages = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: [
@@ -1447,7 +1506,23 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
         ]}
       ];
     } else {
-      systemPrompt = `أنت مصمم مستندات PDF احترافي. أنشئ مستنداً احترافياً بالمواصفات التالية:\n\nتصميم النموذج الافتراضي:\n- ترويسة أنيقة مع عنوان المستند\n- هوامش متوازنة ومريحة للقراءة\n- عناوين رئيسية بارزة وعناوين فرعية منظمة\n- فقرات متسقة\n- تذييل يحتوي على رقم الصفحة\n- تنسيق أكاديمي/مهني راقٍ\n\nالمحتوى: ${prompt}\nعدد الصفحات: ${pages} صفحة فقط — لا أكثر ولا أقل\n\nالقواعد:\n- كل صفحة 400-500 كلمة\n- لا رموز تعبيرية\n- افصل الصفحات بـ === صفحة X ===\n- جودة عالية تصلح للطباعة والتقديم الرسمي`;
+      systemPrompt = `أنت مصمم مستندات PDF احترافي. أنشئ مستنداً احترافياً بالمواصفات التالية:
+
+تصميم النموذج الافتراضي:
+- ترويسة أنيقة مع عنوان المستند
+- هوامش متوازنة ومريحة للقراءة
+- عناوين رئيسية بارزة وعناوين فرعية منظمة
+- فقرات متسقة
+- تذييل يحتوي على رقم الصفحة
+
+${criticalLanguageRule}
+
+${pageCountRule}
+
+القواعد:
+- لا رموز تعبيرية
+- جودة عالية تصلح للطباعة والتقديم الرسمي`;
+
       messages = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `${prompt}\n\nعدد الصفحات: ${pages}` }
@@ -1464,10 +1539,15 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
     const cleaned    = rawText.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu, '').trim();
     if (!cleaned) throw new Error('AI returned empty content');
 
-    const pageChunks = cleaned.split(/===\s*صفحة\s*\d+\s*===/i).map(c => c.trim()).filter(c => c.length > 0);
+    const pageChunks = cleaned.split(/===PAGE BREAK===/i).map(c => c.trim()).filter(c => c.length > 0);
     
-    while (pageChunks.length < pages) pageChunks.push('');
-    if (pageChunks.length > pages) pageChunks.length = pages;
+    if (pageChunks.length > pages) {
+      pageChunks.length = pages;
+    }
+    
+    while (pageChunks.length < pages) {
+      pageChunks.push(pageChunks[pageChunks.length - 1] || '');
+    }
 
     const docLines: { text: string; align: 'right' }[] = [];
     for (let i = 0; i < pageChunks.length; i++) {
@@ -1481,12 +1561,15 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
 
     const remaining = (user.dailyQuota - cost);
     const fileName  = `nizoai_premium_${Date.now()}.pdf`;
+    
+    let captionText = `✅ مستندك جاهز! 🎉\n📄 ${pages} صفحة احترافية\n💰 تم خصم ${cost} نقطة\n💳 رصيدك الحالي: ${remaining} نقطة`;
+    if (isAutoMode) {
+      captionText = `✅ مستندك جاهز!\n📄 ${pages} صفحة\n💰 تم خصم ${cost} نقطة تلقائياً\n💳 رصيدك الحالي: ${remaining} نقطة`;
+    }
+
     await ctx.replyWithDocument(
       new InputFile(pdfBuffer, fileName),
-      {
-        caption: `✅ مستندك جاهز! 🎉\n📄 ${pages} صفحة احترافية\n💰 تم خصم ${cost} نقطة\n💳 رصيدك الحالي: ${remaining} نقطة`,
-        parse_mode: 'HTML',
-      }
+      { caption: captionText, parse_mode: 'HTML' }
     );
   } catch (err: any) {
     await User.updateOne({ telegramId }, { $inc: { dailyQuota: cost } });
@@ -1494,6 +1577,7 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
     await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\nتم استرداد نقاطك.\n<code>${err?.message ?? 'unknown error'}</code>`, { parse_mode: 'HTML' });
   }
 
+  ctx.session.premiumAutoMode       = false;
   ctx.session.awaitingPremiumImage  = false;
   ctx.session.awaitingPremiumText   = false;
   ctx.session.awaitingCustomPages   = false;
@@ -1537,18 +1621,58 @@ docBot.on(['message:photo', 'message:document'], async (ctx, next) => {
       const res = await fetch(`https://api.telegram.org/file/bot${process.env.DOC_BOT_TOKEN}/${filePath}`);
       const arrayBuffer = await res.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
+      const base64 = buffer.toString('base64');
       
-      ctx.session.pendingPremiumImage = buffer.toString('base64');
+      ctx.session.pendingPremiumImage = base64;
       ctx.session.awaitingPremiumImage = false;
-      ctx.session.awaitingPremiumText = true;
 
-      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
-      await ctx.reply(
-        '✅ <b>تم استلام صورة النموذج بنجاح.</b>\n\n' +
-        '📝 <b>الخطوة 3:</b> أرسل الآن المحتوى النصي الذي تريده في المستند\n' +
-        '(يمكنك كتابة نص طويل أو نقاط رئيسية وسنقوم بتوسيعها وتنسيقها).',
-        { parse_mode: 'HTML' }
-      );
+      const userPrompt = ctx.message.caption || '';
+      if (userPrompt) ctx.session.pendingPremiumPrompt = userPrompt;
+
+      if (ctx.session.premiumAutoMode) {
+        const analysisResponse = await aiClient.chat.completions.create({
+          model: 'anthropic/claude-3-haiku',
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+              { type: 'text', text: 'Analyze this document template. How many pages does it have? Reply with ONLY a number.' }
+            ]
+          }]
+        });
+        const detectedPages = parseInt(analysisResponse.choices[0]?.message?.content ?? '1') || 1;
+        const autoCost = calculatePremiumCost(detectedPages);
+        
+        ctx.session.pendingPremiumPages = detectedPages;
+        ctx.session.pendingPremiumCost = autoCost;
+
+        const telegramId = ctx.from.id.toString();
+        const user = await User.findOne({ telegramId });
+        const pts = user?.dailyQuota ?? 0;
+
+        await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
+        await ctx.reply(
+          `🔍 <b>نتيجة التحليل التلقائي:</b>\n\n` +
+          `📄 عدد الصفحات المكتشفة: ${detectedPages} صفحة\n` +
+          `💰 التكلفة: ${autoCost} نقطة\n` +
+          `💳 رصيدك: ${pts} نقطة`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: new InlineKeyboard()
+              .text(`✅ تأكيد وخصم ${autoCost} نقطة`, 'confirm_premium_ai')
+              .text('❌ إلغاء', 'cancel_premium_ai')
+          }
+        );
+      } else {
+        ctx.session.awaitingPremiumText = true;
+        await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
+        await ctx.reply(
+          '✅ <b>تم استلام صورة النموذج بنجاح.</b>\n\n' +
+          '📝 <b>الخطوة 3:</b> أرسل الآن المحتوى النصي الذي تريده في المستند\n' +
+          '(يمكنك كتابة نص طويل أو نقاط رئيسية وسنقوم بتوسيعها وتنسيقها).',
+          { parse_mode: 'HTML' }
+        );
+      }
     } catch (error) {
       console.error('Error fetching image for premium AI:', error);
       await ctx.reply('❌ حدث خطأ أثناء معالجة الصورة، يرجى المحاولة بصورة أخرى.');
