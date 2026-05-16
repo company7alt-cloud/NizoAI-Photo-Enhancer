@@ -447,17 +447,17 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     }
 
     await ctx.reply(
-      '✅ <b>بدأت الجلسة بنجاح!</b>\n\n' +
-      '📝 أرسل نصاً أو صورة لإضافتها للمستند.\n\n' +
-      '⚠️ <i>البوت الآن في وضع المستند — لن يستجيب لأوامر تحسين الصور حتى تنهي الجلسة.</i>',
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📥 إنهاء وتصدير PDF', callback_data: 'doc_compile' }],
-          ],
-        },
-      }
+`📋 <b>دليل الاستخدام:</b>
+
+✏️ <b>إضافة نص:</b> أرسل النص مباشرة
+🖼 <b>إضافة صورة:</b> أرسل الصورة مباشرة
+📏 <b>سطر فارغ واحد:</b> أرسل نقطة  .
+📏 <b>سطرين فارغين:</b> أرسل نقطتين  ..
+📏 <b>ثلاثة أسطر:</b> أرسل ثلاث نقاط  ...
+😀 <b>الإيموجي والرموز:</b> مدعومة بالكامل ✅
+
+💡 كل تعديل يظهر فوراً في شاشة العرض`,
+      { parse_mode: 'HTML' }
     );
 
     return true;
@@ -1008,6 +1008,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     const total = ctx.session.documentLines.length;
     const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
     await ctx.reply(`✅ تم حفظ الصفحة. ابدأ كتابة الصفحة التالية:\n📄 الأسطر: ${total} | الصفحات: ~${pages}`, { reply_markup: controlPanel() });
+    await refreshPreview(ctx);
     return true;
   }
 
@@ -1747,11 +1748,13 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
     /^(فارغ|فارع|فراغ|فاضي|فاضية|empty)\s*(\d{1,2})?$/i
   );
 
-  if (emptyLineMatch && ctx.session.isInDocMaker) {
-    const count = Math.min(
-      Math.max(1, parseInt(emptyLineMatch[2] || '1')),
-      20
-    );
+  // ─── DOT SHORTHAND: . .. ... ─────────────────────────────────────
+  const dotMatch = trimmedInput.match(/^\s*(\.{1,3})\s*$/);
+  if (ctx.session.isInDocMaker && (emptyLineMatch || dotMatch)) {
+    const count = dotMatch 
+      ? dotMatch[1].length 
+      : Math.min(Math.max(1, parseInt(emptyLineMatch![2] || '1')), 20);
+      
     ctx.session.documentLines = ctx.session.documentLines || [];
 
     for (let i = 0; i < count; i++) {
@@ -1767,23 +1770,11 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
       'أرسل المزيد أو اضغط تصدير.',
       {
         parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' },
-              { text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }
-            ],
-            [
-              { text: '📄 صفحة جديدة', callback_data: 'doc_new_page' },
-              { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }
-            ],
-            [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
-          ]
-        }
+        reply_markup: controlPanel()
       }
     );
     await refreshPreview(ctx);
-    return true; // NEVER reaches format menu
+    return true; 
   }
 
   if (ctx.session.awaitingCustomColor) {
@@ -1808,6 +1799,7 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
       `✅ تم تحديد اللون: ${hexText}\n\nاضغط ✅ تطبيق في رسالة التنسيق للحفظ.`,
       { parse_mode: 'HTML' }
     );
+    await refreshPreview(ctx);
     return true;
   }
 

@@ -62,7 +62,7 @@ async function getPreviewFileUrl(fileId) {
     return `https://api.telegram.org/file/bot${token}/${json.result.file_path}`;
 }
 // ─── Fetch image + apply mask → return base64 PNG ────────────────────────────
-async function fetchImageBase64(fileId, maxW, maxH, mask) {
+async function fetchImageBase64(fileId, maxW, _maxH, mask) {
     try {
         const url = await getPreviewFileUrl(fileId);
         const imgRes = await fetch(url);
@@ -70,13 +70,18 @@ async function fetchImageBase64(fileId, maxW, maxH, mask) {
             throw new Error(`HTTP ${imgRes.status}`);
         const rawBuf = await imgRes.arrayBuffer();
         let buf = Buffer.from(new Uint8Array(rawBuf));
-        // Resize to preview bounds first
-        buf = await (0, sharp_1.default)(buf).resize(maxW, maxH, { fit: 'inside', withoutEnlargement: true }).toBuffer();
         const meta = await (0, sharp_1.default)(buf).metadata();
-        const iw = meta.width ?? maxW;
-        const ih = meta.height ?? maxH;
+        const originalWidth = meta.width || 1;
+        const originalHeight = meta.height || 1;
+        const aspectRatio = originalWidth / originalHeight;
+        // Use user requested formula:
+        const scaledWidth = Math.min(maxW, originalWidth);
+        const scaledHeight = scaledWidth / aspectRatio;
+        buf = await (0, sharp_1.default)(buf)
+            .resize(Math.round(scaledWidth), Math.round(scaledHeight), { fit: 'inside', withoutEnlargement: true })
+            .png().toBuffer();
         if (mask === 'circle') {
-            const size = Math.min(iw, ih);
+            const size = Math.min(Math.round(scaledWidth), Math.round(scaledHeight));
             const r = Math.floor(size / 2);
             const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">` +
                 `<circle cx="${r}" cy="${r}" r="${r}"/></svg>`;
@@ -86,16 +91,14 @@ async function fetchImageBase64(fileId, maxW, maxH, mask) {
                 .png().toBuffer();
         }
         else if (mask === 'rounded') {
+            const iw = Math.round(scaledWidth);
+            const ih = Math.round(scaledHeight);
             const rx = Math.round(Math.min(iw, ih) * 0.1);
             const svg = `<svg width="${iw}" height="${ih}" xmlns="http://www.w3.org/2000/svg">` +
                 `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${rx}" ry="${rx}"/></svg>`;
             buf = await (0, sharp_1.default)(buf)
                 .composite([{ input: Buffer.from(svg), blend: 'dest-in' }])
                 .png().toBuffer();
-        }
-        else {
-            // square — ensure PNG format for consistent embedding
-            buf = await (0, sharp_1.default)(buf).png().toBuffer();
         }
         return buf.toString('base64');
     }
@@ -166,31 +169,35 @@ async function buildSVG(opts, w, h) {
                 break;
             const gap = 15 * S;
             const imgW = images.length === 1 ? cw : images.length === 2 ? (cw - gap) / 2 : (cw - gap * 2) / 3;
+            const imagesWithMeta = await Promise.all(images.map(async (img) => {
+                const b64 = await fetchImageBase64(img.fileId, imgW, allocH, img.mask);
+                if (!b64)
+                    return { b64: null, iw: imgW, ih: allocH };
+                const meta = await (0, sharp_1.default)(Buffer.from(b64, 'base64')).metadata().catch(() => ({ width: imgW, height: allocH }));
+                return { b64, iw: meta.width || imgW, ih: meta.height || allocH };
+            }));
+            // Calculate the tallest image in this row to determine the actual Y advance
+            const rowActualH = Math.max(...imagesWithMeta.map(im => im.ih), 0);
             for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
                 const img = images[imgIdx];
+                const im = imagesWithMeta[imgIdx];
                 let alignX;
                 if (images.length === 1) {
-                    alignX = img.align === 'left' ? cx : img.align === 'center' ? cx + (cw / 2) - (imgW / 2) : cx + cw - imgW;
+                    alignX = img.align === 'left' ? cx : img.align === 'center' ? cx + (cw / 2) - (im.iw / 2) : cx + cw - im.iw;
                 }
                 else {
-                    alignX = cx + imgIdx * (imgW + gap);
+                    alignX = cx + imgIdx * (imgW + gap) + (imgW - im.iw) / 2;
                 }
-                const b64 = await fetchImageBase64(img.fileId, imgW, allocH, img.mask);
-                if (b64) {
-                    const imgMeta = await (0, sharp_1.default)(Buffer.from(b64, 'base64')).metadata().catch(() => ({ width: imgW, height: allocH }));
-                    const iw = Math.min(imgMeta.width ?? imgW, imgW);
-                    const ih = Math.min(imgMeta.height ?? allocH, allocH);
-                    // Center the scaled image inside its allocated box (alignX, y, imgW, allocH)
-                    const imgX = alignX + (imgW - iw) / 2;
-                    const imgY = y + (allocH - ih) / 2;
-                    textSVG += `<image x="${imgX}" y="${imgY}" width="${iw}" height="${ih}" href="data:image/png;base64,${b64}"/>\n`;
+                if (im.b64) {
+                    const imgY = y + (rowActualH - im.ih) / 2;
+                    textSVG += `<image x="${alignX}" y="${imgY}" width="${im.iw}" height="${im.ih}" href="data:image/png;base64,${im.b64}"/>\n`;
                 }
                 else {
                     textSVG += `<rect x="${alignX}" y="${y}" width="${imgW}" height="${allocH}" fill="#F0F0F0" rx="${4 * S}"/>`;
                     textSVG += `<text x="${alignX + imgW / 2}" y="${y + allocH / 2}" font-family="sans-serif" font-size="${10 * S}" fill="#AAAAAA" text-anchor="middle" dominant-baseline="middle">📷</text>`;
                 }
             }
-            y += allocH + 8;
+            y += rowActualH + 8;
             continue;
         }
         // ── Text line ──────────────────────────────────────────────────────────
@@ -232,7 +239,7 @@ async function buildSVG(opts, w, h) {
             y += LH * 0.5;
             continue;
         }
-        textSVG += `<text x="${x}" y="${y}" font-family="'${opts.selectedFont || 'Amiri'}','Noto Naskh Arabic','Arabic Typesetting',serif" font-size="${FS}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="${txtColor}" text-anchor="${anchor}">${prepared}</text>\n`;
+        textSVG += `<text x="${x}" y="${y}" font-family="'${opts.selectedFont || 'Amiri'}', 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Naskh Arabic', 'Arabic Typesetting', serif" font-size="${FS}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="${txtColor}" text-anchor="${anchor}">${prepared}</text>\n`;
         if (line.underline) {
             const approxWidth = Math.min(prepared.length * FS * 0.55, cw);
             const ulX = anchor === 'end' ? x - approxWidth : anchor === 'middle' ? x - approxWidth / 2 : x;

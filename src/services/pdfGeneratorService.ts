@@ -12,10 +12,7 @@ const bidiEngine = bidiFactory();
 
 const EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
 function hasEmoji(str: string): boolean { return EMOJI_REGEX.test(str); }
-function stripEmoji(str: string): string { return str.replace(EMOJI_REGEX, ' '); }
-function extractEmoji(str: string): string[] {
-  return Array.from(str.matchAll(new RegExp(EMOJI_REGEX.source, 'gu'))).map(m => m[0]);
-}
+
 
 /**
  * Reshapes Arabic characters so they connect properly, then
@@ -52,6 +49,7 @@ function registerAllFonts(doc: PDFKit.PDFDocument): string {
     { name: 'Thamanya',  file: 'Thamanya.ttf' },
     { name: 'Amiri',     file: 'Amiri.ttf' },
     { name: 'Cairo',     file: 'Cairo.ttf' },
+    { name: 'NotoEmoji', file: 'NotoEmoji.ttf' },
   ];
 
   let fontsDir: string | null = null;
@@ -456,26 +454,16 @@ function drawArabicParagraph(doc: any, rawText: string, startX: number, startY: 
   for (const line of lines) {
     const lineText = line || '';
     if (hasEmoji(lineText)) {
-      const cleanText = stripEmoji(lineText);
-      if (cleanText.trim()) {
-        doc.text(prepareFn(cleanText), startX, currentY, { width: width, align: pdfAlign });
-      }
+      const mainFont = doc._font ? doc._font.name : 'Amiri';
+      const mainSize = doc._fontSize || 12;
       
-      const emojiFontPath = path.join(process.cwd(), 'src', 'assets', 'fonts', 'NotoEmoji.ttf');
-      if (fs.existsSync(emojiFontPath)) {
-        try {
-          doc.registerFont('NotoEmoji', emojiFontPath);
-          const emojis = extractEmoji(lineText).join(' ');
-          // To enable emoji rendering: download NotoColorEmoji.ttf from
-          // https://github.com/googlefonts/noto-emoji and place at
-          // src/assets/fonts/NotoEmoji.ttf
-          // Bot works without it — emoji are simply omitted from PDF
-          const mainFont = doc._font ? doc._font.name : 'Helvetica';
-          doc.font('NotoEmoji').fontSize(10).text(emojis, startX, currentY, { width: width, align: pdfAlign });
-          doc.font(mainFont);
-        } catch {
-          // emoji font failed — skip emoji silently, text already rendered
-        }
+      try {
+        doc.font('NotoEmoji');
+        doc.text(lineText, startX, currentY, { width: width, align: pdfAlign });
+        doc.font(mainFont).fontSize(mainSize);
+      } catch {
+        doc.font(mainFont).fontSize(mainSize);
+        doc.text(prepareFn(lineText), startX, currentY, { width: width, align: pdfAlign });
       }
     } else {
       doc.text(prepareFn(lineText), startX, currentY, { width: width, align: pdfAlign });
@@ -656,9 +644,9 @@ export async function generateDocumentFromLines(
               if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status} fetching image`);
               let imgBuffer = Buffer.from(new Uint8Array(await imgRes.arrayBuffer()));
 
-              const meta = await sharp(imgBuffer).metadata();
-              const iw   = meta.width  ?? 500;
-              const ih   = meta.height ?? 500;
+              const imgMeta = await sharp(imgBuffer).metadata();
+              const iw   = imgMeta.width  ?? 500;
+              const ih   = imgMeta.height ?? 500;
 
               if (img.mask === 'circle') {
                 const size = Math.min(iw, ih);
@@ -678,7 +666,31 @@ export async function generateDocumentFromLines(
                   .png().toBuffer()) as any;
               }
 
-              doc.image(imgBuffer, alignX, currentY, { fit: [imgW, allocH], align: 'center', valign: 'center' });
+              const exportMeta = await sharp(imgBuffer).metadata();
+              const originalWidth = exportMeta.width || 1;
+              const originalHeight = exportMeta.height || 1;
+              const aspectRatio = originalWidth / originalHeight;
+
+              // User requested formula:
+              const scaledWidth = Math.min(imgW, originalWidth);
+              const scaledHeight = scaledWidth / aspectRatio;
+
+              // Fit within allocH if still too tall
+              let finalW = scaledWidth;
+              let finalH = scaledHeight;
+              if (finalH > allocH) {
+                finalH = allocH;
+                finalW = finalH * aspectRatio;
+              }
+
+              // Center the image in its box [alignX, currentY, imgW, allocH]
+              const finalX = alignX + (imgW - finalW) / 2;
+              const finalY = currentY + (allocH - finalH) / 2;
+
+              doc.image(imgBuffer, finalX, finalY, { width: finalW, height: finalH });
+
+              // Record the actual height used in this row for Y advance
+              (richLine as any).rowActualH = Math.max((richLine as any).rowActualH || 0, finalH);
 
               // Per-image caption
               if (img.caption) {
@@ -703,8 +715,9 @@ export async function generateDocumentFromLines(
             }
           }
 
+          const rowActualH = (richLine as any).rowActualH || allocH;
           const hasCaption = images.some(i => i.caption);
-          currentY += allocH + (hasCaption ? 18 : 0) + 12;
+          currentY += rowActualH + (hasCaption ? 18 : 0) + 12;
           doc.y = currentY;
           continue;
         }

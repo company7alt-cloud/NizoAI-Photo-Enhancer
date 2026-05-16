@@ -1233,6 +1233,20 @@ docBot.command('start', async (ctx) => {
   );
 });
 
+docBot.command('admin', async (ctx) => {
+  if (!ctx.from) return;
+  const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+  if (!adminIds.includes(ctx.from.id.toString())) return;
+
+  await ctx.reply(
+    `🔧 <b>لوحة تحكم المشرف</b>\n\nحالة البوت: ${docBotLocked ? '🔒 مقفول' : '🔓 مفتوح'}`,
+    {
+      parse_mode: 'HTML',
+      reply_markup: docAdminKeyboard
+    }
+  );
+});
+
 // ─── docBot: Admin panel callbacks ────────────────────────────────────────────
 
 docBot.callbackQuery('doc_admin_lock', async (ctx) => {
