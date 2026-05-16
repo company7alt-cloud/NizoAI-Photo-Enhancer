@@ -201,30 +201,47 @@ async function buildSVG(opts: DocPreviewOptions, w: number, h: number): Promise<
   for (const line of lines) {
     if (y > cy + ch) break;
 
-    // ── Image line ──────────────────────────────────────────────────────────
-    if (line.type === 'image' && line.fileId) {
-      const allocH = (line.imageLines || 5) * 15 * S / SCALE;
+    // ── Image / Image-Row line ───────────────────────────────────────────────
+    if ((line.type === 'image' || line.type === 'image_row') && (line.fileId || line.rowImages)) {
+      const images = (line.rowImages && line.rowImages.length > 0)
+        ? line.rowImages
+        : (line.fileId ? [{ fileId: line.fileId, lines: line.imageLines || 5, align: line.align || 'center', mask: line.imageMask }] : []);
+
+      if (images.length === 0) continue;
+
+      const allocH = (images[0].lines || 5) * 15 * S / SCALE;
       if (y + allocH > cy + ch) break;
 
-      const b64 = await fetchImageBase64(line.fileId, cw, allocH, line.imageMask);
-      if (b64) {
-        // Calculate position from align
-        const imgMeta = await sharp(Buffer.from(b64, 'base64')).metadata().catch(() => ({ width: cw, height: allocH }));
-        const iw = Math.min(imgMeta.width ?? cw, cw);
-        const ih = Math.min(imgMeta.height ?? allocH, allocH);
+      const gap = 15 * S;
+      const imgW = images.length === 1 ? cw : images.length === 2 ? (cw - gap) / 2 : (cw - gap * 2) / 3;
 
-        let imgX = cx; // left default
-        if (line.align === 'right') imgX = cx + cw - iw;
-        else if (line.align === 'center') imgX = cx + (cw - iw) / 2;
+      for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
+        const img = images[imgIdx];
+        
+        let alignX: number;
+        if (images.length === 1) {
+          alignX = img.align === 'left' ? cx : img.align === 'center' ? cx + (cw / 2) - (imgW / 2) : cx + cw - imgW;
+        } else {
+          alignX = cx + imgIdx * (imgW + gap);
+        }
 
-        textSVG += `<image x="${imgX}" y="${y}" width="${iw}" height="${ih}" href="data:image/png;base64,${b64}"/>\n`;
-        y += ih + 8;
-      } else {
-        // Placeholder rect when image load failed
-        textSVG += `<rect x="${cx}" y="${y}" width="${cw}" height="${allocH}" fill="#F0F0F0" rx="${4*S}"/>`;
-        textSVG += `<text x="${cx + cw/2}" y="${y + allocH/2}" font-family="sans-serif" font-size="${10*S}" fill="#AAAAAA" text-anchor="middle" dominant-baseline="middle">📷</text>`;
-        y += allocH + 8;
+        const b64 = await fetchImageBase64(img.fileId, imgW, allocH, img.mask as any);
+        if (b64) {
+          const imgMeta = await sharp(Buffer.from(b64, 'base64')).metadata().catch(() => ({ width: imgW, height: allocH }));
+          const iw = Math.min(imgMeta.width ?? imgW, imgW);
+          const ih = Math.min(imgMeta.height ?? allocH, allocH);
+
+          // Center the scaled image inside its allocated box (alignX, y, imgW, allocH)
+          const imgX = alignX + (imgW - iw) / 2;
+          const imgY = y + (allocH - ih) / 2;
+
+          textSVG += `<image x="${imgX}" y="${imgY}" width="${iw}" height="${ih}" href="data:image/png;base64,${b64}"/>\n`;
+        } else {
+          textSVG += `<rect x="${alignX}" y="${y}" width="${imgW}" height="${allocH}" fill="#F0F0F0" rx="${4*S}"/>`;
+          textSVG += `<text x="${alignX + imgW/2}" y="${y + allocH/2}" font-family="sans-serif" font-size="${10*S}" fill="#AAAAAA" text-anchor="middle" dominant-baseline="middle">📷</text>`;
+        }
       }
+      y += allocH + 8;
       continue;
     }
 

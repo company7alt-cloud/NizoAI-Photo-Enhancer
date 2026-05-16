@@ -581,7 +581,7 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                                     .composite([{ input: Buffer.from(svg), blend: 'dest-in' }])
                                     .png().toBuffer());
                             }
-                            doc.image(imgBuffer, alignX, currentY, { width: imgW, height: allocH });
+                            doc.image(imgBuffer, alignX, currentY, { fit: [imgW, allocH], align: 'center', valign: 'center' });
                             // Per-image caption
                             if (img.caption) {
                                 doc.fontSize(10).fillColor('#444444');

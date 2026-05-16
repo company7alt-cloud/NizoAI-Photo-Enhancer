@@ -678,7 +678,7 @@ export async function generateDocumentFromLines(
                   .png().toBuffer()) as any;
               }
 
-              doc.image(imgBuffer, alignX, currentY, { width: imgW, height: allocH });
+              doc.image(imgBuffer, alignX, currentY, { fit: [imgW, allocH], align: 'center', valign: 'center' });
 
               // Per-image caption
               if (img.caption) {

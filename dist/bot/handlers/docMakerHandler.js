@@ -136,16 +136,6 @@ function smartWrap(text, pageSize) {
         lines.push(cur);
     return lines;
 }
-const DOC_MAKER_INSTRUCTION = `✨ <b>صانع المستندات والكتب</b>\n\n` +
-    `📌 <b>كيفية الاستخدام:</b>\n\n` +
-    `▸ أرسل النص أو العبارة التي تريد إضافتها\n` +
-    `▸ ستظهر لك أزرار لاختيار موضع النص:\n` +
-    `   [ ➡️ يمين ] [ ↔️ وسط ] [ ⬅️ يسار ]\n\n` +
-    `📐 <b>للأسطر الفارغة:</b>\n` +
-    `▸ أرسل <code>فارغ</code> ← لسطر فارغ واحد\n` +
-    `▸ أرسل <code>فارغ 2</code> ← لسطرين فارغين\n` +
-    `▸ أرسل <code>فارغ 3</code> ← لثلاثة أسطر فارغة\n\n` +
-    `⚠️ <b>ملاحظة:</b> النص لن يلمس حواف المستند أبداً — هناك هوامش احترافية.`;
 function estimatePageCount(lines, _pageSize = 'A4') {
     const LINES_PER_PAGE = 40;
     let totalLines = 0;
@@ -480,7 +470,6 @@ async function handleDocMakerCallback(ctx) {
                 ],
             },
         });
-        await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML', reply_markup: COMPILE_KB });
         return true;
     }
     // ── Full-bleed cover image ──────────────────────────────────────────────
@@ -969,7 +958,6 @@ async function handleDocMakerCallback(ctx) {
         ctx.session.tempLine = null;
         ctx.session.tempFormatting = null;
         await ctx.editMessageReplyMarkup(undefined).catch(() => { });
-        await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML', reply_markup: COMPILE_KB });
         return true;
     }
     // ── Finish ─────────────────────────────────────────────────────────────────
@@ -1716,7 +1704,6 @@ async function handleDocMakerMessage(ctx) {
             ctx.session.tempLine = null;
             ctx.session.tempFormatting = null;
             await ctx.reply(`✅ <b>تم تحديد المقاس: ${label}</b>\n\nابدأ الكتابة:`, { parse_mode: 'HTML', reply_markup: COMPILE_KB });
-            await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML' });
         }
         catch (e) {
             console.error('[DocMaker] custom height error:', e);

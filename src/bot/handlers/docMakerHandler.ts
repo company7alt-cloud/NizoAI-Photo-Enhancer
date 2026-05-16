@@ -101,17 +101,6 @@ export function smartWrap(text: string, pageSize: string): string[] {
   return lines;
 }
 
-const DOC_MAKER_INSTRUCTION =
-  `✨ <b>صانع المستندات والكتب</b>\n\n` +
-  `📌 <b>كيفية الاستخدام:</b>\n\n` +
-  `▸ أرسل النص أو العبارة التي تريد إضافتها\n` +
-  `▸ ستظهر لك أزرار لاختيار موضع النص:\n` +
-  `   [ ➡️ يمين ] [ ↔️ وسط ] [ ⬅️ يسار ]\n\n` +
-  `📐 <b>للأسطر الفارغة:</b>\n` +
-  `▸ أرسل <code>فارغ</code> ← لسطر فارغ واحد\n` +
-  `▸ أرسل <code>فارغ 2</code> ← لسطرين فارغين\n` +
-  `▸ أرسل <code>فارغ 3</code> ← لثلاثة أسطر فارغة\n\n` +
-  `⚠️ <b>ملاحظة:</b> النص لن يلمس حواف المستند أبداً — هناك هوامش احترافية.`;
 
 function estimatePageCount(
   lines: any[],
@@ -470,7 +459,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
         },
       }
     );
-    await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML', reply_markup: COMPILE_KB });
+
     return true;
   }
 
@@ -1057,7 +1046,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     ctx.session.tempLine = null;
     ctx.session.tempFormatting = null;
     await ctx.editMessageReplyMarkup(undefined).catch(() => {});
-    await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML', reply_markup: COMPILE_KB });
+
     return true;
   }
 
@@ -1921,7 +1910,7 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
         `✅ <b>تم تحديد المقاس: ${label}</b>\n\nابدأ الكتابة:`,
         { parse_mode: 'HTML', reply_markup: COMPILE_KB }
       );
-      await ctx.reply(DOC_MAKER_INSTRUCTION, { parse_mode: 'HTML' });
+
     } catch (e) { console.error('[DocMaker] custom height error:', e); }
     return true;
   }

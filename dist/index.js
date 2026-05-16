@@ -1011,7 +1011,13 @@ docBot.use(async (ctx, next) => {
 // ─── docBot: /start command ────────────────────────────────────────────────────
 docBot.command('start', async (ctx) => {
     const firstName = ctx.from?.first_name ?? 'مستخدم';
-    await ctx.reply(`مرحباً ${firstName}! 👋\n\nأنا بوت صانع المستندات الاحترافي 📝\nيمكنك إنشاء مستندات PDF احترافية بسهولة تامة.\n\nاضغط الزر بالأسفل للبدء:`, {
+    const telegramId = ctx.from?.id.toString();
+    let points = 0;
+    if (telegramId) {
+        const user = await User_1.User.findOne({ telegramId });
+        points = user?.dailyQuota ?? 0;
+    }
+    await ctx.reply(`مرحباً ${firstName}! 👋\n\nأنا بوت صانع المستندات الاحترافي 📝\nيمكنك إنشاء مستندات PDF احترافية بسهولة تامة.\n\n💰 رصيدك الحالي: ${points} نقطة\n\nاضغط الزر بالأسفل للبدء:`, {
         reply_markup: new grammy_1.InlineKeyboard()
             .text('📝 صانع المستندات', 'start_doc_maker')
     });
@@ -1137,6 +1143,16 @@ docBot.on(['message', 'callback_query'], async (ctx, next) => {
     }
     if (ctx.message) {
         const docState = ctx.session?.docState;
+        // ── Session Closed Notification ──
+        if (!ctx.session?.isInDocMaker) {
+            const txt = ctx.message.text || ctx.message.caption || '';
+            if (txt.startsWith('/'))
+                return next();
+            await ctx.reply('⚠️ الجلسة السابقة مغلقة.\n\nإذا أردت إنشاء مستند جديد اضغط الزر أدناه:', {
+                reply_markup: new grammy_1.InlineKeyboard().text('🆕 بدء مستند جديد', 'start_doc_maker')
+            });
+            return;
+        }
         // ── CASE 1: Custom line number input ──
         if (docState === 'awaiting_custom_img_lines') {
             if (!ctx.message?.text) {
