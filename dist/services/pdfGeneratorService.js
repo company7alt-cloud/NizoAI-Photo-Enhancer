@@ -318,11 +318,7 @@ async function generateDocument(params) {
                             currentY += lineHeight;
                             continue;
                         }
-                        const processedLine = prepareArabicText(raw);
-                        doc.text(processedLine, bounds.x, currentY, {
-                            width: bounds.width, align: 'right', lineBreak: false,
-                        });
-                        currentY += lineHeight;
+                        currentY = drawArabicParagraph(doc, raw, bounds.x, currentY, bounds.width, 'right', prepareArabicText);
                     }
                 }
                 else if (page.type === 'image' && page.imageBuffer) {
@@ -359,46 +355,46 @@ async function generateDocument(params) {
 function drawArabicParagraph(doc, rawText, startX, startY, width, align, prepareFn) {
     if (!rawText)
         return startY;
-    // CRITICAL FIX: .reverse() is absolutely required for RTL word ordering 
-    // before building the line chunks for Bidi processing.
-    const words = rawText.split(/\s+/).reverse();
-    let lines = [];
-    let currentLine = '';
-    for (const word of words) {
-        const testLine = currentLine ? currentLine + ' ' + word : word;
-        const testWidth = doc.widthOfString(prepareFn(testLine));
-        if (testWidth > width && currentLine !== '') {
-            lines.push(currentLine);
-            currentLine = word;
+    // Preserve explicit \n line breaks the user typed
+    const inputLines = rawText.split('\n');
+    let currentY = startY;
+    for (const inputLine of inputLines) {
+        if (!inputLine.trim()) {
+            currentY += doc.currentLineHeight();
+            continue;
+        }
+        // Per-line direction detection: Arabic → force right align
+        const lineHasArabic = /[\u0600-\u06FF]/.test(inputLine);
+        let pdfAlign;
+        if (align === 'center') {
+            pdfAlign = 'center';
+        }
+        else if (lineHasArabic) {
+            pdfAlign = 'right';
         }
         else {
-            currentLine = testLine;
+            pdfAlign = align === 'left' ? 'left' : 'right';
         }
-    }
-    if (currentLine)
-        lines.push(currentLine);
-    let currentY = startY;
-    const lineHeight = doc.currentLineHeight();
-    const pdfAlign = align === 'left' ? 'left' : align === 'center' ? 'center' : 'right';
-    for (const line of lines) {
-        const lineText = line || '';
-        if (hasEmoji(lineText)) {
+        if (hasEmoji(inputLine)) {
             const mainFont = doc._font ? doc._font.name : 'Amiri';
             const mainSize = doc._fontSize || 12;
             try {
                 doc.font('NotoEmoji');
-                doc.text(lineText, startX, currentY, { width: width, align: pdfAlign });
+                doc.text(inputLine, startX, currentY, { width, align: pdfAlign, lineBreak: true });
                 doc.font(mainFont).fontSize(mainSize);
             }
             catch {
                 doc.font(mainFont).fontSize(mainSize);
-                doc.text(prepareFn(lineText), startX, currentY, { width: width, align: pdfAlign });
+                const stripped = inputLine.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu, '');
+                doc.text(prepareFn(stripped), startX, currentY, { width, align: pdfAlign, lineBreak: true });
             }
         }
         else {
-            doc.text(prepareFn(lineText), startX, currentY, { width: width, align: pdfAlign });
+            // Apply reshaper + BiDi, then hand off to PDFKit's native line-wrapper.
+            // NEVER manually split/reverse words — that double-corrupts BiDi output.
+            doc.text(prepareFn(inputLine), startX, currentY, { width, align: pdfAlign, lineBreak: true });
         }
-        currentY += lineHeight;
+        currentY = doc.y; // sync with PDFKit's Y cursor after wrapping
     }
     return currentY;
 }
