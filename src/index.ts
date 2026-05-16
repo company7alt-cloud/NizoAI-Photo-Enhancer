@@ -1315,18 +1315,112 @@ docBot.callbackQuery('start_free_ai', async (ctx) => {
   await ctx.reply('🆓 أرسل لي الموضوع الذي تريد كتابته وسأنشئ لك مستنداً مجاناً:');
 });
 
-// ─── docBot: Premium AI Flow ────────────────────────────────────────────────────
+// ─── docBot: Premium AI Flow — Stage 1 (entry) ──────────────────────────────
+
+function calculatePremiumCost(pages: number): number {
+  if (pages <= 0) return 2;
+  if (pages === 1) return 2;
+  const extraGroups = Math.floor((pages - 1) / 3);
+  const remainder   = (pages - 1) % 3;
+  return 2 + extraGroups + (remainder > 0 ? 1 : 0);
+}
+
+function buildPageSelectorKeyboard(): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  const rows = [[1,2,3],[4,5,6],[7,8,9],[10]];
+  for (const row of rows) {
+    for (const p of row) {
+      kb.text(`${p} صفحة — ${calculatePremiumCost(p)} نقطة`, `premium_pages_${p}`);
+    }
+    kb.row();
+  }
+  kb.text('✏️ عدد مخصص', 'premium_custom_pages');
+  return kb;
+}
 
 docBot.callbackQuery('start_premium_ai', async (ctx) => {
-  ctx.session.awaitingPremiumAiTopic = true;
+  // Clear any leftover premium state
+  ctx.session.awaitingPremiumImage  = true;
+  ctx.session.awaitingPremiumText   = false;
+  ctx.session.awaitingCustomPages   = false;
+  ctx.session.pendingPremiumImage   = undefined;
+  ctx.session.pendingPremiumPrompt  = undefined;
+  ctx.session.pendingPremiumPages   = undefined;
+  ctx.session.pendingPremiumCost    = undefined;
   await ctx.answerCallbackQuery();
-  await ctx.reply('🤖 أرسل لي تفاصيل المستند الذي تريده وسيقوم NizoAI بتحليله وكتابته:');
+  await ctx.reply(
+    `🤖 <b>NizoAI PDF — مولّد المستندات الذكي</b>\n\n` +
+    `للحصول على أفضل نتيجة، اتبع هذه الخطوات:\n\n` +
+    `🔍 <b>الخطوة 1:</b> ابحث في Google عن:\n` +
+    `<code>professional PDF document design templates</code>\n` +
+    `أو: <code>تصاميم مستندات PDF احترافية</code>\n\n` +
+    `🖼 <b>الخطوة 2:</b> اختر صورة نموذج تعجبك وأرسلها هنا\n\n` +
+    `📝 <b>الخطوة 3:</b> أرسل النص أو المحتوى الذي تريده في المستند\n\n` +
+    `سيقوم NizoAI بتحليل النموذج ومحتواك وإنشاء مستند احترافي طبق الأصل 🎯`,
+    { 
+      parse_mode: 'HTML',
+      reply_markup: new InlineKeyboard().text('⏩ تخطي الصورة (نص فقط)', 'skip_premium_image')
+    }
+  );
 });
 
+docBot.callbackQuery('skip_premium_image', async (ctx) => {
+  if (ctx.session.awaitingPremiumImage) {
+    ctx.session.awaitingPremiumImage = false;
+    ctx.session.awaitingPremiumText = true;
+    await ctx.answerCallbackQuery('تم التخطي');
+    await ctx.editMessageText(
+      '⏩ <b>تم تخطي الصورة.</b>\n\n' +
+      '📝 <b>الخطوة 3:</b> أرسل الآن المحتوى النصي الذي تريده في المستند\n' +
+      '(يمكنك كتابة نص طويل أو نقاط رئيسية وسنقوم بتوسيعها وتنسيقها).',
+      { parse_mode: 'HTML' }
+    );
+  } else {
+    await ctx.answerCallbackQuery('هذا الخيار غير متاح الآن');
+  }
+});
+
+// ─── Premium pages selection callbacks ──────────────────────────────────────
+
+for (let p = 1; p <= 10; p++) {
+  const pages = p;
+  docBot.callbackQuery(`premium_pages_${pages}`, async (ctx) => {
+    const cost = calculatePremiumCost(pages);
+    const telegramId = ctx.from.id.toString();
+    ctx.session.pendingPremiumPages = pages;
+    ctx.session.pendingPremiumCost  = cost;
+    const user = await User.findOne({ telegramId });
+    const pts  = user?.dailyQuota ?? 0;
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(
+      `✅ <b>تأكيد الطلب:</b>\n` +
+      `📄 عدد الصفحات: <b>${pages}</b>\n` +
+      `💰 التكلفة: <b>${cost} نقطة</b>\n` +
+      `💳 رصيدك: <b>${pts} نقطة</b>`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard()
+          .text('✅ تأكيد وإنشاء', 'confirm_premium_ai')
+          .text('❌ إلغاء', 'cancel_premium_ai'),
+      }
+    );
+  });
+}
+
+docBot.callbackQuery('premium_custom_pages', async (ctx) => {
+  ctx.session.awaitingCustomPages = true;
+  await ctx.answerCallbackQuery();
+  await ctx.reply('✏️ أرسل عدد الصفحات المطلوبة (رقم فقط):');
+});
+
+// ─── Premium confirm / cancel ────────────────────────────────────────────────
+
 docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
-  const cost    = ctx.session.pendingPremiumCost   ?? 3;
-  const prompt  = ctx.session.pendingPremiumPrompt ?? '';
-  const telegramId = ctx.from.id.toString();
+  const cost        = ctx.session.pendingPremiumCost    ?? 2;
+  const pages       = ctx.session.pendingPremiumPages   ?? 1;
+  const prompt      = ctx.session.pendingPremiumPrompt  ?? '';
+  const imageB64    = ctx.session.pendingPremiumImage   ?? '';
+  const telegramId  = ctx.from.id.toString();
 
   const user = await User.findOne({ telegramId });
   if (!user || user.dailyQuota < cost) {
@@ -1335,52 +1429,131 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
     return;
   }
 
-  // Deduct points before generation
   await User.updateOne({ telegramId }, { $inc: { dailyQuota: -cost } });
   await ctx.answerCallbackQuery();
-  await ctx.editMessageText('⏳ جاري التفكير المعمق وكتابة مستندك عبر NizoAI...');
+  await ctx.editMessageText('⏳ NizoAI يحلل النموذج ويبني مستندك...').catch(() => {});
 
   try {
+    const messages: any[] = [
+      {
+        role: 'system',
+        content: `أنت مصمم مستندات PDF احترافي. مهمتك:\n1. تحليل صورة النموذج المرسلة وفهم هيكلها وتنسيقها\n2. إنشاء محتوى المستند بناءً على النص المطلوب\n3. الالتزام الصارم بعدد الصفحات المطلوب: ${pages} صفحة فقط\n4. إذا كان المحتوى أطول من ${pages} صفحة — قم بتقطيعه واختصاره ليناسب العدد المحدد\n5. إذا كان أقصر — وسّع وأضف تفاصيل مناسبة لملء ${pages} صفحة\n6. الإخراج: نص منظم بعناوين وفقرات واضحة بدون رموز تعبيرية\n7. كل صفحة تحتوي تقريباً 400-500 كلمة`,
+      },
+    ];
+
+    const userContent: any[] = [];
+    if (imageB64) {
+      userContent.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageB64}` } });
+    }
+    userContent.push({ type: 'text', text: `المحتوى المطلوب: ${prompt}\nعدد الصفحات المطلوب: ${pages} صفحة فقط — لا أكثر ولا أقل` });
+    messages.push({ role: 'user', content: userContent });
+
     const response = await aiClient.chat.completions.create({
       model: 'anthropic/claude-3-haiku',
-      messages: [
-        { role: 'system', content: 'أنت كاتب محتوى احترافي متخصص. اكتب محتوى منظم ومفصل بدون رموز تعبيرية. استخدم العناوين والفقرات والتنسيق المناسب.' },
-        { role: 'user',   content: prompt },
-      ],
+      max_tokens: 4000,
+      messages,
     });
 
-    const rawText     = response.choices[0]?.message?.content ?? '';
-    const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
+    const rawText    = response.choices[0]?.message?.content ?? '';
+    const cleaned    = rawText.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}]/gu, '').trim();
+    if (!cleaned) throw new Error('AI returned empty content');
 
-    if (!cleanedText) throw new Error('AI returned empty content');
+    // Split into exactly `pages` chunks by word count (~450 words/page)
+    const words      = cleaned.split(/\s+/);
+    const wordsPerPg = Math.ceil(words.length / pages);
+    const pageChunks: string[] = [];
+    for (let i = 0; i < pages; i++) {
+      const chunk = words.slice(i * wordsPerPg, (i + 1) * wordsPerPg).join(' ');
+      if (chunk.trim()) pageChunks.push(chunk);
+    }
+    // Ensure exactly `pages` count by padding empty pages if needed
+    while (pageChunks.length < pages) pageChunks.push('');
+
+    // Build line array: each page separated by PAGE_BREAK
+    const docLines: { text: string; align: 'right' }[] = [];
+    for (let i = 0; i < pageChunks.length; i++) {
+      const pgLines = pageChunks[i].split('\n').map(l => ({ text: l, align: 'right' as const }));
+      docLines.push(...pgLines);
+      if (i < pageChunks.length - 1) docLines.push({ text: '---PAGE_BREAK---', align: 'right' });
+    }
 
     const { generateDocumentFromLines } = await import('./services/pdfGeneratorService');
-    const lines = cleanedText.split('\n').map(l => ({ text: l, align: 'right' as const }));
-    const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, 'A4');
+    const { buffer: pdfBuffer } = await generateDocumentFromLines(docLines, 'A4');
 
-    const fileName = `nizoai_premium_${Date.now()}.pdf`;
+    const remaining = (user.dailyQuota - cost);
+    const fileName  = `nizoai_premium_${Date.now()}.pdf`;
     await ctx.replyWithDocument(
       new InputFile(pdfBuffer, fileName),
-      { caption: `✅ <b>تم إنشاء مستندك عبر NizoAI!</b>\n📄 الصفحات: ${pageCount}\n💰 تم خصم ${cost} نقطة.`, parse_mode: 'HTML' }
+      {
+        caption: `✅ مستندك جاهز! (${pages} صفحة)\n💰 تم خصم ${cost} نقطة | رصيدك الحالي: ${remaining} نقطة`,
+        parse_mode: 'HTML',
+      }
     );
   } catch (err: any) {
-    // Refund on failure
     await User.updateOne({ telegramId }, { $inc: { dailyQuota: cost } });
     console.error('[DocBot Premium AI] Error:', err?.message);
     await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\nتم استرداد نقاطك.\n<code>${err?.message ?? 'unknown error'}</code>`, { parse_mode: 'HTML' });
   }
 
+  ctx.session.pendingPremiumImage  = undefined;
   ctx.session.pendingPremiumPrompt = undefined;
-  ctx.session.pendingPremiumCost   = undefined;
   ctx.session.pendingPremiumPages  = undefined;
+  ctx.session.pendingPremiumCost   = undefined;
 });
 
 docBot.callbackQuery('cancel_premium_ai', async (ctx) => {
   await ctx.answerCallbackQuery('تم الإلغاء');
-  await ctx.editMessageText('❌ تم إلغاء الطلب.');
-  ctx.session.pendingPremiumPrompt = undefined;
-  ctx.session.pendingPremiumCost   = undefined;
-  ctx.session.pendingPremiumPages  = undefined;
+  await ctx.editMessageText('❌ تم إلغاء الطلب.').catch(() => {});
+  ctx.session.awaitingPremiumImage  = false;
+  ctx.session.awaitingPremiumText   = false;
+  ctx.session.awaitingCustomPages   = false;
+  ctx.session.pendingPremiumImage   = undefined;
+  ctx.session.pendingPremiumPrompt  = undefined;
+  ctx.session.pendingPremiumPages   = undefined;
+  ctx.session.pendingPremiumCost    = undefined;
+});
+
+// ─── docBot: Premium Image Upload Handler ───────────────────────────────────────
+
+docBot.on(['message:photo', 'message:document'], async (ctx, next) => {
+  if (ctx.session.awaitingPremiumImage) {
+    let fileId: string | undefined;
+    if (ctx.message?.photo) {
+      fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+    } else if (ctx.message?.document && ctx.message.document.mime_type?.startsWith('image/')) {
+      fileId = ctx.message.document.file_id;
+    }
+
+    if (!fileId) return next();
+
+    try {
+      const waitMsg = await ctx.reply('⏳ جاري رفع الصورة وتجهيزها للتحليل...');
+      const file = await ctx.api.getFile(fileId);
+      const filePath = file.file_path;
+      if (!filePath) throw new Error('File path not found');
+
+      const res = await fetch(`https://api.telegram.org/file/bot${process.env.DOC_BOT_TOKEN}/${filePath}`);
+      const arrayBuffer = await res.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      
+      ctx.session.pendingPremiumImage = buffer.toString('base64');
+      ctx.session.awaitingPremiumImage = false;
+      ctx.session.awaitingPremiumText = true;
+
+      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
+      await ctx.reply(
+        '✅ <b>تم استلام صورة النموذج بنجاح.</b>\n\n' +
+        '📝 <b>الخطوة 3:</b> أرسل الآن المحتوى النصي الذي تريده في المستند\n' +
+        '(يمكنك كتابة نص طويل أو نقاط رئيسية وسنقوم بتوسيعها وتنسيقها).',
+        { parse_mode: 'HTML' }
+      );
+    } catch (error) {
+      console.error('Error fetching image for premium AI:', error);
+      await ctx.reply('❌ حدث خطأ أثناء معالجة الصورة، يرجى المحاولة بصورة أخرى.');
+    }
+    return;
+  }
+  return next();
 });
 
 // ─── docBot: Admin + AI text input handler ────────────────────────────────────
@@ -1391,12 +1564,11 @@ docBot.on('message:text', async (ctx, next) => {
 
   const text = ctx.message.text.trim();
 
-  // ── Admin state machine (admin only) ──────────────────────────────────────
+  // ── Admin state machine ─────────────────────────────────────────────────────
   if (isAdmin(userId)) {
     const state = docAdminState.get(userId);
     if (state) {
       docAdminState.delete(userId);
-
       if (state === 'awaiting_user_id') {
         const targetUser = await User.findOne({ telegramId: text });
         if (!targetUser) { await ctx.reply('❌ المستخدم غير موجود.'); return; }
@@ -1409,7 +1581,6 @@ docBot.on('message:text', async (ctx, next) => {
         );
         return;
       }
-
       if (state === 'awaiting_points') {
         const parts = text.split(/\s+/);
         if (parts.length !== 2 || isNaN(parseInt(parts[1]))) {
@@ -1426,7 +1597,6 @@ docBot.on('message:text', async (ctx, next) => {
         await ctx.reply(`✅ تمت إضافة <b>${amount}</b> نقطة للمستخدم <code>${targetId}</code>. الرصيد: ${updated.dailyQuota}`, { parse_mode: 'HTML' });
         return;
       }
-
       if (state === 'awaiting_broadcast') {
         const allUsers = await User.find({ isBanned: { $ne: true } }).select('telegramId').lean();
         let ok = 0; let fail = 0;
@@ -1440,27 +1610,72 @@ docBot.on('message:text', async (ctx, next) => {
     }
   }
 
-  // ── Free AI Topic Interceptor ──────────────────────────────────────────────
+  // ── Custom pages number interceptor ─────────────────────────────────────────
+  if (ctx.session.awaitingCustomPages) {
+    const n = parseInt(text);
+    if (isNaN(n) || n < 1 || n > 50) {
+      await ctx.reply('❌ أرسل رقماً صحيحاً بين 1 و50.'); return;
+    }
+    ctx.session.awaitingCustomPages = false;
+    const cost = calculatePremiumCost(n);
+    ctx.session.pendingPremiumPages = n;
+    ctx.session.pendingPremiumCost  = cost;
+    const user = await User.findOne({ telegramId: userId.toString() });
+    const pts  = user?.dailyQuota ?? 0;
+    await ctx.reply(
+      `✅ <b>تأكيد الطلب:</b>\n📄 عدد الصفحات: <b>${n}</b>\n💰 التكلفة: <b>${cost} نقطة</b>\n💳 رصيدك: <b>${pts} نقطة</b>`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard()
+          .text('✅ تأكيد وإنشاء', 'confirm_premium_ai')
+          .text('❌ إلغاء', 'cancel_premium_ai'),
+      }
+    );
+    return;
+  }
+
+  // ── Premium AI — Stage 3: awaiting text/prompt ──────────────────────────────
+  if (ctx.session.awaitingPremiumText) {
+    ctx.session.awaitingPremiumText  = false;
+    ctx.session.pendingPremiumPrompt = text;
+    await ctx.reply(
+      `📄 <b>كم صفحة تريد للمستند؟</b>\n\n` +
+      `💰 نظام التسعير:\n- الصفحة الأولى = 2 نقطة\n- كل 3 صفحات إضافية = نقطة واحدة إضافية`,
+      { parse_mode: 'HTML', reply_markup: buildPageSelectorKeyboard() }
+    );
+    return;
+  }
+
+  // ── Free AI Topic Interceptor ───────────────────────────────────────────────
   if (ctx.session.awaitingFreeAiTopic) {
     ctx.session.awaitingFreeAiTopic = false;
     const waitMsg = await ctx.reply('⏳ جاري الكتابة بالذكاء الاصطناعي...');
     try {
-      const response = await aiClient.chat.completions.create({
-        model: 'meta-llama/llama-3-8b-instruct:free',
-        messages: [
-          { role: 'system', content: 'أنت كاتب محتوى محترف. اكتب محتوى منظم واضح بدون رموز تعبيرية. استخدم العناوين والفقرات بشكل منظم.' },
-          { role: 'user',   content: text },
-        ],
-      });
-
-      const rawText     = response.choices[0]?.message?.content ?? '';
+      let response;
+      try {
+        response = await aiClient.chat.completions.create({
+          model: 'meta-llama/llama-3.1-8b-instruct:free',
+          messages: [
+            { role: 'system', content: 'أنت كاتب محتوى محترف. اكتب محتوى منظم واضح بدون رموز تعبيرية. استخدم العناوين والفقرات بشكل منظم.' },
+            { role: 'user',   content: text },
+          ],
+        });
+      } catch {
+        // Fallback model
+        response = await aiClient.chat.completions.create({
+          model: 'mistralai/mistral-7b-instruct:free',
+          messages: [
+            { role: 'system', content: 'أنت كاتب محتوى محترف. اكتب محتوى منظم واضح بدون رموز تعبيرية. استخدم العناوين والفقرات بشكل منظم.' },
+            { role: 'user',   content: text },
+          ],
+        });
+      }
+      const rawText    = response.choices[0]?.message?.content ?? '';
       const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
       if (!cleanedText) throw new Error('AI returned empty content');
-
       const { generateDocumentFromLines } = await import('./services/pdfGeneratorService');
       const lines = cleanedText.split('\n').map(l => ({ text: l, align: 'right' as const }));
       const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, 'A4');
-
       const fileName = `nizoai_free_${Date.now()}.pdf`;
       await ctx.replyWithDocument(
         new InputFile(pdfBuffer, fileName),
@@ -1470,42 +1685,16 @@ docBot.on('message:text', async (ctx, next) => {
       console.error('[DocBot Free AI] Error:', err?.message);
       await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message ?? 'unknown error'}</code>`, { parse_mode: 'HTML' });
     }
-    // Clean up waiting message
     await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
     return;
   }
 
-  // ── Premium AI Topic Interceptor ───────────────────────────────────────────
-  if (ctx.session.awaitingPremiumAiTopic) {
-    ctx.session.awaitingPremiumAiTopic = false;
-
-    const wordCount  = text.split(' ').length;
-    const isDetailed = /طويل|مفصل|بحث|تفصيل|صفحات|شامل/.test(text);
-    let pages = 1; let cost = 3;
-    if (wordCount > 50 || isDetailed) { pages = 3; cost = 6; }
-    else if (wordCount > 25)          { pages = 2; cost = 5; }
-
-    ctx.session.pendingPremiumPrompt = text;
-    ctx.session.pendingPremiumCost   = cost;
-    ctx.session.pendingPremiumPages  = pages;
-
-    await ctx.reply(
-      `📊 <b>تحليل الطلب:</b>\n\n` +
-      `📄 المحتوى المتوقع: <b>${pages} صفحة</b>\n` +
-      `💰 التكلفة: <b>${cost} نقاط</b>\n\n` +
-      `هل تريد المتابعة؟`,
-      {
-        parse_mode: 'HTML',
-        reply_markup: new InlineKeyboard()
-          .text('✅ تأكيد وإنشاء المستند', 'confirm_premium_ai')
-          .text('❌ إلغاء', 'cancel_premium_ai'),
-      }
-    );
-    return;
-  }
+  return next();
 
   return next();
 });
+
+
 
 // ─── docBot: DocMaker handler (all remaining messages & callbacks) ─────────────
 

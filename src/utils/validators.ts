@@ -102,9 +102,13 @@ export interface SessionData {
   // AI Document Generation
   awaitingFreeAiTopic?: boolean;
   awaitingPremiumAiTopic?: boolean;
+  awaitingPremiumImage?: boolean;
+  awaitingPremiumText?: boolean;
+  awaitingCustomPages?: boolean;
+  pendingPremiumImage?: string;
   pendingPremiumPrompt?: string;
-  pendingPremiumCost?: number;
   pendingPremiumPages?: number;
+  pendingPremiumCost?: number;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;
