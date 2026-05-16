@@ -484,8 +484,7 @@ function drawArabicParagraph(
         doc.text(finalLine, startX, currentY, { 
           width, 
           align: pdfAlign, 
-          lineBreak: false,
-          features: isArabic ? ['rtla', 'arab'] : [] 
+          lineBreak: false
         });
         doc.font(mainFont).fontSize(mainSize);
       } catch {
@@ -497,16 +496,14 @@ function drawArabicParagraph(
         doc.text(stripped, startX, currentY, { 
           width, 
           align: pdfAlign, 
-          lineBreak: false,
-          features: isArabic ? ['rtla', 'arab'] : []
+          lineBreak: false
         });
       }
     } else {
       doc.text(finalLine, startX, currentY, { 
         width, 
         align: pdfAlign, 
-        lineBreak: false,
-        features: isArabic ? ['rtla', 'arab'] : []
+        lineBreak: false
       });
     }
 
