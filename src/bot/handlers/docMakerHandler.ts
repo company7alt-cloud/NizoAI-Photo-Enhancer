@@ -223,7 +223,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   const data = ctx.callbackQuery?.data;
   if (!data) return false;
 
-  if (data === 'doc_maker_start') {
+  if (data === 'doc_maker_start' || data === 'start_doc_maker') {
     const adminIds = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim());
     if (!adminIds.includes(ctx.from!.id.toString())) {
       const lock = await getSettings();
@@ -238,7 +238,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   }
 
   const docCallbacks = [
-    'doc_maker_start','doc_maker_cancel',
+    'doc_maker_start','start_doc_maker','doc_maker_cancel',
     'doc_type_text','doc_type_image','doc_type_image_locked',
     'doc_compile','doc_continue','doc_finish','doc_export_pdf',
     'doc_export_confirm','doc_export_cancel','doc_back_to_session_keep',
@@ -276,7 +276,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
   const telegramId = ctx.from!.id.toString();
 
   // ── Entry ─────────────────────────────────────────────────────────────────
-  if (data === 'doc_maker_start') {
+  if (data === 'doc_maker_start' || data === 'start_doc_maker') {
     await ctx.answerCallbackQuery();
     await ctx.reply('📝 <b>صانع المستندات</b>\n\nاختر نوع المستند:', {
       parse_mode: 'HTML',

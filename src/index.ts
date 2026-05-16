@@ -1217,17 +1217,14 @@ docBot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
 // ─── docBot: /start command ────────────────────────────────────────────────────
 
 docBot.command('start', async (ctx) => {
-  const userId = ctx.from?.id;
+  const firstName = ctx.from?.first_name ?? 'مستخدم';
   await ctx.reply(
-    '📄 <b>مرحباً بك في بوت صانع المستندات!</b>\n\nأرسل /new لإنشاء مستند PDF جديد.',
-    { parse_mode: 'HTML' }
+    `مرحباً ${firstName}! 👋\n\nأنا بوت صانع المستندات الاحترافي 📝\nيمكنك إنشاء مستندات PDF احترافية بسهولة تامة.\n\nاضغط الزر بالأسفل للبدء:`,
+    {
+      reply_markup: new InlineKeyboard()
+        .text('📝 صانع المستندات', 'start_doc_maker')
+    }
   );
-  if (userId && isAdmin(userId)) {
-    await ctx.reply('🔧 <b>لوحة تحكم المشرف</b>', {
-      parse_mode: 'HTML',
-      reply_markup: docAdminKeyboard,
-    });
-  }
 });
 
 // ─── docBot: Admin panel callbacks ────────────────────────────────────────────
