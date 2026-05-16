@@ -399,7 +399,8 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
                 doc.text(finalLine, startX, currentY, {
                     width,
                     align: pdfAlign,
-                    lineBreak: false
+                    lineBreak: false,
+                    features: []
                 });
                 doc.font(mainFont).fontSize(mainSize);
             }
@@ -409,7 +410,8 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
                 doc.text(stripped, startX, currentY, {
                     width,
                     align: pdfAlign,
-                    lineBreak: false
+                    lineBreak: false,
+                    features: []
                 });
             }
         }
@@ -417,7 +419,8 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
             doc.text(finalLine, startX, currentY, {
                 width,
                 align: pdfAlign,
-                lineBreak: false
+                lineBreak: false,
+                features: []
             });
         }
         currentY = doc.y;
