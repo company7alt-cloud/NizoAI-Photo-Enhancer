@@ -59,11 +59,18 @@ function getFS(size) {
 }
 // ─── Telegram file URL helper (REST only, no bot instance) ───────────────────
 async function getPreviewFileUrl(fileId) {
-    const token = process.env.BOT_TOKEN;
-    if (!token)
-        throw new Error('BOT_TOKEN not set');
-    const res = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
-    const json = await res.json();
+    console.log(`[Image Debug] preview fileId: ${fileId}`);
+    let token = process.env.BOT_TOKEN;
+    let res = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+    let json = await res.json();
+    if (!json.ok || !json.result?.file_path) {
+        console.log(`[Image Debug] BOT_TOKEN failed for preview, trying DOC_BOT_TOKEN`);
+        token = process.env.DOC_BOT_TOKEN;
+        if (token) {
+            res = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+            json = await res.json();
+        }
+    }
     if (!json.ok || !json.result?.file_path) {
         throw new Error(`getFile failed for preview: ${JSON.stringify(json)}`);
     }
@@ -78,6 +85,7 @@ async function fetchImageBase64(fileId, maxW, _maxH, mask) {
             throw new Error(`HTTP ${imgRes.status}`);
         const rawBuf = await imgRes.arrayBuffer();
         let buf = Buffer.from(new Uint8Array(rawBuf));
+        console.log(`[Image Debug] preview buffer size:`, buf?.length);
         const meta = await (0, sharp_1.default)(buf).metadata();
         const originalWidth = meta.width || 1;
         const originalHeight = meta.height || 1;
@@ -108,7 +116,9 @@ async function fetchImageBase64(fileId, maxW, _maxH, mask) {
                 .composite([{ input: Buffer.from(svg), blend: 'dest-in' }])
                 .png().toBuffer();
         }
-        return buf.toString('base64');
+        const base64 = buf.toString('base64');
+        console.log(`[Image Debug] preview base64 length:`, base64?.length);
+        return base64;
     }
     catch (err) {
         console.error('[PREVIEW] fetchImageBase64 failed, skipping:', err);
@@ -163,11 +173,13 @@ async function buildSVG(opts, w, h) {
     let textSVG = '';
     let y = cy + 2;
     for (const line of lines) {
+        if (!line)
+            continue;
         if (y > cy + ch)
             break;
         // ── Image / Image-Row line ───────────────────────────────────────────────
         if ((line.type === 'image' || line.type === 'image_row') && (line.fileId || line.rowImages)) {
-            const images = (line.rowImages && line.rowImages.length > 0)
+            const images = (line.rowImages && Array.isArray(line.rowImages) && line.rowImages.length > 0)
                 ? line.rowImages
                 : (line.fileId ? [{ fileId: line.fileId, lines: line.imageLines || 5, align: line.align || 'center', mask: line.imageMask }] : []);
             if (images.length === 0)
@@ -189,6 +201,8 @@ async function buildSVG(opts, w, h) {
             for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
                 const img = images[imgIdx];
                 const im = imagesWithMeta[imgIdx];
+                if (!img || !im)
+                    continue;
                 let alignX;
                 if (images.length === 1) {
                     alignX = img.align === 'left' ? cx : img.align === 'center' ? cx + (cw / 2) - (im.iw / 2) : cx + cw - im.iw;

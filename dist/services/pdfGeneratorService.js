@@ -95,15 +95,22 @@ function registerAllFonts(doc) {
 }
 // ─── Telegram File URL (pure REST — no bot instance needed) ────────────────────
 async function getTelegramFileUrl(fileId) {
-    const token = process.env.BOT_TOKEN;
-    if (!token)
-        throw new Error('BOT_TOKEN not set');
-    const apiRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
-    const apiJson = await apiRes.json();
-    if (!apiJson.ok || !apiJson.result?.file_path) {
+    console.log(`[Image Debug] fileId: ${fileId}`);
+    let token = process.env.BOT_TOKEN;
+    let apiRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+    let json = await apiRes.json();
+    if (!json.ok || !json.result?.file_path) {
+        console.log(`[Image Debug] BOT_TOKEN failed, trying DOC_BOT_TOKEN`);
+        token = process.env.DOC_BOT_TOKEN;
+        if (token) {
+            apiRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+            json = await apiRes.json();
+        }
+    }
+    if (!json.ok || !json.result?.file_path) {
         throw new Error(`Telegram getFile failed for fileId: ${fileId}`);
     }
-    return `https://api.telegram.org/file/bot${token}/${apiJson.result.file_path}`;
+    return `https://api.telegram.org/file/bot${token}/${json.result.file_path}`;
 }
 // ─── Font Downloader ───────────────────────────────────────────────────────────
 async function ensureFontExists(fontPath) {
@@ -295,61 +302,65 @@ async function generateDocument(params) {
             doc.on('end', () => resolve(Buffer.concat(buffers)));
             doc.on('error', reject);
             const templateId = params.templateId ?? 1;
-            for (const page of params.pages) {
-                doc.addPage();
-                const pageWidth = doc.page.width;
-                const pageHeight = doc.page.height;
-                applyTemplate(doc, templateId, pageWidth, pageHeight);
-                const bounds = getContentBounds(templateId, pageWidth, pageHeight);
-                if (hasArabicFont)
-                    doc.font('Arabic');
-                doc.fillColor('black');
-                if (page.type === 'text' && page.lines && page.lines.length > 0) {
-                    // +5 to original sizes: 3→18 became 23, 4→12 became 17, default 14 became 19
-                    const fontSize = templateId === 3 ? 23 : (templateId === 4 ? 17 : 19);
-                    doc.fontSize(fontSize);
-                    let currentY = bounds.y;
-                    const lineHeight = fontSize * 1.6;
-                    for (const rawLine of page.lines) {
-                        // CRASH FIX: skip null/undefined/non-string entries
-                        if (rawLine === null || rawLine === undefined)
-                            continue;
-                        const raw = String(rawLine).trim();
-                        if (currentY + lineHeight > bounds.y + bounds.height)
-                            break;
-                        if (raw === '---PAGE_BREAK---') {
-                            doc.addPage();
-                            currentY = bounds.y;
-                            continue;
+            if (params.pages && Array.isArray(params.pages)) {
+                for (const page of params.pages) {
+                    if (!page)
+                        continue;
+                    doc.addPage();
+                    const pageWidth = doc.page.width;
+                    const pageHeight = doc.page.height;
+                    applyTemplate(doc, templateId, pageWidth, pageHeight);
+                    const bounds = getContentBounds(templateId, pageWidth, pageHeight);
+                    if (hasArabicFont)
+                        doc.font('Arabic');
+                    doc.fillColor('black');
+                    if (page.type === 'text' && page.lines && page.lines.length > 0) {
+                        // +5 to original sizes: 3→18 became 23, 4→12 became 17, default 14 became 19
+                        const fontSize = templateId === 3 ? 23 : (templateId === 4 ? 17 : 19);
+                        doc.fontSize(fontSize);
+                        let currentY = bounds.y;
+                        const lineHeight = fontSize * 1.6;
+                        for (const rawLine of page.lines) {
+                            // CRASH FIX: skip null/undefined/non-string entries
+                            if (rawLine === null || rawLine === undefined)
+                                continue;
+                            const raw = String(rawLine).trim();
+                            if (currentY + lineHeight > bounds.y + bounds.height)
+                                break;
+                            if (raw === '---PAGE_BREAK---') {
+                                doc.addPage();
+                                currentY = bounds.y;
+                                continue;
+                            }
+                            if (raw === '') {
+                                currentY += lineHeight;
+                                continue;
+                            }
+                            currentY = drawArabicParagraph(doc, raw, bounds.x, currentY, bounds.width, 'right');
                         }
-                        if (raw === '') {
-                            currentY += lineHeight;
-                            continue;
+                    }
+                    else if (page.type === 'image' && page.imageBuffer) {
+                        const imgBuf = typeof page.imageBuffer === 'string'
+                            ? Buffer.from(page.imageBuffer, 'base64')
+                            : page.imageBuffer;
+                        const maxImgHeight = page.captionText ? bounds.height - 60 : bounds.height - 20;
+                        doc.image(imgBuf, bounds.x, bounds.y, {
+                            fit: [bounds.width, maxImgHeight], align: 'center', valign: 'center',
+                        });
+                        if (page.overlayText) {
+                            doc.fontSize(27).fillColor('#CC0000');
+                            const overlayProcessed = prepareArabicText(page.overlayText);
+                            doc.text(overlayProcessed, bounds.x, bounds.y + maxImgHeight / 2 - 14, {
+                                width: bounds.width, align: 'center', lineBreak: false,
+                            });
                         }
-                        currentY = drawArabicParagraph(doc, raw, bounds.x, currentY, bounds.width, 'right');
-                    }
-                }
-                else if (page.type === 'image' && page.imageBuffer) {
-                    const imgBuf = typeof page.imageBuffer === 'string'
-                        ? Buffer.from(page.imageBuffer, 'base64')
-                        : page.imageBuffer;
-                    const maxImgHeight = page.captionText ? bounds.height - 60 : bounds.height - 20;
-                    doc.image(imgBuf, bounds.x, bounds.y, {
-                        fit: [bounds.width, maxImgHeight], align: 'center', valign: 'center',
-                    });
-                    if (page.overlayText) {
-                        doc.fontSize(27).fillColor('#CC0000');
-                        const overlayProcessed = prepareArabicText(page.overlayText);
-                        doc.text(overlayProcessed, bounds.x, bounds.y + maxImgHeight / 2 - 14, {
-                            width: bounds.width, align: 'center', lineBreak: false,
-                        });
-                    }
-                    if (page.captionText) {
-                        doc.fontSize(17).fillColor('#333333');
-                        const captionProcessed = prepareArabicText(page.captionText);
-                        doc.text(captionProcessed, bounds.x, bounds.y + bounds.height - 45, {
-                            width: bounds.width, align: 'center', lineBreak: false,
-                        });
+                        if (page.captionText) {
+                            doc.fontSize(17).fillColor('#333333');
+                            const captionProcessed = prepareArabicText(page.captionText);
+                            doc.text(captionProcessed, bounds.x, bounds.y + bounds.height - 45, {
+                                width: bounds.width, align: 'center', lineBreak: false,
+                            });
+                        }
                     }
                 }
             }
@@ -510,7 +521,7 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                 // ── Image / Image-Row line ───────────────────────────────────────────────
                 if ((richLine.type === 'image' || richLine.type === 'image_row') && (richLine.fileId || richLine.rowImages)) {
                     // Normalise: single image or array of row images
-                    const images = (richLine.rowImages && richLine.rowImages.length > 0)
+                    const images = (richLine.rowImages && Array.isArray(richLine.rowImages) && richLine.rowImages.length > 0)
                         ? richLine.rowImages
                         : (richLine.fileId ? [{
                                 fileId: richLine.fileId,
@@ -540,6 +551,8 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                     }
                     for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
                         const img = images[imgIdx];
+                        if (!img)
+                            continue;
                         // X position:
                         //  - Single image: respect per-image alignment setting
                         //  - Multiple images: lay out left-to-right (index 0 = leftmost)
@@ -559,6 +572,7 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                             if (!imgRes.ok)
                                 throw new Error(`HTTP ${imgRes.status} fetching image`);
                             let imgBuffer = Buffer.from(new Uint8Array(await imgRes.arrayBuffer()));
+                            console.log(`[Image Debug] buffer size:`, imgBuffer?.length);
                             const imgMeta = await (0, sharp_1.default)(imgBuffer).metadata();
                             const iw = imgMeta.width ?? 500;
                             const ih = imgMeta.height ?? 500;
