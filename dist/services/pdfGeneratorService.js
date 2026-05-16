@@ -453,7 +453,14 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
             const buffers = [];
             doc.on('data', (chunk) => buffers.push(chunk));
             let pageCount = 0;
-            doc.on('pageAdded', () => { pageCount++; });
+            doc.on('pageAdded', () => {
+                pageCount++;
+                try {
+                    doc.font(chosenFont);
+                }
+                catch { }
+                doc.fontSize(BASE_SIZE).fillColor(txtColor);
+            });
             const bgColor = docBgColor || '#FFFFFF';
             const txtColor = docTextColor || '#000000';
             const drawBackground = () => {
@@ -466,7 +473,7 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
             const addPage = () => {
                 doc.addPage();
                 drawBackground();
-                pageCount++;
+                // pageCount is incremented by doc.on('pageAdded') — do NOT increment here
                 const W = doc.page.width;
                 const H = doc.page.height;
                 doc.save().rect(PADDING / 2, PADDING / 2, W - PADDING, H - PADDING)
