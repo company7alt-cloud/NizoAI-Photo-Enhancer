@@ -1784,8 +1784,6 @@ docBot.on('message:text', async (ctx, next) => {
   }
 
   return next();
-
-  return next();
 });
 
 
@@ -1805,10 +1803,12 @@ docBot.on(['message', 'callback_query'], async (ctx, next) => {
     const docState = (ctx.session as any)?.docState as string | null;
 
     // ── Session Closed Notification ──
-    // Skip if user is actively in an AI topic collection flow
+    // Skip if user is actively in any AI or DocMaker flow
     if (!(ctx.session as any)?.isInDocMaker &&
         !(ctx.session as any)?.awaitingFreeAiTopic &&
-        !(ctx.session as any)?.awaitingPremiumAiTopic) {
+        !(ctx.session as any)?.awaitingPremiumImage &&
+        !(ctx.session as any)?.awaitingPremiumText &&
+        !(ctx.session as any)?.awaitingCustomPages) {
       const txt = ctx.message.text || ctx.message.caption || '';
       if (txt.startsWith('/')) return next();
 

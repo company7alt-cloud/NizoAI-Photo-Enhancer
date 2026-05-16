@@ -635,6 +635,12 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                     doc.y = currentY;
                     continue;
                 }
+                if (!line || (!('text' in line) && !line.type))
+                    continue;
+                if (line.type === 'image' || line.type === 'image_row' || line.type === 'image_cover')
+                    continue;
+                if (line.text === null || line.text === undefined)
+                    continue;
                 const raw = String(line.text).trim();
                 if (raw === '---PAGE_BREAK---') {
                     ({ W, H } = addPage());

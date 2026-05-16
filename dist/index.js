@@ -1516,7 +1516,6 @@ docBot.on('message:text', async (ctx, next) => {
         return;
     }
     return next();
-    return next();
 });
 // ─── docBot: DocMaker handler (all remaining messages & callbacks) ─────────────
 docBot.on(['message', 'callback_query'], async (ctx, next) => {
@@ -1530,10 +1529,12 @@ docBot.on(['message', 'callback_query'], async (ctx, next) => {
     if (ctx.message) {
         const docState = ctx.session?.docState;
         // ── Session Closed Notification ──
-        // Skip if user is actively in an AI topic collection flow
+        // Skip if user is actively in any AI or DocMaker flow
         if (!ctx.session?.isInDocMaker &&
             !ctx.session?.awaitingFreeAiTopic &&
-            !ctx.session?.awaitingPremiumAiTopic) {
+            !ctx.session?.awaitingPremiumImage &&
+            !ctx.session?.awaitingPremiumText &&
+            !ctx.session?.awaitingCustomPages) {
             const txt = ctx.message.text || ctx.message.caption || '';
             if (txt.startsWith('/'))
                 return next();
