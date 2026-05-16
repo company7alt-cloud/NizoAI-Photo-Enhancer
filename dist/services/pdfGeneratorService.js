@@ -385,10 +385,12 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
         let pdfAlign = isArabic ? 'right' : 'left';
         if (align === 'center')
             pdfAlign = 'center';
-        let finalLine = inputLine;
-        if (isArabic) {
-            finalLine = fixArabicPunctuation(finalLine);
-        }
+        // CRITICAL: For Arabic, run full reshape + bidi reorder so pdfkit
+        // receives visually-ordered glyphs. align:'right' handles RTL placement.
+        // NO features array — fontkit GPOS crashes with it on some fonts.
+        let finalLine = isArabic
+            ? prepareArabicText(inputLine) // fixPunctuation + reshape + bidi
+            : inputLine;
         if (hasEmoji(finalLine)) {
             const mainFont = doc._font ? doc._font.name : 'Amiri';
             const mainSize = doc._fontSize || 12;

@@ -471,19 +471,21 @@ function drawArabicParagraph(
     let pdfAlign = isArabic ? 'right' : 'left';
     if (align === 'center') pdfAlign = 'center';
 
-    let finalLine = inputLine;
-    if (isArabic) {
-      finalLine = fixArabicPunctuation(finalLine);
-    }
+    // CRITICAL: For Arabic, run full reshape + bidi reorder so pdfkit
+    // receives visually-ordered glyphs. align:'right' handles RTL placement.
+    // NO features array — fontkit GPOS crashes with it on some fonts.
+    let finalLine = isArabic
+      ? prepareArabicText(inputLine)  // fixPunctuation + reshape + bidi
+      : inputLine;
 
     if (hasEmoji(finalLine)) {
       const mainFont = doc._font ? doc._font.name : 'Amiri';
       const mainSize = doc._fontSize || 12;
       try {
         doc.font('NotoEmoji');
-        doc.text(finalLine, startX, currentY, { 
-          width, 
-          align: pdfAlign, 
+        doc.text(finalLine, startX, currentY, {
+          width,
+          align: pdfAlign,
           lineBreak: false
         });
         doc.font(mainFont).fontSize(mainSize);
@@ -493,21 +495,21 @@ function drawArabicParagraph(
           /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu,
           ''
         );
-        doc.text(stripped, startX, currentY, { 
-          width, 
-          align: pdfAlign, 
+        doc.text(stripped, startX, currentY, {
+          width,
+          align: pdfAlign,
           lineBreak: false
         });
       }
     } else {
-      doc.text(finalLine, startX, currentY, { 
-        width, 
-        align: pdfAlign, 
+      doc.text(finalLine, startX, currentY, {
+        width,
+        align: pdfAlign,
         lineBreak: false
       });
     }
 
-    currentY = doc.y; 
+    currentY = doc.y;
   }
 
   return currentY;
