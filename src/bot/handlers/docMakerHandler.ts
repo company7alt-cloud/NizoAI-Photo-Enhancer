@@ -1961,6 +1961,49 @@ export async function handleDocMakerMessage(ctx: BotContext): Promise<boolean> {
     return true;
   }
 
+  // ── STEP 1: Detect emojis / unsupported symbols ────────────────────────────
+  const emojiRegex = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu;
+  const foundEmojis = [...new Set(text.match(emojiRegex) ?? [])];
+
+  if (foundEmojis.length > 0) {
+    // ── STEP 3a: Clean — remove emojis but preserve \n and spacing ──────────
+    const cleanedText = text.replace(emojiRegex, '').replace(/  +/g, ' ').trim();
+
+    if (cleanedText.length > 0) {
+      // ── STEP 3b: Auto-save to document BEFORE notification ───────────────
+      ctx.session.documentLines = ctx.session.documentLines || [];
+      ctx.session.documentLines.push({
+        type: 'text',
+        text: cleanedText,
+        align: 'right',
+        bold: false,
+        italic: false,
+        underline: false,
+        size: 'normal',
+        style: 'normal',
+      } as any);
+    }
+
+    // ── STEP 3c: Notify user ────────────────────────────────────────────────
+    await ctx.reply(
+`⚠️ <b>تنبيه: الخط المختار لا يدعم الرموز التعبيرية.</b>
+
+🔍 الرموز المكتشفة: ${foundEmojis.join(' ')}
+
+✅ <b>تم تلقائياً:</b> حذف الرموز وحفظ النص بنجاح لحماية مستندك.
+
+📄 <b>النص بعد التصحيح:</b>
+<pre>${cleanedText}</pre>
+
+💡 <b>هل تريد الرموز؟</b> أنهِ الجلسة الحالية وابدأ مستنداً جديداً باختيار خط يدعم الرموز.`,
+      { parse_mode: 'HTML' }
+    );
+
+    await refreshPreview(ctx);
+    return true;
+  }
+
+  // ── STEP 2: No emojis — proceed to normal formatting flow ──────────────────
   ctx.session.tempLine = text;
   ctx.session.tempFormatting = ctx.session.tempFormatting || {
     align: 'right',
