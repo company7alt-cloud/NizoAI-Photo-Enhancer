@@ -105,7 +105,7 @@ export interface SessionData {
   awaitingPremiumImage?: boolean;
   awaitingPremiumText?: boolean;
   awaitingCustomPages?: boolean;
-  pendingPremiumImage?: string;
+  pendingPremiumImage?: string | null;
   pendingPremiumPrompt?: string;
   pendingPremiumPages?: number;
   pendingPremiumCost?: number;

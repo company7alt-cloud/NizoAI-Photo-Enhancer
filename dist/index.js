@@ -1106,16 +1106,16 @@ function calculatePremiumCost(pages) {
         return 2;
     if (pages === 1)
         return 2;
-    const extraGroups = Math.floor((pages - 1) / 3);
-    const remainder = (pages - 1) % 3;
-    return 2 + extraGroups + (remainder > 0 ? 1 : 0);
+    const extra = pages - 1;
+    const extraCost = Math.floor(extra / 3) + (extra % 3 > 0 ? 1 : 0);
+    return 2 + extraCost;
 }
 function buildPageSelectorKeyboard() {
     const kb = new grammy_1.InlineKeyboard();
     const rows = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10]];
     for (const row of rows) {
         for (const p of row) {
-            kb.text(`${p} صفحة — ${calculatePremiumCost(p)} نقطة`, `premium_pages_${p}`);
+            kb.text(`${p} — ${calculatePremiumCost(p)}💰`, `premium_pages_${p}`);
         }
         kb.row();
     }
@@ -1133,25 +1133,25 @@ docBot.callbackQuery('start_premium_ai', async (ctx) => {
     ctx.session.pendingPremiumCost = undefined;
     await ctx.answerCallbackQuery();
     await ctx.reply(`🤖 <b>NizoAI PDF — مولّد المستندات الذكي</b>\n\n` +
-        `للحصول على أفضل نتيجة، اتبع هذه الخطوات:\n\n` +
-        `🔍 <b>الخطوة 1:</b> ابحث في Google عن:\n` +
-        `<code>professional PDF document design templates</code>\n` +
-        `أو: <code>تصاميم مستندات PDF احترافية</code>\n\n` +
-        `🖼 <b>الخطوة 2:</b> اختر صورة نموذج تعجبك وأرسلها هنا\n\n` +
-        `📝 <b>الخطوة 3:</b> أرسل النص أو المحتوى الذي تريده في المستند\n\n` +
-        `سيقوم NizoAI بتحليل النموذج ومحتواك وإنشاء مستند احترافي طبق الأصل 🎯`, {
+        `اتبع الخطوات التالية للحصول على أفضل نتيجة:\n\n` +
+        `🔍 <b>ابحث عن نموذج يعجبك:</b>\n` +
+        `- <code>professional PDF report template</code>\n` +
+        `- <code>academic document design template</code>\n` +
+        `- <code>business letter template PDF</code>\n\n` +
+        `🖼 أرسل صورة النموذج الذي تريد تصميمه\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `أو اضغط الزر أدناه لاستخدام النموذج الاحترافي الافتراضي:`, {
         parse_mode: 'HTML',
-        reply_markup: new grammy_1.InlineKeyboard().text('⏩ تخطي الصورة (نص فقط)', 'skip_premium_image')
+        reply_markup: new grammy_1.InlineKeyboard().text('📄 استخدام النموذج الافتراضي', 'premium_use_default')
     });
 });
-docBot.callbackQuery('skip_premium_image', async (ctx) => {
+docBot.callbackQuery('premium_use_default', async (ctx) => {
     if (ctx.session.awaitingPremiumImage) {
+        ctx.session.pendingPremiumImage = null;
         ctx.session.awaitingPremiumImage = false;
         ctx.session.awaitingPremiumText = true;
-        await ctx.answerCallbackQuery('تم التخطي');
-        await ctx.editMessageText('⏩ <b>تم تخطي الصورة.</b>\n\n' +
-            '📝 <b>الخطوة 3:</b> أرسل الآن المحتوى النصي الذي تريده في المستند\n' +
-            '(يمكنك كتابة نص طويل أو نقاط رئيسية وسنقوم بتوسيعها وتنسيقها).', { parse_mode: 'HTML' });
+        await ctx.answerCallbackQuery('استخدام النموذج الافتراضي');
+        await ctx.editMessageText('✅ سيتم استخدام النموذج الاحترافي الافتراضي!\n📝 أرسل المحتوى والتفاصيل التي تريدها في مستندك:', { parse_mode: 'HTML' });
     }
     else {
         await ctx.answerCallbackQuery('هذا الخيار غير متاح الآن');
@@ -1189,7 +1189,7 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
     const cost = ctx.session.pendingPremiumCost ?? 2;
     const pages = ctx.session.pendingPremiumPages ?? 1;
     const prompt = ctx.session.pendingPremiumPrompt ?? '';
-    const imageB64 = ctx.session.pendingPremiumImage ?? '';
+    const imageB64 = ctx.session.pendingPremiumImage;
     const telegramId = ctx.from.id.toString();
     const user = await User_1.User.findOne({ telegramId });
     if (!user || user.dailyQuota < cost) {
@@ -1199,42 +1199,41 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
     }
     await User_1.User.updateOne({ telegramId }, { $inc: { dailyQuota: -cost } });
     await ctx.answerCallbackQuery();
-    await ctx.editMessageText('⏳ NizoAI يحلل النموذج ويبني مستندك...').catch(() => { });
+    await ctx.editMessageText('⏳ NizoAI يحلل ويصمم مستندك...').catch(() => { });
     try {
-        const messages = [
-            {
-                role: 'system',
-                content: `أنت مصمم مستندات PDF احترافي. مهمتك:\n1. تحليل صورة النموذج المرسلة وفهم هيكلها وتنسيقها\n2. إنشاء محتوى المستند بناءً على النص المطلوب\n3. الالتزام الصارم بعدد الصفحات المطلوب: ${pages} صفحة فقط\n4. إذا كان المحتوى أطول من ${pages} صفحة — قم بتقطيعه واختصاره ليناسب العدد المحدد\n5. إذا كان أقصر — وسّع وأضف تفاصيل مناسبة لملء ${pages} صفحة\n6. الإخراج: نص منظم بعناوين وفقرات واضحة بدون رموز تعبيرية\n7. كل صفحة تحتوي تقريباً 400-500 كلمة`,
-            },
-        ];
-        const userContent = [];
+        let systemPrompt = '';
+        let messages = [];
         if (imageB64) {
-            userContent.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageB64}` } });
+            systemPrompt = `أنت مصمم مستندات PDF احترافي متخصص. مهمتك:\n\n1. تحليل صورة النموذج المرسلة بدقة عالية:\n   - استخرج هيكل الصفحة (ترويسة، تذييل، أعمدة، مناطق النص)\n   - حدد نظام الألوان المستخدم\n   - لاحظ نوع الخط وحجمه وتنسيقه\n   - افهم التخطيط العام والمسافات\n\n2. إنشاء مستند يطابق النموذج تماماً:\n   - نفس الهيكل والتخطيط\n   - نفس نظام الألوان\n   - نفس أسلوب العناوين والفقرات\n   - نفس تنسيق الترويسة والتذييل\n\n3. ملء المستند بالمحتوى المطلوب بشكل احترافي\n\n4. الالتزام الصارم بـ ${pages} صفحة فقط:\n   - كل صفحة = 400-500 كلمة تقريباً\n   - إذا المحتوى أطول: اختصر واقتطع\n   - إذا المحتوى أقصر: وسّع وأضف تفاصيل ذات قيمة\n\n5. القواعد الصارمة:\n   - لا رموز تعبيرية أبداً\n   - نص منظم بعناوين رئيسية وفرعية واضحة\n   - فقرات متسقة ومرتبة\n   - جودة أكاديمية/مهنية عالية\n\nالإخراج: نص المستند فقط، منظم بـ === صفحة X === كفاصل بين الصفحات`;
+            messages = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: [
+                        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageB64}` } },
+                        { type: 'text', text: `المحتوى المطلوب:\n${prompt}\n\nعدد الصفحات المطلوب: ${pages} صفحة فقط` }
+                    ] }
+            ];
         }
-        userContent.push({ type: 'text', text: `المحتوى المطلوب: ${prompt}\nعدد الصفحات المطلوب: ${pages} صفحة فقط — لا أكثر ولا أقل` });
-        messages.push({ role: 'user', content: userContent });
+        else {
+            systemPrompt = `أنت مصمم مستندات PDF احترافي. أنشئ مستنداً احترافياً بالمواصفات التالية:\n\nتصميم النموذج الافتراضي:\n- ترويسة أنيقة مع عنوان المستند\n- هوامش متوازنة ومريحة للقراءة\n- عناوين رئيسية بارزة وعناوين فرعية منظمة\n- فقرات متسقة\n- تذييل يحتوي على رقم الصفحة\n- تنسيق أكاديمي/مهني راقٍ\n\nالمحتوى: ${prompt}\nعدد الصفحات: ${pages} صفحة فقط — لا أكثر ولا أقل\n\nالقواعد:\n- كل صفحة 400-500 كلمة\n- لا رموز تعبيرية\n- افصل الصفحات بـ === صفحة X ===\n- جودة عالية تصلح للطباعة والتقديم الرسمي`;
+            messages = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `${prompt}\n\nعدد الصفحات: ${pages}` }
+            ];
+        }
         const response = await aiClient.chat.completions.create({
             model: 'anthropic/claude-3-haiku',
             max_tokens: 4000,
             messages,
         });
         const rawText = response.choices[0]?.message?.content ?? '';
-        const cleaned = rawText.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}]/gu, '').trim();
+        const cleaned = rawText.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu, '').trim();
         if (!cleaned)
             throw new Error('AI returned empty content');
-        // Split into exactly `pages` chunks by word count (~450 words/page)
-        const words = cleaned.split(/\s+/);
-        const wordsPerPg = Math.ceil(words.length / pages);
-        const pageChunks = [];
-        for (let i = 0; i < pages; i++) {
-            const chunk = words.slice(i * wordsPerPg, (i + 1) * wordsPerPg).join(' ');
-            if (chunk.trim())
-                pageChunks.push(chunk);
-        }
-        // Ensure exactly `pages` count by padding empty pages if needed
+        const pageChunks = cleaned.split(/===\s*صفحة\s*\d+\s*===/i).map(c => c.trim()).filter(c => c.length > 0);
         while (pageChunks.length < pages)
             pageChunks.push('');
-        // Build line array: each page separated by PAGE_BREAK
+        if (pageChunks.length > pages)
+            pageChunks.length = pages;
         const docLines = [];
         for (let i = 0; i < pageChunks.length; i++) {
             const pgLines = pageChunks[i].split('\n').map(l => ({ text: l, align: 'right' }));
@@ -1247,7 +1246,7 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
         const remaining = (user.dailyQuota - cost);
         const fileName = `nizoai_premium_${Date.now()}.pdf`;
         await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), {
-            caption: `✅ مستندك جاهز! (${pages} صفحة)\n💰 تم خصم ${cost} نقطة | رصيدك الحالي: ${remaining} نقطة`,
+            caption: `✅ مستندك جاهز! 🎉\n📄 ${pages} صفحة احترافية\n💰 تم خصم ${cost} نقطة\n💳 رصيدك الحالي: ${remaining} نقطة`,
             parse_mode: 'HTML',
         });
     }
@@ -1256,6 +1255,9 @@ docBot.callbackQuery('confirm_premium_ai', async (ctx) => {
         console.error('[DocBot Premium AI] Error:', err?.message);
         await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\nتم استرداد نقاطك.\n<code>${err?.message ?? 'unknown error'}</code>`, { parse_mode: 'HTML' });
     }
+    ctx.session.awaitingPremiumImage = false;
+    ctx.session.awaitingPremiumText = false;
+    ctx.session.awaitingCustomPages = false;
     ctx.session.pendingPremiumImage = undefined;
     ctx.session.pendingPremiumPrompt = undefined;
     ctx.session.pendingPremiumPages = undefined;
@@ -1394,7 +1396,9 @@ docBot.on('message:text', async (ctx, next) => {
         ctx.session.awaitingPremiumText = false;
         ctx.session.pendingPremiumPrompt = text;
         await ctx.reply(`📄 <b>كم صفحة تريد للمستند؟</b>\n\n` +
-            `💰 نظام التسعير:\n- الصفحة الأولى = 2 نقطة\n- كل 3 صفحات إضافية = نقطة واحدة إضافية`, { parse_mode: 'HTML', reply_markup: buildPageSelectorKeyboard() });
+            `💰 <b>نظام التسعير:</b>\n` +
+            `- صفحة 1 = 2 نقطة\n` +
+            `- كل 3 صفحات إضافية = نقطة واحدة إضافية`, { parse_mode: 'HTML', reply_markup: buildPageSelectorKeyboard() });
         return;
     }
     // ── Free AI Topic Interceptor ───────────────────────────────────────────────
@@ -1402,26 +1406,13 @@ docBot.on('message:text', async (ctx, next) => {
         ctx.session.awaitingFreeAiTopic = false;
         const waitMsg = await ctx.reply('⏳ جاري الكتابة بالذكاء الاصطناعي...');
         try {
-            let response;
-            try {
-                response = await aiClient.chat.completions.create({
-                    model: 'meta-llama/llama-3.1-8b-instruct:free',
-                    messages: [
-                        { role: 'system', content: 'أنت كاتب محتوى محترف. اكتب محتوى منظم واضح بدون رموز تعبيرية. استخدم العناوين والفقرات بشكل منظم.' },
-                        { role: 'user', content: text },
-                    ],
-                });
-            }
-            catch {
-                // Fallback model
-                response = await aiClient.chat.completions.create({
-                    model: 'mistralai/mistral-7b-instruct:free',
-                    messages: [
-                        { role: 'system', content: 'أنت كاتب محتوى محترف. اكتب محتوى منظم واضح بدون رموز تعبيرية. استخدم العناوين والفقرات بشكل منظم.' },
-                        { role: 'user', content: text },
-                    ],
-                });
-            }
+            const response = await aiClient.chat.completions.create({
+                model: 'mistralai/mistral-7b-instruct:free',
+                messages: [
+                    { role: 'system', content: 'أنت كاتب محتوى محترف. اكتب محتوى منظم واضح بدون رموز تعبيرية. استخدم العناوين والفقرات بشكل منظم.' },
+                    { role: 'user', content: text },
+                ],
+            });
             const rawText = response.choices[0]?.message?.content ?? '';
             const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
             if (!cleanedText)
