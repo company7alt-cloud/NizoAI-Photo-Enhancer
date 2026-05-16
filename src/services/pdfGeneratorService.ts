@@ -767,6 +767,9 @@ export async function generateDocumentFromLines(
         }
 
 
+        if (!line || (!('text' in line) && !(line as any).type)) continue;
+        if ((line as any).type === 'image' || (line as any).type === 'image_row' || (line as any).type === 'image_cover') continue;
+        if (line.text === null || line.text === undefined) continue;
         const raw = String(line.text).trim();
 
         if (raw === '---PAGE_BREAK---') {

@@ -472,6 +472,7 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     ctx.session.documentLines.push({
       type: 'image_cover',
       fileId: ctx.session.tempImage.fileId,
+      text: ''
     } as any);
 
     ctx.session.tempImage = undefined;
@@ -1631,12 +1632,25 @@ export async function handleDocMakerCallback(ctx: BotContext): Promise<boolean> 
     
     // Safely save to document lines
     ctx.session.documentLines = ctx.session.documentLines || [];
-    ctx.session.documentLines.push({ 
-      type: 'image_row', 
-      rowImages: rowImages,
-      imageLines: rowImages[0].lines, // Fallback line height
-      align: 'center' 
-    } as any);
+    if (rowImages.length === 1) {
+      ctx.session.documentLines.push({ 
+        type: 'image', 
+        fileId: rowImages[0].fileId,
+        imageLines: rowImages[0].lines,
+        align: rowImages[0].align,
+        imageMask: rowImages[0].mask,
+        caption: rowImages[0].caption,
+        text: ''
+      } as any);
+    } else {
+      ctx.session.documentLines.push({ 
+        type: 'image_row', 
+        rowImages: rowImages,
+        imageLines: rowImages[0].lines, // Fallback line height
+        align: 'center',
+        text: ''
+      } as any);
+    }
     
     // Wipe all temporary row data
     ctx.session.rowImages = undefined;
