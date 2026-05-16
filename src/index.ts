@@ -9,7 +9,8 @@ if (!process.env.CHANNEL_ID)    throw new Error('❌ CHANNEL_ID is missing');
 if (!process.env.MONGODB_URI)   throw new Error('❌ MONGODB_URI is missing');
 
 import http from 'http';
-import { Bot, session, NextFunction, InlineKeyboard } from 'grammy';
+import { Bot, session, NextFunction, InlineKeyboard, InputFile } from 'grammy';
+import path from 'path';
 
 import { BotContext, isAdmin, SessionData } from './utils/validators';
 import { connectDatabase, closeDatabaseConnection } from './database/connection';
@@ -1217,17 +1218,15 @@ docBot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
 // ─── docBot: /start command ────────────────────────────────────────────────────
 
 docBot.command('start', async (ctx) => {
+  const user = await User.findOne({ telegramId: ctx.from!.id.toString() });
+  const points = user?.dailyQuota ?? 0;
   const firstName = ctx.from?.first_name ?? 'مستخدم';
-  const telegramId = ctx.from?.id.toString();
-  let points = 0;
-  if (telegramId) {
-    const user = await User.findOne({ telegramId });
-    points = user?.dailyQuota ?? 0;
-  }
-  
-  await ctx.reply(
-    `مرحباً ${firstName}! 👋\n\nأنا بوت صانع المستندات الاحترافي 📝\nيمكنك إنشاء مستندات PDF احترافية بسهولة تامة.\n\n💰 رصيدك الحالي: ${points} نقطة\n\nاضغط الزر بالأسفل للبدء:`,
+
+  await ctx.replyWithPhoto(
+    new InputFile(path.join(__dirname, '../assets/welcome.jpg')),
     {
+      caption: `مرحباً ${firstName}! 👋\n\nأنا بوت صانع المستندات الاحترافي 📝\nيمكنك إنشاء مستندات PDF احترافية بسهولة تامة.\n\n💰 رصيدك الحالي: ${points} نقطة\n\nاضغط الزر بالأسفل للبدء:`,
+      parse_mode: 'HTML',
       reply_markup: new InlineKeyboard()
         .text('📝 صانع المستندات', 'start_doc_maker')
     }

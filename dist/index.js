@@ -51,6 +51,7 @@ if (!process.env.MONGODB_URI)
     throw new Error('❌ MONGODB_URI is missing');
 const http_1 = __importDefault(require("http"));
 const grammy_1 = require("grammy");
+const path_1 = __importDefault(require("path"));
 const validators_1 = require("./utils/validators");
 const connection_1 = require("./database/connection");
 const Settings_1 = require("./database/models/Settings");
@@ -1010,14 +1011,12 @@ docBot.use(async (ctx, next) => {
 });
 // ─── docBot: /start command ────────────────────────────────────────────────────
 docBot.command('start', async (ctx) => {
+    const user = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
+    const points = user?.dailyQuota ?? 0;
     const firstName = ctx.from?.first_name ?? 'مستخدم';
-    const telegramId = ctx.from?.id.toString();
-    let points = 0;
-    if (telegramId) {
-        const user = await User_1.User.findOne({ telegramId });
-        points = user?.dailyQuota ?? 0;
-    }
-    await ctx.reply(`مرحباً ${firstName}! 👋\n\nأنا بوت صانع المستندات الاحترافي 📝\nيمكنك إنشاء مستندات PDF احترافية بسهولة تامة.\n\n💰 رصيدك الحالي: ${points} نقطة\n\nاضغط الزر بالأسفل للبدء:`, {
+    await ctx.replyWithPhoto(new grammy_1.InputFile(path_1.default.join(__dirname, '../assets/welcome.jpg')), {
+        caption: `مرحباً ${firstName}! 👋\n\nأنا بوت صانع المستندات الاحترافي 📝\nيمكنك إنشاء مستندات PDF احترافية بسهولة تامة.\n\n💰 رصيدك الحالي: ${points} نقطة\n\nاضغط الزر بالأسفل للبدء:`,
+        parse_mode: 'HTML',
         reply_markup: new grammy_1.InlineKeyboard()
             .text('📝 صانع المستندات', 'start_doc_maker')
     });
