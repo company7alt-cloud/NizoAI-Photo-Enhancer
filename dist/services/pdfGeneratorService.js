@@ -18,6 +18,13 @@ const https_1 = __importDefault(require("https"));
 const bidiEngine = (0, bidi_js_1.default)();
 const EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
 function hasEmoji(str) { return EMOJI_REGEX.test(str); }
+function fixArabicPunctuation(text) {
+    return text
+        .replace(/\(/g, '\u202A(\u202C')
+        .replace(/\)/g, '\u202A)\u202C')
+        .replace(/\[/g, '\u202A[\u202C')
+        .replace(/\]/g, '\u202A]\u202C');
+}
 /**
  * Reshapes Arabic characters so they connect properly, then
  * applies the Unicode Bidirectional Algorithm so RTL text is
@@ -28,7 +35,8 @@ function prepareArabicText(text) {
     if (!text || typeof text !== 'string' || text.trim() === '')
         return '';
     try {
-        const reshaped = arabic_reshaper_1.default.convertArabic(text);
+        const fixedText = fixArabicPunctuation(text);
+        const reshaped = arabic_reshaper_1.default.convertArabic(fixedText);
         const reordered = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
         return reordered;
     }
@@ -366,12 +374,16 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
         let pdfAlign = isArabic ? 'right' : 'left';
         if (align === 'center')
             pdfAlign = 'center';
-        if (hasEmoji(inputLine)) {
+        let finalLine = inputLine;
+        if (isArabic) {
+            finalLine = fixArabicPunctuation(finalLine);
+        }
+        if (hasEmoji(finalLine)) {
             const mainFont = doc._font ? doc._font.name : 'Amiri';
             const mainSize = doc._fontSize || 12;
             try {
                 doc.font('NotoEmoji');
-                doc.text(inputLine, startX, currentY, {
+                doc.text(finalLine, startX, currentY, {
                     width,
                     align: pdfAlign,
                     lineBreak: false,
@@ -381,7 +393,7 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
             }
             catch {
                 doc.font(mainFont).fontSize(mainSize);
-                const stripped = inputLine.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu, '');
+                const stripped = finalLine.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu, '');
                 doc.text(stripped, startX, currentY, {
                     width,
                     align: pdfAlign,
@@ -391,7 +403,7 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
             }
         }
         else {
-            doc.text(inputLine, startX, currentY, {
+            doc.text(finalLine, startX, currentY, {
                 width,
                 align: pdfAlign,
                 lineBreak: false,

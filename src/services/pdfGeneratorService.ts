@@ -13,6 +13,14 @@ const bidiEngine = bidiFactory();
 const EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
 function hasEmoji(str: string): boolean { return EMOJI_REGEX.test(str); }
 
+function fixArabicPunctuation(text: string): string {
+  return text
+    .replace(/\(/g, '\u202A(\u202C')
+    .replace(/\)/g, '\u202A)\u202C')
+    .replace(/\[/g, '\u202A[\u202C')
+    .replace(/\]/g, '\u202A]\u202C');
+}
+
 
 /**
  * Reshapes Arabic characters so they connect properly, then
@@ -23,7 +31,8 @@ function hasEmoji(str: string): boolean { return EMOJI_REGEX.test(str); }
 function prepareArabicText(text: string): string {
   if (!text || typeof text !== 'string' || text.trim() === '') return '';
   try {
-    const reshaped: string = arabicReshaper.convertArabic(text);
+    const fixedText = fixArabicPunctuation(text);
+    const reshaped: string = arabicReshaper.convertArabic(fixedText);
     const reordered: string = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
     return reordered;
   } catch {
@@ -449,12 +458,17 @@ function drawArabicParagraph(
     let pdfAlign = isArabic ? 'right' : 'left';
     if (align === 'center') pdfAlign = 'center';
 
-    if (hasEmoji(inputLine)) {
+    let finalLine = inputLine;
+    if (isArabic) {
+      finalLine = fixArabicPunctuation(finalLine);
+    }
+
+    if (hasEmoji(finalLine)) {
       const mainFont = doc._font ? doc._font.name : 'Amiri';
       const mainSize = doc._fontSize || 12;
       try {
         doc.font('NotoEmoji');
-        doc.text(inputLine, startX, currentY, { 
+        doc.text(finalLine, startX, currentY, { 
           width, 
           align: pdfAlign, 
           lineBreak: false,
@@ -463,7 +477,7 @@ function drawArabicParagraph(
         doc.font(mainFont).fontSize(mainSize);
       } catch {
         doc.font(mainFont).fontSize(mainSize);
-        const stripped = inputLine.replace(
+        const stripped = finalLine.replace(
           /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu,
           ''
         );
@@ -475,7 +489,7 @@ function drawArabicParagraph(
         });
       }
     } else {
-      doc.text(inputLine, startX, currentY, { 
+      doc.text(finalLine, startX, currentY, { 
         width, 
         align: pdfAlign, 
         lineBreak: false,
