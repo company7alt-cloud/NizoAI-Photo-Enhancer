@@ -1,11 +1,12 @@
 // src/index.ts
 import 'dotenv/config';
 
-if (!process.env.BOT_TOKEN) throw new Error('BOT_TOKEN is missing');
-if (!process.env.ADMIN_IDS) throw new Error('ADMIN_IDS is missing');
-if (!process.env.CHANNEL_ID) throw new Error('CHANNEL_ID is missing');
-if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is missing');
-
+// ─── Environment Guards ────────────────────────────────────────────────────────
+if (!process.env.BOT_TOKEN)     throw new Error('❌ BOT_TOKEN is missing');
+if (!process.env.DOC_BOT_TOKEN) throw new Error('❌ DOC_BOT_TOKEN is missing — create a second bot via @BotFather and add it to .env');
+if (!process.env.ADMIN_IDS)     throw new Error('❌ ADMIN_IDS is missing');
+if (!process.env.CHANNEL_ID)    throw new Error('❌ CHANNEL_ID is missing');
+if (!process.env.MONGODB_URI)   throw new Error('❌ MONGODB_URI is missing');
 
 import http from 'http';
 import { Bot, session, NextFunction, InlineKeyboard } from 'grammy';
@@ -14,90 +15,101 @@ import { BotContext, isAdmin, SessionData } from './utils/validators';
 import { connectDatabase, closeDatabaseConnection } from './database/connection';
 import { Settings } from './database/models/Settings';
 import { User } from './database/models/User';
-
+import { ForceSubChannel } from './database/models/ForceSubChannel';
 
 import { startCommand, inviteCommand } from './bot/commands/start';
 import { registerAdminCommands } from './bot/commands/admin';
 import { imageHandler } from './bot/handlers/imageHandler';
 import { callbackHandler } from './bot/handlers/callbackHandler';
 import { forceSubMiddleware } from './bot/middlewares/forceSubMiddleware';
-import { ForceSubChannel } from './database/models/ForceSubChannel';
 import { initBotTexts } from './services/botTextsService';
 import { getSettings } from './services/settingsService';
 
-// ─── Bot Instance ──────────────────────────────────────────────────────────────
+// ─── Bot Instances ─────────────────────────────────────────────────────────────
+const imageBot = new Bot<BotContext>(process.env.BOT_TOKEN!);
+const docBot   = new Bot<BotContext>(process.env.DOC_BOT_TOKEN!);
 
-const bot = new Bot<BotContext>(process.env.BOT_TOKEN);
+// ─── Rate Limiting ─────────────────────────────────────────────────────────────
+const imageBotRateMap = new Map<number, number>();
+const docBotRateMap   = new Map<number, number>();
 
-// ─── Middlewares ───────────────────────────────────────────────────────────────
-
-bot.use(forceSubMiddleware);
-bot.use(session({ initial: (): SessionData => ({ documentLines: [] }) }));
-
-bot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
-  const userId = ctx.from?.id;
-  if (!userId) return next();
-
-  try {
-    const user = await User.findOne({ telegramId: userId });
-
-    // Ban check
-    if (user?.isBanned) {
-      const msg = '🚫 أنت محظور من استخدام البوت.';
-      if (ctx.callbackQuery) {
-        void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => { });
-        return;
-      }
-      await ctx.reply(msg);
+function rateLimitMiddleware(limitMs: number, map: Map<number, number>) {
+  return async (ctx: BotContext, next: NextFunction): Promise<void> => {
+    const userId = ctx.from?.id;
+    if (!userId) return next();
+    if (isAdmin(userId)) return next(); // Admin always exempt
+    const now = Date.now();
+    if (now - (map.get(userId) ?? 0) < limitMs) {
+      await ctx.reply('⚠️ أرسل ببطء قليل، لا تضغط بسرعة!').catch(() => {});
+      if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => {});
       return;
     }
+    map.set(userId, now);
+    return next();
+  };
+}
 
-    // Maintenance check
+// ─── docBot Maintenance Flag ───────────────────────────────────────────────────
+let docBotLocked = false;
+
+// ─── docBot Admin Input State (in-memory, admin is one person) ─────────────────
+type DocAdminInputState = 'awaiting_user_id' | 'awaiting_points' | 'awaiting_broadcast';
+const docAdminState = new Map<number, DocAdminInputState>();
+
+// ─── docBot Admin Panel Keyboard ──────────────────────────────────────────────
+const docAdminKeyboard = new InlineKeyboard()
+  .text('👤 التحكم بالعميل', 'doc_admin_users')
+  .text('🔒 قفل/فتح البوت',  'doc_admin_lock').row()
+  .text('📊 الإحصائيات',     'doc_admin_stats')
+  .text('💰 إدارة النقاط',   'doc_admin_points').row()
+  .text('📢 إشعار جماعي',    'doc_admin_broadcast');
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IMAGE BOT — MIDDLEWARE STACK
+// ══════════════════════════════════════════════════════════════════════════════
+
+// 1. Rate limiting — FIRST, admin exempt
+imageBot.use(rateLimitMiddleware(1500, imageBotRateMap));
+
+// 2. Force subscription
+imageBot.use(forceSubMiddleware);
+
+// 3. Session — isolated key: img_<userId>
+imageBot.use(session({
+  initial: (): SessionData => ({ documentLines: [] }),
+  getSessionKey: (ctx) => ctx.from ? `img_${ctx.from.id}` : undefined,
+}));
+
+// 4. User-init / ban / global maintenance
+imageBot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
+  const userId = ctx.from?.id;
+  if (!userId) return next();
+  try {
+    const user = await User.findOne({ telegramId: userId });
+    if (user?.isBanned) {
+      const msg = '🚫 أنت محظور من استخدام البوت.';
+      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => {}); return; }
+      await ctx.reply(msg); return;
+    }
     const botStatus = (await Settings.get('bot_status')) as boolean;
     if (botStatus === false && !isAdmin(userId)) {
       const msg = '🔧 البوت في وضع الصيانة حالياً. سنعود قريباً!';
-      if (ctx.callbackQuery) {
-        void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => { });
-        return;
-      }
-      await ctx.reply(msg);
-      return;
+      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => {}); return; }
+      await ctx.reply(msg); return;
     }
-
-    // Last-seen update
-    if (user) {
-      user.lastSeen = new Date();
-      await user.save();
-    }
-
-    // removed await next(); from try block
-  } catch (err: unknown) {
-    console.error('[Auth] Middleware error:', err);
-    // removed await next(); from catch block
-  }
+    if (user) { user.lastSeen = new Date(); await user.save(); }
+  } catch (err: unknown) { console.error('[ImageBot Auth] Middleware error:', err); }
   await next();
 });
 
-
-bot.use(async (ctx, next) => {
-  if (ctx.callbackQuery) {
-    const { handleDocMakerCallback } = await import('./bot/handlers/docMakerHandler');
-    const handled = await handleDocMakerCallback(ctx as any);
-    if (handled) return;
-  } else if (ctx.message) {
-    const { handleDocMakerMessage } = await import('./bot/handlers/docMakerHandler');
-    const handled = await handleDocMakerMessage(ctx as any);
-    if (handled) return;
-  }
-  await next();
-});
+// ── imageBot does NOT handle DocMaker — that belongs exclusively to docBot ──
 
 // ─── Commands ──────────────────────────────────────────────────────────────────
 
-bot.command('start', startCommand);
+imageBot.command('start', startCommand);
 
 // ── /reset command ────────────────────────────────────────────────────────
-bot.command('reset', async (ctx) => {
+imageBot.command('reset', async (ctx) => {
   await ctx.reply(
     '⚠️ تأكيد إعادة التشغيل\n\n' +
     'سيتم إلغاء أي عملية جارية (مستند، صورة، إعدادات) والعودة للقائمة الرئيسية.\n\n' +
@@ -115,7 +127,7 @@ bot.command('reset', async (ctx) => {
 });
 
 // ── action_confirm_reset callback ─────────────────────────────────────────
-bot.callbackQuery('action_confirm_reset', async (ctx) => {
+imageBot.callbackQuery('action_confirm_reset', async (ctx) => {
   await ctx.answerCallbackQuery();
   await ctx.deleteMessage().catch(() => {});
 
@@ -157,16 +169,16 @@ bot.callbackQuery('action_confirm_reset', async (ctx) => {
 });
 
 // ── action_cancel_reset callback ──────────────────────────────────────────
-bot.callbackQuery('action_cancel_reset', async (ctx) => {
+imageBot.callbackQuery('action_cancel_reset', async (ctx) => {
   await ctx.answerCallbackQuery({ text: '✅ تم التراجع' });
   await ctx.deleteMessage().catch(() => {});
 });
-registerAdminCommands(bot);
-bot.command('invite', inviteCommand);
+registerAdminCommands(imageBot);
+imageBot.command('invite', inviteCommand);
 
 // ─── 🎨 فلاتر الصور ──────────────────────────────────────────────────────────
 
-bot.hears('🎨 فلاتر الصور', async (ctx) => {
+imageBot.hears('🎨 فلاتر الصور', async (ctx) => {
   const settings = await getSettings();
   const adminIds = (process.env.ADMIN_IDS || '').split(',');
   const isAdmin = adminIds.includes(ctx.from!.id.toString());
@@ -195,7 +207,7 @@ bot.hears('🎨 فلاتر الصور', async (ctx) => {
 
 // ─── /endchat — Admin closes the active support session ───────────────────────
 
-bot.command('endchat', async (ctx) => {
+imageBot.command('endchat', async (ctx) => {
   const telegramId = ctx.from?.id.toString();
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
   if (!adminIds.includes(telegramId || '')) return; // admins only
@@ -224,169 +236,13 @@ bot.command('endchat', async (ctx) => {
   );
 });
 
-// ══════════════════════════════════════════════════════════════
-// DOC SESSION TRAP — intercepts photos/docs/text for users in a doc session.
-// ══════════════════════════════════════════════════════════════
-bot.on('message', async (ctx, next) => {
-  const docState = (ctx.session as any)?.docState as string | null | undefined;
+// ─── imageBot: message handlers (admin input, support, etc.) ──────────────────
 
-  if (docState === 'active' || docState === 'awaiting_custom_img_lines' || docState === 'awaiting_row_caption') {
-    console.log('[TRAP] docState:', (ctx.session as any)?.docState, '| text:', ctx.message?.text);
-
-    // EMERGENCY FALLBACK: if tempImage exists and text is a number,
-    // treat it as custom line count regardless of exact docState value
-    if (ctx.message?.text && (ctx.session as any)?.tempImage?.fileId) {
-      const num = parseInt(ctx.message.text.trim());
-      if (!isNaN(num) && num >= 1 && num <= 50) {
-        (ctx.session as any).tempImage.lines = num;
-        (ctx.session as any).docState = 'active';
-        const { showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
-        await showImageFormatMenu(ctx as any);
-        return;
-      }
-    }
-
-
-    // ── CASE 1: Custom line number input — MUST be checked FIRST ──
-    if (docState === 'awaiting_custom_img_lines') {
-      if (!ctx.message?.text) {
-        await ctx.reply(
-          '⚠️ أرسل رقماً فقط (مثال: 10)',
-          { parse_mode: 'HTML' }
-        );
-        return;
-      }
-      const num = parseInt(ctx.message.text.trim());
-      if (isNaN(num) || num < 1 || num > 50) {
-        await ctx.reply('⚠️ أرسل رقماً صحيحاً بين 1 و50 فقط.');
-        return;
-      }
-      if (!(ctx.session as any).tempImage) {
-        await ctx.reply('⚠️ انتهت صلاحية الصورة، أرسلها مجدداً.');
-        (ctx.session as any).docState = 'active';
-        return;
-      }
-      // Save line count and move to format/mask menu
-      (ctx.session as any).tempImage.lines = num;
-      (ctx.session as any).docState = 'active';
-      const { showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
-      await showImageFormatMenu(ctx as any);
-      return; // ← CRITICAL: must return here
-    }
-
-    // ── CASE 2: Image sent during active session ──
-    const isPhoto = !!ctx.message?.photo;
-    const isImageDoc =
-      !!ctx.message?.document &&
-      ((ctx.message.document.mime_type?.startsWith('image/')) ?? false);
-
-    if (isPhoto || isImageDoc) {
-      // ── Row builder: next image for same row ──────────────────────────────
-      if ((ctx.session as any).awaitingNextRowImage) {
-        const fileId = isPhoto
-          ? ctx.message!.photo![ctx.message!.photo!.length - 1].file_id
-          : ctx.message!.document!.file_id;
-        const rowImages = (ctx.session as any).rowImages || [];
-        const baseLines = rowImages[0]?.lines || 5;
-        (ctx.session as any).tempImage = { fileId, lines: baseLines, align: undefined, mask: undefined };
-        (ctx.session as any).awaitingNextRowImage = false;
-        const { showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
-        await showImageFormatMenu(ctx as any);
-        return;
-      }
-      // guard: if tempImage already exists, user must finish it first
-      if ((ctx.session as any).tempImage?.fileId) {
-        await ctx.reply(
-          '⚠️ <b>أكمل إعدادات الصورة الحالية أولاً</b>\nأو اضغط إلغاء الصورة.',
-          {
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }],
-                [{ text: '🔄 إعادة تشغيل البوت', callback_data: 'action_confirm_reset' }]
-              ]
-            }
-          }
-        );
-        return;
-      }
-
-      const fileId = isPhoto
-        ? ctx.message!.photo![ctx.message!.photo!.length - 1].file_id
-        : ctx.message!.document!.file_id;
-
-      // NO defaults for align/mask — force explicit selection
-      (ctx.session as any).tempImage = { fileId };
-
-      await ctx.reply(
-        '🖼 <b>تم استلام الصورة!</b>\n\n📏 كم سطراً تريد تخصيصها للصورة في المستند؟\nأو اجعلها غلافاً يملأ الصفحة بالكامل:',
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '📄 ملء الصفحة كاملة (غلاف)', callback_data: 'doc_img_full_cover' }],
-              [{ text: '📏 افتراضي — 5 أسطر', callback_data: 'doc_img_space_5' }],
-              [{ text: '📐 كبير — 10 أسطر', callback_data: 'doc_img_space_10' }],
-              [{ text: '✍️ تخصيص العدد...', callback_data: 'doc_img_space_custom' }],
-              [{ text: '🔙 إلغاء', callback_data: 'doc_back_to_session' }]
-            ]
-          }
-        }
-      );
-      return; // ← stops 4K/Nano/AI handler
-    }
-
-    // ── Row caption text intercept ──────────────────────────────────────────
-    if (docState === 'awaiting_row_caption' && (ctx.session as any).tempCaptionTarget !== undefined) {
-      const text = ctx.message?.text?.trim();
-      if (!text) return;
-      
-      if ((ctx.session as any).tempCaptionTarget === 'temp' && (ctx.session as any).tempImage) {
-        (ctx.session as any).tempImage.caption = text;
-      } else if (typeof (ctx.session as any).tempCaptionTarget === 'number') {
-        const rowImgs = (ctx.session as any).rowImages || [];
-        if (rowImgs[(ctx.session as any).tempCaptionTarget]) {
-          rowImgs[(ctx.session as any).tempCaptionTarget].caption = text;
-        }
-      }
-      
-      (ctx.session as any).tempCaptionTarget = undefined;
-      (ctx.session as any).docState = 'active'; // Reset state to active
-      
-      // Immediately re-render the format menu to show the updated caption status
-      await ctx.reply(`✅ تم حفظ النص بنجاح!`);
-      const { showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
-      await showImageFormatMenu(ctx as any);
-      return;
-    }
-
-    // ── CASE 3: Text during active session with pending tempImage ──
-    if ((ctx.session as any).tempImage?.fileId) {
-      await ctx.reply(
-        '⚠️ <b>أكمل إعدادات الصورة أولاً</b>\nاختر المحاذاة والإطار، أو اضغط إلغاء.',
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }],
-              [{ text: '🔄 إعادة تشغيل البوت', callback_data: 'action_confirm_reset' }]
-            ]
-          }
-        }
-      );
-      return;
-    }
-
-    // ── CASE 4: Normal text during active session ──
-    // Fall through to existing doc text handler below
-  }
-  // END SESSION TRAP
-  
+imageBot.on('message', async (_ctx: BotContext, next: NextFunction): Promise<void> => {
   await next();
 });
 
-bot.on('message:text', async (ctx, next) => {
-  if ((ctx.session as any)?.docState === 'awaiting_custom_img_lines') return;
+imageBot.on('message:text', async (ctx, next) => {
   const telegramId = ctx.from?.id.toString();
   const user = await User.findOne({ telegramId });
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
@@ -809,9 +665,9 @@ bot.on('message:text', async (ctx, next) => {
         return;
       }
       await User.findOneAndUpdate({ telegramId: targetUser.telegramId }, { $set: { canBypassLocks: true } });
-      await ctx.reply(`✅ <b>تم التفعيل!</b>\nالمستخدم (<code>${targetUser.telegramId}</code>) يستطيع الآن استخدام صانع المستندات وجميع الميزات المقفلة 🌟`, { parse_mode: 'HTML' });
+      await ctx.reply(`✅ <b>تم التفعيل!</b>\nالمستخدم (<code>${targetUser.telegramId}</code>) يستطيع الآن استخدام جميع الميزات المقفلة 🌟`, { parse_mode: 'HTML' });
       try {
-        await ctx.api.sendMessage(targetUser.telegramId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nتم فتح جميع الميزات المقفلة لك بما فيها صانع المستندات! 😎', { parse_mode: 'HTML' });
+        await ctx.api.sendMessage(targetUser.telegramId, '🌟 <b>تم ترقية حسابك (VIP)</b>\n\nتم فتح جميع الميزات المقفلة لك! 😎', { parse_mode: 'HTML' });
       } catch (e) { }
       return;
     }
@@ -1122,7 +978,7 @@ bot.on('message:text', async (ctx, next) => {
 // session — must be registered BEFORE the imageHandler so these messages
 // are never fed into the enhancement pipeline.
 
-bot.on([':photo', ':document'], async (ctx, next) => {
+imageBot.on([':photo', ':document'], async (ctx, next) => {
   const telegramId = ctx.from?.id.toString();
   const user = await User.findOne({ telegramId });
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
@@ -1205,12 +1061,12 @@ bot.on([':photo', ':document'], async (ctx, next) => {
 
 // ─── Image & Callback Handlers ─────────────────────────────────────────────────
 
-bot.on([':photo', ':document'], imageHandler);
-bot.callbackQuery(/.*/, callbackHandler);
+imageBot.on([':photo', ':document'], imageHandler);
+imageBot.callbackQuery(/.*/, callbackHandler);
 
 // ─── chat_member: Leave / Kick Penalty + Force-Sub Clawback ───────────────────
 
-bot.on('chat_member', async (ctx) => {
+imageBot.on('chat_member', async (ctx) => {
   const update = ctx.update.chat_member;
   if (!update) return;
 
@@ -1274,7 +1130,7 @@ bot.on('chat_member', async (ctx) => {
 
 // ─── my_chat_member: User blocks the bot — Referral Clawback ──────────────────
 
-bot.on('my_chat_member', async (ctx) => {
+imageBot.on('my_chat_member', async (ctx) => {
   try {
     const newStatus = ctx.myChatMember.new_chat_member.status;
     if (newStatus !== 'kicked') return;
@@ -1300,7 +1156,7 @@ bot.on('my_chat_member', async (ctx) => {
       );
 
       console.log(
-        `[Clawback] ${fleeingUserId} blocked bot. ` +
+        `[Clawback] ${fleeingUserId} blocked imageBot. ` +
         `Clawed back ${REFERRAL_REWARD} pts from referrer ${fleeingUser.referredBy}`
       );
 
@@ -1317,11 +1173,305 @@ bot.on('my_chat_member', async (ctx) => {
   }
 });
 
-// ─── Error Handling ────────────────────────────────────────────────────────────
+// ─── imageBot Error Handler ────────────────────────────────────────────────────
 
-bot.catch((err) => {
+imageBot.catch((err) => {
   const ctx = err.ctx;
-  console.error(`[BotError] Update ${ctx.update.update_id}:`, err.error);
+  console.error(`[ImageBot Error] Update ${ctx.update.update_id}:`, err.error);
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOC BOT — MIDDLEWARE STACK
+// ══════════════════════════════════════════════════════════════════════════════
+
+// 1. Rate limiting
+docBot.use(rateLimitMiddleware(2000, docBotRateMap));
+
+// 2. Session — isolated key: doc_<userId>
+docBot.use(session({
+  initial: (): SessionData => ({ documentLines: [] }),
+  getSessionKey: (ctx) => ctx.from ? `doc_${ctx.from.id}` : undefined,
+}));
+
+// 3. Maintenance / ban middleware
+docBot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
+  const userId = ctx.from?.id;
+  if (!userId) return next();
+  try {
+    const user = await User.findOne({ telegramId: userId });
+    if (user?.isBanned) {
+      const msg = '🚫 أنت محظور من استخدام البوت.';
+      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => {}); return; }
+      await ctx.reply(msg); return;
+    }
+    if (docBotLocked && !isAdmin(userId)) {
+      const msg = '🔧 بوت صانع المستندات تحت الصيانة حالياً. سنعود قريباً!';
+      if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => {}); return; }
+      await ctx.reply(msg); return;
+    }
+    if (user) { user.lastSeen = new Date(); await user.save(); }
+  } catch (err: unknown) { console.error('[DocBot Auth] Middleware error:', err); }
+  await next();
+});
+
+// ─── docBot: /start command ────────────────────────────────────────────────────
+
+docBot.command('start', async (ctx) => {
+  const userId = ctx.from?.id;
+  await ctx.reply(
+    '📄 <b>مرحباً بك في بوت صانع المستندات!</b>\n\nأرسل /new لإنشاء مستند PDF جديد.',
+    { parse_mode: 'HTML' }
+  );
+  if (userId && isAdmin(userId)) {
+    await ctx.reply('🔧 <b>لوحة تحكم المشرف</b>', {
+      parse_mode: 'HTML',
+      reply_markup: docAdminKeyboard,
+    });
+  }
+});
+
+// ─── docBot: Admin panel callbacks ────────────────────────────────────────────
+
+docBot.callbackQuery('doc_admin_lock', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+  docBotLocked = !docBotLocked;
+  await ctx.answerCallbackQuery(docBotLocked ? '🔒 تم قفل البوت' : '🔓 تم فتح البوت');
+  await ctx.editMessageText(
+    `🔧 <b>لوحة تحكم المشرف</b>\n\nحالة البوت: ${docBotLocked ? '🔒 مقفول' : '🔓 مفتوح'}`,
+    { parse_mode: 'HTML', reply_markup: docAdminKeyboard }
+  ).catch(() => {});
+});
+
+docBot.callbackQuery('doc_admin_stats', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+  await ctx.answerCallbackQuery();
+  const totalUsers = await User.countDocuments();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const activeToday = await User.countDocuments({ lastSeen: { $gte: today } });
+  await ctx.reply(
+    `📊 <b>إحصائيات بوت صانع المستندات</b>\n\n` +
+    `👥 إجمالي المستخدمين: <b>${totalUsers}</b>\n` +
+    `⚡ نشطون اليوم: <b>${activeToday}</b>\n` +
+    `🔒 حالة البوت: ${docBotLocked ? 'مقفول' : 'مفتوح'}`,
+    { parse_mode: 'HTML' }
+  );
+});
+
+docBot.callbackQuery('doc_admin_users', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+  await ctx.answerCallbackQuery();
+  docAdminState.set(ctx.from.id, 'awaiting_user_id');
+  await ctx.reply('👤 أرسل معرف العميل (Telegram ID):');
+});
+
+docBot.callbackQuery('doc_admin_points', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+  await ctx.answerCallbackQuery();
+  docAdminState.set(ctx.from.id, 'awaiting_points');
+  await ctx.reply('💰 أرسل [معرف العميل] [عدد النقاط] (مثال: 123456789 10):');
+});
+
+docBot.callbackQuery('doc_admin_broadcast', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+  await ctx.answerCallbackQuery();
+  docAdminState.set(ctx.from.id, 'awaiting_broadcast');
+  await ctx.reply('📢 أرسل نص الإشعار الجماعي:');
+});
+
+// ─── docBot: Admin text input handler ─────────────────────────────────────────
+
+docBot.on('message:text', async (ctx, next) => {
+  const userId = ctx.from?.id;
+  if (!userId || !isAdmin(userId)) return next();
+
+  const state = docAdminState.get(userId);
+  if (!state) return next();
+
+  const text = ctx.message.text.trim();
+  docAdminState.delete(userId);
+
+  if (state === 'awaiting_user_id') {
+    const targetUser = await User.findOne({ telegramId: text });
+    if (!targetUser) { await ctx.reply('❌ المستخدم غير موجود.'); return; }
+    await ctx.reply(
+      `ℹ️ <b>معلومات العميل</b>\n\n` +
+      `🆔 ID: <code>${targetUser.telegramId}</code>\n` +
+      `👤 Username: @${targetUser.username || 'غير محدد'}\n` +
+      `🚫 محظور: ${targetUser.isBanned ? 'نعم' : 'لا'}`,
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
+  if (state === 'awaiting_points') {
+    const parts = text.split(/\s+/);
+    if (parts.length !== 2 || isNaN(parseInt(parts[1]))) {
+      await ctx.reply('❌ الصيغة غير صحيحة. مثال: 123456789 10'); return;
+    }
+    const [targetId, amountStr] = parts;
+    const amount = parseInt(amountStr);
+    const updated = await User.findOneAndUpdate(
+      { telegramId: targetId },
+      { $inc: { dailyQuota: amount } },
+      { new: true }
+    );
+    if (!updated) { await ctx.reply('❌ المستخدم غير موجود.'); return; }
+    await ctx.reply(`✅ تمت إضافة <b>${amount}</b> نقطة للمستخدم <code>${targetId}</code>. الرصيد: ${updated.dailyQuota}`, { parse_mode: 'HTML' });
+    return;
+  }
+
+  if (state === 'awaiting_broadcast') {
+    const allUsers = await User.find({ isBanned: { $ne: true } }).select('telegramId').lean();
+    let ok = 0; let fail = 0;
+    for (const u of allUsers) {
+      try { await docBot.api.sendMessage(u.telegramId, text); ok++; } catch { fail++; }
+      if ((ok + fail) % 25 === 0) await new Promise(r => setTimeout(r, 1000));
+    }
+    await ctx.reply(`📢 <b>تم إرسال الإشعار</b>\n✅ نجح: ${ok}\n❌ فشل: ${fail}`, { parse_mode: 'HTML' });
+    return;
+  }
+
+  return next();
+});
+
+// ─── docBot: DocMaker handler (all remaining messages & callbacks) ─────────────
+
+docBot.on(['message', 'callback_query'], async (ctx, next) => {
+  const { handleDocMakerCallback, handleDocMakerMessage, showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
+
+  if (ctx.callbackQuery) {
+    const handled = await handleDocMakerCallback(ctx as any);
+    if (!handled) return next();
+    return;
+  }
+
+  if (ctx.message) {
+    const docState = (ctx.session as any)?.docState as string | null;
+
+    // ── CASE 1: Custom line number input ──
+    if (docState === 'awaiting_custom_img_lines') {
+      if (!ctx.message?.text) {
+        await ctx.reply('⚠️ أرسل رقماً فقط (مثال: 10)', { parse_mode: 'HTML' });
+        return;
+      }
+      const num = parseInt(ctx.message.text.trim());
+      if (isNaN(num) || num < 1 || num > 50) {
+        await ctx.reply('⚠️ أرسل رقماً صحيحاً بين 1 و50 فقط.');
+        return;
+      }
+      if (!(ctx.session as any).tempImage) {
+        await ctx.reply('⚠️ انتهت صلاحية الصورة، أرسلها مجدداً.');
+        (ctx.session as any).docState = 'active';
+        return;
+      }
+      (ctx.session as any).tempImage.lines = num;
+      (ctx.session as any).docState = 'active';
+      await showImageFormatMenu(ctx as any);
+      return;
+    }
+
+    // ── CASE 2: Image sent ──
+    const isPhoto = !!ctx.message?.photo;
+    const isImageDoc = !!ctx.message?.document && ((ctx.message.document.mime_type?.startsWith('image/')) ?? false);
+
+    if (isPhoto || isImageDoc) {
+      if ((ctx.session as any).awaitingNextRowImage) {
+        const fileId = isPhoto
+          ? ctx.message!.photo![ctx.message!.photo!.length - 1].file_id
+          : ctx.message!.document!.file_id;
+        const rowImages = (ctx.session as any).rowImages || [];
+        const baseLines = rowImages[0]?.lines || 5;
+        (ctx.session as any).tempImage = { fileId, lines: baseLines, align: undefined, mask: undefined };
+        (ctx.session as any).awaitingNextRowImage = false;
+        await showImageFormatMenu(ctx as any);
+        return;
+      }
+      if ((ctx.session as any).tempImage?.fileId) {
+        await ctx.reply(
+          '⚠️ <b>أكمل إعدادات الصورة الحالية أولاً</b>\nأو اضغط إلغاء الصورة.',
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }]
+              ]
+            }
+          }
+        );
+        return;
+      }
+
+      const fileId = isPhoto
+        ? ctx.message!.photo![ctx.message!.photo!.length - 1].file_id
+        : ctx.message!.document!.file_id;
+
+      (ctx.session as any).tempImage = { fileId };
+
+      await ctx.reply(
+        '🖼 <b>تم استلام الصورة!</b>\n\n📏 كم سطراً تريد تخصيصها للصورة في المستند؟\nأو اجعلها غلافاً يملأ الصفحة بالكامل:',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📄 ملء الصفحة كاملة (غلاف)', callback_data: 'doc_img_full_cover' }],
+              [{ text: '📏 افتراضي — 5 أسطر', callback_data: 'doc_img_space_5' }],
+              [{ text: '📐 كبير — 10 أسطر', callback_data: 'doc_img_space_10' }],
+              [{ text: '✍️ تخصيص العدد...', callback_data: 'doc_img_space_custom' }],
+              [{ text: '🔙 إلغاء', callback_data: 'doc_back_to_session' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // ── Row caption text intercept ──
+    if (docState === 'awaiting_row_caption' && (ctx.session as any).tempCaptionTarget !== undefined) {
+      const text = ctx.message?.text?.trim();
+      if (!text) return;
+      
+      if ((ctx.session as any).tempCaptionTarget === 'temp' && (ctx.session as any).tempImage) {
+        (ctx.session as any).tempImage.caption = text;
+      } else if (typeof (ctx.session as any).tempCaptionTarget === 'number') {
+        const rowImgs = (ctx.session as any).rowImages || [];
+        if (rowImgs[(ctx.session as any).tempCaptionTarget]) {
+          rowImgs[(ctx.session as any).tempCaptionTarget].caption = text;
+        }
+      }
+      
+      (ctx.session as any).tempCaptionTarget = undefined;
+      (ctx.session as any).docState = 'active';
+      
+      await ctx.reply(`✅ تم حفظ النص بنجاح!`);
+      await showImageFormatMenu(ctx as any);
+      return;
+    }
+
+    if ((ctx.session as any).tempImage?.fileId) {
+      await ctx.reply(
+        '⚠️ <b>أكمل إعدادات الصورة أولاً</b>\nاختر المحاذاة والإطار، أو اضغط إلغاء.',
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    const handled = await handleDocMakerMessage(ctx as any);
+    if (!handled) return next();
+  }
+});
+
+// ─── docBot Error Handler ──────────────────────────────────────────────────────
+
+docBot.catch((err) => {
+  const ctx = err.ctx;
+  console.error(`[DocBot Error] Update ${ctx.update.update_id}:`, err.error);
 });
 process.on('unhandledRejection', (reason) => {
   console.error('[Unhandled Rejection]', reason);
@@ -1349,10 +1499,10 @@ const shutdown = async () => {
   console.log('[System] Shutting down...');
   server.close();
   try {
-    await bot.stop();
-    console.log('[Bot] Polling stopped gracefully.');
+    await Promise.all([imageBot.stop(), docBot.stop()]);
+    console.log('[Bots] Polling stopped gracefully.');
   } catch (err) {
-    console.error('[Bot] Error stopping bot:', err);
+    console.error('[Bots] Error stopping bots:', err);
   }
   await closeDatabaseConnection();
   process.exit(0);
@@ -1372,10 +1522,14 @@ async function bootstrap(): Promise<void> {
     await initBotTexts();
 
     console.log('--- NizoAI Bot is starting ---');
-    const botInfo = await bot.api.getMe();
-    console.log(`[Bot] ✅ Authenticated as @${botInfo.username}`);
+    const [imageBotInfo, docBotInfo] = await Promise.all([
+      imageBot.api.getMe(),
+      docBot.api.getMe(),
+    ]);
+    console.log(`[ImageBot] ✅ Authenticated as @${imageBotInfo.username}`);
+    console.log(`[DocBot]   ✅ Authenticated as @${docBotInfo.username}`);
 
-    bot.start({
+    imageBot.start({
       allowed_updates: [
         'message',
         'callback_query',
@@ -1384,7 +1538,7 @@ async function bootstrap(): Promise<void> {
       ],
       drop_pending_updates: true,
       onStart: (info) => {
-        console.log(`[Bot] 🚀 Polling started for @${info.username}`);
+        console.log(`[ImageBot] 🚀 Polling started for @${info.username}`);
         // Preload ONNX model in background (non-blocking)
         import('./services/onnxEnhanceService')
           .then(({ warmupONNX }) => warmupONNX?.())
@@ -1392,7 +1546,15 @@ async function bootstrap(): Promise<void> {
         // Start fake counter engine
         import('./services/fakeCounterService')
           .then(({ startFakeCounterEngine }) => startFakeCounterEngine())
-          .catch(err => console.error('[Bot] Failed to start fake counter engine', err));
+          .catch(err => console.error('[ImageBot] Failed to start fake counter engine', err));
+      },
+    });
+
+    docBot.start({
+      allowed_updates: ['message', 'callback_query'],
+      drop_pending_updates: true,
+      onStart: (info) => {
+        console.log(`[DocBot] 🚀 Polling started for @${info.username}`);
       },
     });
   } catch (error: unknown) {
