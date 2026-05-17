@@ -13,6 +13,8 @@ const path_1 = __importDefault(require("path"));
 const sharp_1 = __importDefault(require("sharp"));
 const arabic_reshaper_1 = __importDefault(require("arabic-reshaper"));
 const https_1 = __importDefault(require("https"));
+const bidi_js_1 = __importDefault(require("bidi-js"));
+const bidiEngine = (0, bidi_js_1.default)();
 /**
  * Reshapes Arabic characters so they connect properly, then
  * applies the Unicode Bidirectional Algorithm so RTL text is
@@ -23,7 +25,20 @@ function prepareArabicText(text) {
     if (!text || typeof text !== 'string' || text.trim() === '')
         return '';
     try {
-        return arabic_reshaper_1.default.convertArabic(text);
+        // Protect brackets and Latin runs with placeholders
+        const placeholders = [];
+        let protected_text = text.replace(/(\([^)]*\)|\[[^\]]*\]|[A-Za-z0-9%$€£+\-=/<>]+)/g, (match) => {
+            const idx = placeholders.length;
+            placeholders.push(match);
+            return `\u{E000}${idx}\u{E001}`;
+        });
+        // Reshape Arabic letters
+        const reshaped = arabic_reshaper_1.default.convertArabic(protected_text);
+        // Apply bidi reordering
+        const reordered = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
+        // Restore placeholders
+        const restored = reordered.replace(/\u{E000}(\d+)\u{E001}/gu, (_, idx) => placeholders[parseInt(idx)] ?? '');
+        return restored;
     }
     catch {
         return text;

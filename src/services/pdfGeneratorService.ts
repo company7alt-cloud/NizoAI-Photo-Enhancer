@@ -5,9 +5,9 @@ import path from 'path';
 import sharp from 'sharp';
 import arabicReshaper from 'arabic-reshaper';
 import https from 'https';
+import bidiFactory from 'bidi-js';
 
-
-
+const bidiEngine = bidiFactory();
 
 /**
  * Reshapes Arabic characters so they connect properly, then
@@ -18,7 +18,30 @@ import https from 'https';
 function prepareArabicText(text: string): string {
   if (!text || typeof text !== 'string' || text.trim() === '') return '';
   try {
-    return arabicReshaper.convertArabic(text);
+    // Protect brackets and Latin runs with placeholders
+    const placeholders: string[] = [];
+    let protected_text = text.replace(
+      /(\([^)]*\)|\[[^\]]*\]|[A-Za-z0-9%$€£+\-=/<>]+)/g,
+      (match) => {
+        const idx = placeholders.length;
+        placeholders.push(match);
+        return `\u{E000}${idx}\u{E001}`;
+      }
+    );
+
+    // Reshape Arabic letters
+    const reshaped = arabicReshaper.convertArabic(protected_text);
+
+    // Apply bidi reordering
+    const reordered = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
+
+    // Restore placeholders
+    const restored = reordered.replace(
+      /\u{E000}(\d+)\u{E001}/gu,
+      (_: string, idx: string) => placeholders[parseInt(idx)] ?? ''
+    );
+
+    return restored;
   } catch {
     return text;
   }
