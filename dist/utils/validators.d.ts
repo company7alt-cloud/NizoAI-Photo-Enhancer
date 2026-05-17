@@ -100,6 +100,7 @@ export interface SessionData {
     pendingPremiumPrompt?: string;
     pendingPremiumPages?: number;
     pendingPremiumCost?: number;
+    docAwaitingReport?: boolean;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

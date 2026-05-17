@@ -1029,8 +1029,15 @@ docBot.command('start', async (ctx) => {
         reply_markup: new grammy_1.InlineKeyboard()
             .text('📝 الدخول لصانع المستندات', 'start_doc_maker').row()
             .text('🤖 NizoAI PDF', 'start_premium_ai')
-            .text('🆓 Ai Free PDF', 'start_free_ai')
+            .text('🆓 Ai Free PDF', 'start_free_ai').row()
+            .text('🚨 إبلاغ المطور', 'doc_report_dev')
     });
+});
+docBot.callbackQuery('doc_report_dev', async (ctx) => {
+    if (ctx.session)
+        ctx.session.docAwaitingReport = true;
+    await ctx.answerCallbackQuery();
+    await ctx.reply("🚨 <b>إبلاغ المطور:</b>\n\nأرسل رسالتك، مشكلتك، أو اقتراحك الآن في رسالة واحدة، وسيتم إيصالها للمطور مباشرة.", { parse_mode: 'HTML' });
 });
 docBot.command('admin', async (ctx) => {
     if (!ctx.from)
@@ -1403,6 +1410,28 @@ docBot.on('message:text', async (ctx, next) => {
     if (!userId)
         return next();
     const text = ctx.message.text.trim();
+    // ── Report to Dev state ─────────────────────────────────────────────────────
+    if (ctx.session?.docAwaitingReport) {
+        const adminId = process.env.ADMIN_IDS?.split(',')[0]?.trim() || process.env.ADMIN_ID;
+        const username = ctx.from.username ? `@${ctx.from.username}` : 'بدون يوزر';
+        const name = ctx.from.first_name || 'عميل';
+        const reportMsg = `📝 <b>بلاغ من بوت المستندات</b> 📝\n\n👤 <b>العميل:</b> <a href="tg://user?id=${userId}">${name}</a> (${username})\n🆔 <b>الأيدي:</b> <code>${userId}</code>\n\n📩 <b>الرسالة:</b>\n${text}`;
+        try {
+            if (adminId) {
+                await docBot.api.sendMessage(adminId, reportMsg, { parse_mode: 'HTML' });
+            }
+            if (ctx.session)
+                ctx.session.docAwaitingReport = false;
+            await ctx.reply("✅ <b>تم إرسال رسالتك للمطور بنجاح.</b> شكراً لتواصلك!", { parse_mode: 'HTML' });
+        }
+        catch (error) {
+            console.error('Failed to send docBot report to admin:', error);
+            if (ctx.session)
+                ctx.session.docAwaitingReport = false;
+            await ctx.reply("❌ حدث خطأ أثناء إرسال البلاغ. يرجى المحاولة لاحقاً.");
+        }
+        return;
+    }
     // ── Admin state machine ─────────────────────────────────────────────────────
     if ((0, validators_1.isAdmin)(userId)) {
         const state = docAdminState.get(userId);
