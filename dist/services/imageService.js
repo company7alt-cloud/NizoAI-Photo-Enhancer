@@ -649,13 +649,14 @@ async function processImageFilter(imageUrl, filterType) {
             break;
         case 'anime':
             prediction = await replicate.predictions.create({
-                version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+                version: "09a5805203f4c12da649ec1923bb7729517ca25fcac790e640eaa9ed66573b65",
                 input: {
                     image: base64Image,
-                    prompt: "masterpiece, best quality, 2D anime style, studio anime, highly detailed, vibrant colors, flat shading",
-                    negative_prompt: "realistic, photo, 3d, ugly, blurry, deformed, text",
-                    prompt_strength: 0.65,
-                    num_inference_steps: 30,
+                    prompt: "masterpiece, best quality, ultra-detailed, 2D anime style, studio anime, vibrant colors, clean lineart, highly detailed face, expressive eyes, professional anime illustration",
+                    negative_prompt: "realistic, photo, 3d render, ugly, blurry, deformed, text, watermark, signature, low quality, worst quality, normal quality, lowres, jpeg artifacts",
+                    prompt_strength: 0.7,
+                    num_inference_steps: 35,
+                    guidance_scale: 7.5,
                     width: aiWidth,
                     height: aiHeight
                 }
