@@ -1787,14 +1787,39 @@ docBot.on('message:text', async (ctx, next) => {
     ctx.session.awaitingFreeAiTopic = false;
     const waitMsg = await ctx.reply('⏳ جاري الكتابة بالذكاء الاصطناعي...');
     try {
-      const response = await aiClient.chat.completions.create({
-        model: 'mistralai/mistral-7b-instruct:free',
-        messages: [
-          { role: 'system', content: 'أنت كاتب محتوى محترف. اكتب محتوى منظم واضح بدون رموز تعبيرية. استخدم العناوين والفقرات بشكل منظم.' },
-          { role: 'user',   content: text },
-        ],
-      });
-      const rawText    = response.choices[0]?.message?.content ?? '';
+      const FREE_AI_SYSTEM_PROMPT = 'أنت كاتب محتوى عربي محترف. اكتب المحتوى المطلوب بشكل منظم واضح. استخدم العناوين والفقرات. لا تستخدم رموز تعبيرية. اكتب باللغة العربية فقط.';
+
+      let rawText = '';
+
+      // Model 1: Llama 3.1 8B (primary)
+      try {
+        const response = await aiClient.chat.completions.create({
+          model: 'meta-llama/llama-3.1-8b-instruct:free',
+          messages: [
+            { role: 'system', content: FREE_AI_SYSTEM_PROMPT },
+            { role: 'user',   content: text },
+          ],
+        });
+        rawText = response.choices[0]?.message?.content ?? '';
+      } catch (primaryErr: any) {
+        console.warn('[DocBot Free AI] Primary model failed, trying fallback:', primaryErr?.message);
+
+        // Model 2: Gemma 3 4B (fallback)
+        try {
+          const fallbackResponse = await aiClient.chat.completions.create({
+            model: 'google/gemma-3-4b-it:free',
+            messages: [
+              { role: 'system', content: FREE_AI_SYSTEM_PROMPT },
+              { role: 'user',   content: text },
+            ],
+          });
+          rawText = fallbackResponse.choices[0]?.message?.content ?? '';
+        } catch (fallbackErr: any) {
+          console.error('[DocBot Free AI] Fallback model also failed:', fallbackErr?.message);
+          throw new Error(`كلا النموذجين فشلا. الأول: ${primaryErr?.message} — الثاني: ${fallbackErr?.message}`);
+        }
+      }
+
       const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
       if (!cleanedText) throw new Error('AI returned empty content');
       const { generateDocumentFromLines } = await import('./services/pdfGeneratorService');
