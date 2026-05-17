@@ -18,13 +18,6 @@ const https_1 = __importDefault(require("https"));
 const bidiEngine = (0, bidi_js_1.default)();
 const EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
 function hasEmoji(str) { return EMOJI_REGEX.test(str); }
-function fixArabicPunctuation(text) {
-    return text
-        .replace(/\(/g, '\u202A(\u202C')
-        .replace(/\)/g, '\u202A)\u202C')
-        .replace(/\[/g, '\u202A[\u202C')
-        .replace(/\]/g, '\u202A]\u202C');
-}
 /**
  * Reshapes Arabic characters so they connect properly, then
  * applies the Unicode Bidirectional Algorithm so RTL text is
@@ -35,8 +28,7 @@ function prepareArabicText(text) {
     if (!text || typeof text !== 'string' || text.trim() === '')
         return '';
     try {
-        const fixedText = fixArabicPunctuation(text);
-        const reshaped = arabic_reshaper_1.default.convertArabic(fixedText);
+        const reshaped = arabic_reshaper_1.default.convertArabic(text);
         const reordered = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
         return reordered;
     }

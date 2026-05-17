@@ -20,19 +20,11 @@ function getDims(pageSize) {
     return { w: 800, h: SIZE_HEIGHTS[pageSize] ?? 1131 };
 }
 // ─── Arabic Text ─────────────────────────────────────────────────────────────
-function fixArabicPunctuation(text) {
-    return text
-        .replace(/\(/g, '\u202A(\u202C')
-        .replace(/\)/g, '\u202A)\u202C')
-        .replace(/\[/g, '\u202A[\u202C')
-        .replace(/\]/g, '\u202A]\u202C');
-}
 function prepareArabic(text) {
     if (!text)
         return '';
     try {
-        const fixedText = fixArabicPunctuation(text);
-        const reshaped = arabic_reshaper_1.default.convertArabic(fixedText);
+        const reshaped = arabic_reshaper_1.default.convertArabic(text);
         return bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
     }
     catch {

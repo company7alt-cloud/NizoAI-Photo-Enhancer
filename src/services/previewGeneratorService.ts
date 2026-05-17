@@ -51,19 +51,12 @@ function getDims(pageSize: string): { w: number; h: number } {
 
 // ─── Arabic Text ─────────────────────────────────────────────────────────────
 
-function fixArabicPunctuation(text: string): string {
-  return text
-    .replace(/\(/g, '\u202A(\u202C')
-    .replace(/\)/g, '\u202A)\u202C')
-    .replace(/\[/g, '\u202A[\u202C')
-    .replace(/\]/g, '\u202A]\u202C');
-}
+
 
 function prepareArabic(text: string): string {
   if (!text) return '';
   try {
-    const fixedText = fixArabicPunctuation(text);
-    const reshaped: string = arabicReshaper.convertArabic(fixedText);
+    const reshaped: string = arabicReshaper.convertArabic(text);
     return bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
   } catch {
     return text;

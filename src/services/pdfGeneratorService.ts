@@ -13,13 +13,7 @@ const bidiEngine = bidiFactory();
 const EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
 function hasEmoji(str: string): boolean { return EMOJI_REGEX.test(str); }
 
-function fixArabicPunctuation(text: string): string {
-  return text
-    .replace(/\(/g, '\u202A(\u202C')
-    .replace(/\)/g, '\u202A)\u202C')
-    .replace(/\[/g, '\u202A[\u202C')
-    .replace(/\]/g, '\u202A]\u202C');
-}
+
 
 
 /**
@@ -31,8 +25,7 @@ function fixArabicPunctuation(text: string): string {
 function prepareArabicText(text: string): string {
   if (!text || typeof text !== 'string' || text.trim() === '') return '';
   try {
-    const fixedText = fixArabicPunctuation(text);
-    const reshaped: string = arabicReshaper.convertArabic(fixedText);
+    const reshaped: string = arabicReshaper.convertArabic(text);
     const reordered: string = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
     return reordered;
   } catch {
