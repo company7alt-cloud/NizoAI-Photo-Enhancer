@@ -1009,11 +1009,13 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           const timeLeft = TWENTY_FOUR_HOURS - timePassed;
           const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
           const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-          const claimTime = new Date(user.lastRewardDate).toLocaleTimeString('ar-SA', {
+          const timeFormatter = new Intl.DateTimeFormat('ar-SA', {
+            timeZone: 'Asia/Riyadh',
             hour: '2-digit',
             minute: '2-digit',
             hour12: true,
           });
+          const claimTime = timeFormatter.format(new Date(user.lastRewardDate));
 
           await ctx.answerCallbackQuery({
             text: `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
