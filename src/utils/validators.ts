@@ -112,6 +112,13 @@ export interface SessionData {
   pendingPremiumPages?: number;
   pendingPremiumCost?: number;
   docAwaitingReport?: boolean;
+  
+  // New Paid PDF Flow fields
+  referenceImageBuffer?: string;
+  collectedText?: string;
+  awaitingMoreText?: boolean;
+  estimatedPages?: number;
+  totalWords?: number;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

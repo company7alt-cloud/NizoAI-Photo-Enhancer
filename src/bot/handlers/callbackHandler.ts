@@ -1576,6 +1576,17 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+
+  if (data === 'admin_grant_vip' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from.id.toString() },
+      { $set: { adminAwaitingInput: 'grant_vip_id', adminTargetUserId: null } }
+    );
+    await ctx.reply('🔑 <b>تجاوز أقفال الميزات</b>\n\nأرسل الـ ID الخاص بالمستخدم الذي تريد منحه صلاحية تجاوز الإغلاق:', { parse_mode: 'HTML' });
+    return;
+  }
+
   if (data.startsWith('atoggle_') && isAdminUser) {
     await ctx.answerCallbackQuery().catch(() => { });
     const field = data.replace('atoggle_', '');

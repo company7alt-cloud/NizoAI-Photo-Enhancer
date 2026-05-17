@@ -102,6 +102,11 @@ export interface SessionData {
     pendingPremiumPages?: number;
     pendingPremiumCost?: number;
     docAwaitingReport?: boolean;
+    referenceImageBuffer?: string;
+    collectedText?: string;
+    awaitingMoreText?: boolean;
+    estimatedPages?: number;
+    totalWords?: number;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;
