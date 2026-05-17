@@ -11,6 +11,7 @@ if (!process.env.MONGODB_URI) throw new Error('❌ MONGODB_URI is missing');
 import http from 'http';
 import OpenAI from 'openai';
 import { Bot, session, NextFunction, InlineKeyboard, InputFile } from 'grammy';
+import { run } from '@grammyjs/runner';
 import path from 'path';
 
 import { BotContext, isAdmin, SessionData } from './utils/validators';
@@ -1965,24 +1966,6 @@ server.listen(PORT, () => {
 
 // ─── Graceful Shutdown ─────────────────────────────────────────────────────────
 
-const shutdown = async () => {
-  console.log('[System] Shutting down...');
-  server.close();
-  try {
-    await Promise.all([imageBot.stop(), docBot.stop()]);
-    console.log('[Bots] Polling stopped gracefully.');
-  } catch (err) {
-    console.error('[Bots] Error stopping bots:', err);
-  }
-  await closeDatabaseConnection();
-  process.exit(0);
-};
-
-process.removeAllListeners('SIGTERM');
-process.removeAllListeners('SIGINT');
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 async function bootstrap(): Promise<void> {
@@ -1999,34 +1982,34 @@ async function bootstrap(): Promise<void> {
     console.log(`[ImageBot] ✅ Authenticated as @${imageBotInfo.username}`);
     console.log(`[DocBot]   ✅ Authenticated as @${docBotInfo.username}`);
 
-    imageBot.start({
-      allowed_updates: [
-        'message',
-        'callback_query',
-        'chat_member',
-        'my_chat_member',
-      ],
-      drop_pending_updates: true,
-      onStart: (info) => {
-        console.log(`[ImageBot] 🚀 Polling started for @${info.username}`);
-        // Preload ONNX model in background (non-blocking)
-        import('./services/onnxEnhanceService')
-          .then(({ warmupONNX }) => warmupONNX?.())
-          .catch(() => { });
-        // Start fake counter engine
-        import('./services/fakeCounterService')
-          .then(({ startFakeCounterEngine }) => startFakeCounterEngine())
-          .catch(err => console.error('[ImageBot] Failed to start fake counter engine', err));
-      },
-    });
+    // Preload ONNX model in background (non-blocking)
+    import('./services/onnxEnhanceService')
+      .then(({ warmupONNX }) => warmupONNX?.())
+      .catch(() => { });
+    // Start fake counter engine
+    import('./services/fakeCounterService')
+      .then(({ startFakeCounterEngine }) => startFakeCounterEngine())
+      .catch(err => console.error('[ImageBot] Failed to start fake counter engine', err));
 
-    docBot.start({
-      allowed_updates: ['message', 'callback_query'],
-      drop_pending_updates: true,
-      onStart: (info) => {
-        console.log(`[DocBot] 🚀 Polling started for @${info.username}`);
-      },
-    });
+    const imageRunner = run(imageBot);
+    const docRunner = run(docBot);
+    console.log('✅ Image Bot and Document Bot are now running via grammy/runner for maximum concurrency and speed.');
+
+    // Graceful shutdown for runners
+    const shutdown = async () => {
+      console.log('[System] Shutting down...');
+      server.close();
+      if (imageRunner.isRunning()) await imageRunner.stop();
+      if (docRunner.isRunning()) await docRunner.stop();
+      await closeDatabaseConnection();
+      process.exit(0);
+    };
+
+    process.removeAllListeners('SIGTERM');
+    process.removeAllListeners('SIGINT');
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+
   } catch (error: unknown) {
     console.error('[Bootstrap] ❌ Fatal error:', error);
     process.exit(1);

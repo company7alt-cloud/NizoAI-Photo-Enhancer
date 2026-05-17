@@ -52,6 +52,7 @@ if (!process.env.MONGODB_URI)
 const http_1 = __importDefault(require("http"));
 const openai_1 = __importDefault(require("openai"));
 const grammy_1 = require("grammy");
+const runner_1 = require("@grammyjs/runner");
 const path_1 = __importDefault(require("path"));
 const validators_1 = require("./utils/validators");
 const connection_1 = require("./database/connection");
@@ -1665,23 +1666,6 @@ server.listen(PORT, () => {
     console.log(`[Server] Health check listening on port ${PORT}`);
 });
 // ─── Graceful Shutdown ─────────────────────────────────────────────────────────
-const shutdown = async () => {
-    console.log('[System] Shutting down...');
-    server.close();
-    try {
-        await Promise.all([imageBot.stop(), docBot.stop()]);
-        console.log('[Bots] Polling stopped gracefully.');
-    }
-    catch (err) {
-        console.error('[Bots] Error stopping bots:', err);
-    }
-    await (0, connection_1.closeDatabaseConnection)();
-    process.exit(0);
-};
-process.removeAllListeners('SIGTERM');
-process.removeAllListeners('SIGINT');
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 async function bootstrap() {
     try {
@@ -1695,31 +1679,30 @@ async function bootstrap() {
         ]);
         console.log(`[ImageBot] ✅ Authenticated as @${imageBotInfo.username}`);
         console.log(`[DocBot]   ✅ Authenticated as @${docBotInfo.username}`);
-        imageBot.start({
-            allowed_updates: [
-                'message',
-                'callback_query',
-                'chat_member',
-                'my_chat_member',
-            ],
-            drop_pending_updates: true,
-            onStart: (info) => {
-                console.log(`[ImageBot] 🚀 Polling started for @${info.username}`);
-                // Preload ONNX model in background (non-blocking)
-                Promise.resolve().then(() => __importStar(require('./services/onnxEnhanceService'))).then(({ warmupONNX }) => warmupONNX?.())
-                    .catch(() => { });
-                // Start fake counter engine
-                Promise.resolve().then(() => __importStar(require('./services/fakeCounterService'))).then(({ startFakeCounterEngine }) => startFakeCounterEngine())
-                    .catch(err => console.error('[ImageBot] Failed to start fake counter engine', err));
-            },
-        });
-        docBot.start({
-            allowed_updates: ['message', 'callback_query'],
-            drop_pending_updates: true,
-            onStart: (info) => {
-                console.log(`[DocBot] 🚀 Polling started for @${info.username}`);
-            },
-        });
+        // Preload ONNX model in background (non-blocking)
+        Promise.resolve().then(() => __importStar(require('./services/onnxEnhanceService'))).then(({ warmupONNX }) => warmupONNX?.())
+            .catch(() => { });
+        // Start fake counter engine
+        Promise.resolve().then(() => __importStar(require('./services/fakeCounterService'))).then(({ startFakeCounterEngine }) => startFakeCounterEngine())
+            .catch(err => console.error('[ImageBot] Failed to start fake counter engine', err));
+        const imageRunner = (0, runner_1.run)(imageBot);
+        const docRunner = (0, runner_1.run)(docBot);
+        console.log('✅ Image Bot and Document Bot are now running via grammy/runner for maximum concurrency and speed.');
+        // Graceful shutdown for runners
+        const shutdown = async () => {
+            console.log('[System] Shutting down...');
+            server.close();
+            if (imageRunner.isRunning())
+                await imageRunner.stop();
+            if (docRunner.isRunning())
+                await docRunner.stop();
+            await (0, connection_1.closeDatabaseConnection)();
+            process.exit(0);
+        };
+        process.removeAllListeners('SIGTERM');
+        process.removeAllListeners('SIGINT');
+        process.once('SIGINT', shutdown);
+        process.once('SIGTERM', shutdown);
     }
     catch (error) {
         console.error('[Bootstrap] ❌ Fatal error:', error);
