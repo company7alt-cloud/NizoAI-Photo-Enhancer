@@ -32,10 +32,16 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startCommand = startCommand;
 exports.inviteCommand = inviteCommand;
 // src/bot/commands/start.ts
+const grammy_1 = require("grammy");
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const User_1 = require("../../database/models/User");
 const Settings_1 = require("../../database/models/Settings");
 const settingsService_1 = require("../../services/settingsService");
@@ -246,10 +252,22 @@ async function startCommand(ctx) {
                 ],
             ],
         };
-        await ctx.reply(greeting, {
-            parse_mode: undefined,
-            reply_markup: keyboard,
-        });
+        // ── 9. Send welcome message with image (bulletproof path) ─────────────────
+        const welcomeImagePath = path_1.default.join(process.cwd(), 'dist', 'assets', 'welcome_image.jpg');
+        if (fs_1.default.existsSync(welcomeImagePath)) {
+            await ctx.replyWithPhoto(new grammy_1.InputFile(welcomeImagePath), {
+                caption: greeting,
+                parse_mode: 'HTML',
+                reply_markup: keyboard,
+            });
+        }
+        else {
+            console.error('🚨 [ERROR] Welcome image not found at:', welcomeImagePath);
+            await ctx.reply(greeting, {
+                parse_mode: 'HTML',
+                reply_markup: keyboard,
+            });
+        }
     }
     catch (err) {
         console.error('[Start] Error:', err);
