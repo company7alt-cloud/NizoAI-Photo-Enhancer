@@ -1,9 +1,6 @@
 // src/services/previewGeneratorService.ts
 import sharp from 'sharp';
 import arabicReshaper from 'arabic-reshaper';
-import bidiFactory from 'bidi-js';
-
-const bidiEngine = bidiFactory();
 
 export interface PreviewLine {
   text: string;
@@ -56,8 +53,7 @@ function getDims(pageSize: string): { w: number; h: number } {
 function prepareArabic(text: string): string {
   if (!text) return '';
   try {
-    const reshaped: string = arabicReshaper.convertArabic(text);
-    return bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
+    return arabicReshaper.convertArabic(text);
   } catch {
     return text;
   }

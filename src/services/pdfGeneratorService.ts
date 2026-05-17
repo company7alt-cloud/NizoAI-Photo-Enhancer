@@ -4,11 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import arabicReshaper from 'arabic-reshaper';
-import bidiFactory from 'bidi-js';
 import https from 'https';
-
-// Initialise the bidi engine once (singleton)
-const bidiEngine = bidiFactory();
 
 const EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
 function hasEmoji(str: string): boolean { return EMOJI_REGEX.test(str); }
@@ -25,9 +21,7 @@ function hasEmoji(str: string): boolean { return EMOJI_REGEX.test(str); }
 function prepareArabicText(text: string): string {
   if (!text || typeof text !== 'string' || text.trim() === '') return '';
   try {
-    const reshaped: string = arabicReshaper.convertArabic(text);
-    const reordered: string = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
-    return reordered;
+    return arabicReshaper.convertArabic(text);
   } catch {
     return text;
   }
@@ -483,7 +477,8 @@ function drawArabicParagraph(
             lineBreak: false
           });
         } catch (e) {
-          console.error('[PDF] doc.text crash, skipping line:', e);
+          console.error('[PDF] doc.text crash on line, skipping:', e);
+          currentY += doc.currentLineHeight ? doc.currentLineHeight() : 20;
         }
         doc.font(mainFont).fontSize(mainSize);
       } catch {
@@ -499,7 +494,8 @@ function drawArabicParagraph(
             lineBreak: false
           });
         } catch (e) {
-          console.error('[PDF] doc.text crash, skipping line:', e);
+          console.error('[PDF] doc.text crash on line, skipping:', e);
+          currentY += doc.currentLineHeight ? doc.currentLineHeight() : 20;
         }
       }
     } else {
@@ -510,7 +506,8 @@ function drawArabicParagraph(
           lineBreak: false
         });
       } catch (e) {
-        console.error('[PDF] doc.text crash, skipping line:', e);
+        console.error('[PDF] doc.text crash on line, skipping:', e);
+        currentY += doc.currentLineHeight ? doc.currentLineHeight() : 20;
       }
     }
 

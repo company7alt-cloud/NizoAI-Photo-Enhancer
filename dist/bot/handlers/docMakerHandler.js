@@ -233,7 +233,9 @@ async function refreshPreview(ctx) {
             parse_mode: 'HTML',
         });
     }
-    catch { /* silent */ }
+    catch (e) {
+        console.error('[PREVIEW] refreshPreview failed:', e);
+    }
 }
 // ── CALLBACK HANDLER ─────────────────────────────────────────────────────────
 async function handleDocMakerCallback(ctx) {

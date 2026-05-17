@@ -12,10 +12,7 @@ const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const sharp_1 = __importDefault(require("sharp"));
 const arabic_reshaper_1 = __importDefault(require("arabic-reshaper"));
-const bidi_js_1 = __importDefault(require("bidi-js"));
 const https_1 = __importDefault(require("https"));
-// Initialise the bidi engine once (singleton)
-const bidiEngine = (0, bidi_js_1.default)();
 const EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
 function hasEmoji(str) { return EMOJI_REGEX.test(str); }
 /**
@@ -28,9 +25,7 @@ function prepareArabicText(text) {
     if (!text || typeof text !== 'string' || text.trim() === '')
         return '';
     try {
-        const reshaped = arabic_reshaper_1.default.convertArabic(text);
-        const reordered = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
-        return reordered;
+        return arabic_reshaper_1.default.convertArabic(text);
     }
     catch {
         return text;
@@ -396,7 +391,8 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
                     });
                 }
                 catch (e) {
-                    console.error('[PDF] doc.text crash, skipping line:', e);
+                    console.error('[PDF] doc.text crash on line, skipping:', e);
+                    currentY += doc.currentLineHeight ? doc.currentLineHeight() : 20;
                 }
                 doc.font(mainFont).fontSize(mainSize);
             }
@@ -411,7 +407,8 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
                     });
                 }
                 catch (e) {
-                    console.error('[PDF] doc.text crash, skipping line:', e);
+                    console.error('[PDF] doc.text crash on line, skipping:', e);
+                    currentY += doc.currentLineHeight ? doc.currentLineHeight() : 20;
                 }
             }
         }
@@ -424,7 +421,8 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
                 });
             }
             catch (e) {
-                console.error('[PDF] doc.text crash, skipping line:', e);
+                console.error('[PDF] doc.text crash on line, skipping:', e);
+                currentY += doc.currentLineHeight ? doc.currentLineHeight() : 20;
             }
         }
         currentY = doc.y;

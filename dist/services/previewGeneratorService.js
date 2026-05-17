@@ -8,8 +8,6 @@ exports.generatePreviewPNG = generatePreviewPNG;
 // src/services/previewGeneratorService.ts
 const sharp_1 = __importDefault(require("sharp"));
 const arabic_reshaper_1 = __importDefault(require("arabic-reshaper"));
-const bidi_js_1 = __importDefault(require("bidi-js"));
-const bidiEngine = (0, bidi_js_1.default)();
 // ─── Scale factor: old canvas was 400 wide, new is 800 ───────────────────────
 const SCALE = 2;
 // ─── Page Dimensions (800 wide, A4 ratio = 1:1.414) ─────────────────────────
@@ -24,8 +22,7 @@ function prepareArabic(text) {
     if (!text)
         return '';
     try {
-        const reshaped = arabic_reshaper_1.default.convertArabic(text);
-        return bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
+        return arabic_reshaper_1.default.convertArabic(text);
     }
     catch {
         return text;
