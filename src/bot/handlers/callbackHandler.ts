@@ -196,6 +196,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
+    if (ctx.session) ctx.session.inFiltersMenu = true;
+
     await ctx.reply(
       '🎨 <b>فلاتر ومعالجة الصور الاحترافية</b>\n\n' +
       'اختر الفلتر الذي تريد تطبيقه على صورتك:\n\n' +
@@ -269,8 +271,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
                 { text: '🖼 WEBP', callback_data: 'conv_webp' },
               ],
               [
-                { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                { text: '🖼 GIF', callback_data: 'conv_gif' },
                 { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                { text: '🖼 AVIF', callback_data: 'conv_avif' },
               ],
             ]
           }

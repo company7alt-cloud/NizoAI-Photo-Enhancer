@@ -186,6 +186,8 @@ async function callbackHandler(ctx) {
             await ctx.answerCallbackQuery({ text: '🔒 قسم الفلاتر مغلق مؤقتاً', show_alert: true }).catch(() => { });
             return;
         }
+        if (ctx.session)
+            ctx.session.inFiltersMenu = true;
         await ctx.reply('🎨 <b>فلاتر ومعالجة الصور الاحترافية</b>\n\n' +
             'اختر الفلتر الذي تريد تطبيقه على صورتك:\n\n' +
             '👤 <b>تصفية الوجه</b> — يحسن الملامح ويزيل التشويش\n' +
@@ -243,8 +245,9 @@ async function callbackHandler(ctx) {
                                 { text: '🖼 WEBP', callback_data: 'conv_webp' },
                             ],
                             [
-                                { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                                { text: '🖼 GIF', callback_data: 'conv_gif' },
                                 { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                                { text: '🖼 AVIF', callback_data: 'conv_avif' },
                             ],
                         ]
                     }

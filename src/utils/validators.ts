@@ -41,6 +41,7 @@ export interface SessionData {
   pendingConversionFileId?: string;
   pendingConversionFormat?: string;
   pendingBatchFiles?: string[];
+  inFiltersMenu?: boolean;
   // Document Maker (session-based)
   isInDocMaker?: boolean;
   docType?: string;

@@ -117,6 +117,15 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   const userId = ctx.from?.id;
   if (!userId) return;
 
+  // ── FILTERS MENU INTERCEPTOR ─────────────────────────────────────────
+  if (ctx.session?.inFiltersMenu && !ctx.session?.awaitingFilterAction) {
+    const isMedia = ctx.message?.photo || ctx.message?.document;
+    if (isMedia) {
+      await ctx.reply("⚠️ <b>الرجاء اختيار الفلتر الذي تريد تطبيقه على صورتك من الأزرار أعلاه أولاً.</b>", { parse_mode: 'HTML' });
+      return;
+    }
+  }
+
   let user = await User.findOne({ telegramId: userId.toString() });
   if (!user) {
     await ctx.reply('⚠️ يرجى إرسال /start أولاً لتسجيل حسابك.');
@@ -137,6 +146,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     const pendingFilter = ctx.session.awaitingFilterAction;
     ctx.session.activeImageFileId = fileId;
     ctx.session.awaitingFilterAction = undefined; // Clear state immediately
+    ctx.session.inFiltersMenu = false; // Clear menu state
 
     const processingMsg = await ctx.reply('⏳ جاري استلام الصورة والبدء بالمعالجة...');
 
@@ -152,9 +162,27 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
         const archiveChatId = process.env.ARCHIVE_CHANNEL_ID || process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
         if (archiveChatId) {
+          const { v4: uuidv4 } = await import('uuid');
+          const jobId = uuidv4().substring(0, 8).toUpperCase();
+          const actionUser = ctx.from;
+          const userLink = actionUser?.username
+            ? `@${actionUser.username}`
+            : `<a href="tg://user?id=${actionUser?.id}">${actionUser?.first_name || 'مجهول'}</a>`;
+          const sizeMB = (processedImageBuffer.length / (1024 * 1024)).toFixed(2);
+          
+          const archiveCaption =
+            `📦 <b>نسخة أرشيفية (ترميم الصور)</b>\n` +
+            `━━━━━━━━━━━━━━\n` +
+            `🆔 <b>User ID:</b> <code>${actionUser?.id}</code>\n` +
+            `👤 <b>Username:</b> ${userLink}\n` +
+            `🏷 <b>Job ID:</b> ${jobId}\n` +
+            `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
+            `🕐 <b>Time:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+            `━━━━━━━━━━━━━━`;
+
           await ctx.api.sendMediaGroup(archiveChatId, [
-            { type: 'photo', media: fileId, caption: `👤 العميل: ${ctx.from?.id}\n📷 الصورة الأصلية (قبل)` },
-            { type: 'photo', media: new InputFile(processedImageBuffer, 'Restored_Photo.jpg'), caption: `✨ الصورة المرممة (بعد)` }
+            { type: 'photo', media: fileId, caption: `📷 الصورة الأصلية (قبل)` },
+            { type: 'photo', media: new InputFile(processedImageBuffer, 'Restored_Photo.jpg'), caption: archiveCaption, parse_mode: 'HTML' }
           ]).catch((err) => console.error('[ARCHIVE ERROR]', err));
         }
 
@@ -171,8 +199,9 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
                 { text: '🖼 WEBP', callback_data: 'conv_webp' },
               ],
               [
-                { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                { text: '🖼 GIF', callback_data: 'conv_gif' },
                 { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                { text: '🖼 AVIF', callback_data: 'conv_avif' },
               ],
             ]
           }
@@ -209,19 +238,29 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         const { incrementGlobalCounter } = await import('../../services/statsService');
         await incrementGlobalCounter();
 
-        // Send as Photo
-        await ctx.replyWithPhoto(new InputFile(resultBuffer, `NizoAI_Filter_${Date.now()}.jpg`), {
+        // Send as Document
+        await ctx.replyWithDocument(new InputFile(resultBuffer, `NizoAI_Filter_${Date.now()}.jpg`), {
           caption: `✅ <b>تم تطبيق ${filterNames[filterType]} بنجاح!</b> 🎨\n` +
                    `⚡ المحاولات المستخدمة: ${cost}\n` +
                    `💎 رصيدك المتبقي: ${updatedUser?.dailyQuota ?? 0}`,
           parse_mode: 'HTML',
-          reply_markup: new InlineKeyboard()
-            .text('JPG', 'eraser_fmt_jpg')
-            .text('PNG', 'eraser_fmt_png')
-            .text('WEBP', 'eraser_fmt_webp')
-            .row()
-            .text('GIF', 'eraser_fmt_gif')
-            .text('TIFF', 'eraser_fmt_tiff')
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🖼 PNG', callback_data: 'conv_png' },
+                { text: '🖼 JPG', callback_data: 'conv_jpg' },
+                { text: '🖼 WEBP', callback_data: 'conv_webp' },
+              ],
+              [
+                { text: '🖼 GIF', callback_data: 'conv_gif' },
+                { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                { text: '🖼 AVIF', callback_data: 'conv_avif' },
+              ],
+            ]
+          }
+        });
+        await ctx.replyWithPhoto(new InputFile(resultBuffer, `NizoAI_Filter_${Date.now()}.jpg`), {
+          caption: '🖼 معاينة سريعة'
         });
 
         // Archive

@@ -34,6 +34,7 @@ export interface SessionData {
     pendingConversionFileId?: string;
     pendingConversionFormat?: string;
     pendingBatchFiles?: string[];
+    inFiltersMenu?: boolean;
     isInDocMaker?: boolean;
     docType?: string;
     templateId?: number;
