@@ -13,8 +13,6 @@ const path_1 = __importDefault(require("path"));
 const sharp_1 = __importDefault(require("sharp"));
 const arabic_reshaper_1 = __importDefault(require("arabic-reshaper"));
 const https_1 = __importDefault(require("https"));
-const EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
-function hasEmoji(str) { return EMOJI_REGEX.test(str); }
 /**
  * Reshapes Arabic characters so they connect properly, then
  * applies the Unicode Bidirectional Algorithm so RTL text is
@@ -365,67 +363,39 @@ function drawArabicParagraph(doc, rawText, startX, startY, width, align) {
     let currentY = startY;
     for (const inputLine of inputLines) {
         if (!inputLine.trim()) {
-            currentY += doc.currentLineHeight();
+            currentY += (doc.currentLineHeight ? doc.currentLineHeight() : 20);
             continue;
         }
         const isArabic = /[\u0600-\u06FF]/.test(inputLine);
-        let pdfAlign = isArabic ? 'right' : 'left';
-        if (align === 'center')
-            pdfAlign = 'center';
-        // CRITICAL: For Arabic, run full reshape + bidi reorder so pdfkit
-        // receives visually-ordered glyphs. align:'right' handles RTL placement.
-        // NO features array — fontkit GPOS crashes with it on some fonts.
-        let finalLine = isArabic
-            ? prepareArabicText(inputLine) // fixPunctuation + reshape + bidi
+        // Reshape Arabic letters so they connect properly
+        // PDFKit handles RTL direction and bracket mirroring natively via align:'right'
+        const finalLine = isArabic
+            ? prepareArabicText(inputLine)
             : inputLine;
-        if (hasEmoji(finalLine)) {
-            const mainFont = doc._font ? doc._font.name : 'Amiri';
-            const mainSize = doc._fontSize || 12;
-            try {
-                doc.font('NotoEmoji');
-                try {
-                    doc.text(finalLine, startX, currentY, {
-                        width,
-                        align: pdfAlign,
-                        lineBreak: false
-                    });
-                }
-                catch (e) {
-                    console.error('[PDF] doc.text crash on line, skipping:', e);
-                    currentY += doc.currentLineHeight ? doc.currentLineHeight() : 20;
-                }
-                doc.font(mainFont).fontSize(mainSize);
-            }
-            catch {
-                doc.font(mainFont).fontSize(mainSize);
-                const stripped = finalLine.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu, '');
-                try {
-                    doc.text(stripped, startX, currentY, {
-                        width,
-                        align: pdfAlign,
-                        lineBreak: false
-                    });
-                }
-                catch (e) {
-                    console.error('[PDF] doc.text crash on line, skipping:', e);
-                    currentY += doc.currentLineHeight ? doc.currentLineHeight() : 20;
-                }
-            }
+        // Alignment: user's choice overrides auto-detection for center,
+        // otherwise Arabic=right, English=left
+        let pdfAlign;
+        if (align === 'center') {
+            pdfAlign = 'center';
+        }
+        else if (align === 'left') {
+            pdfAlign = 'left';
         }
         else {
-            try {
-                doc.text(finalLine, startX, currentY, {
-                    width,
-                    align: pdfAlign,
-                    lineBreak: false
-                });
-            }
-            catch (e) {
-                console.error('[PDF] doc.text crash on line, skipping:', e);
-                currentY += doc.currentLineHeight ? doc.currentLineHeight() : 20;
-            }
+            // default: Arabic→right, English→left
+            pdfAlign = isArabic ? 'right' : 'left';
         }
-        currentY = doc.y;
+        try {
+            doc.text(finalLine, startX, currentY, {
+                width,
+                align: pdfAlign,
+                lineBreak: false
+            });
+        }
+        catch (e) {
+            console.error('[PDF] doc.text crash, skipping line:', e);
+        }
+        currentY = doc.y || (currentY + (doc._fontSize || 18) * 1.6);
     }
     return currentY;
 }
