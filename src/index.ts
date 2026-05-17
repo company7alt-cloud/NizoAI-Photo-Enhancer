@@ -1659,17 +1659,16 @@ docBot.on('message:text', async (ctx, next) => {
       return;
     }
 
-    const currentWords = text.split(/\s+/).filter(w => w.length > 0).length;
-    const newTotal = (ctx.session.totalWords ?? 0) + currentWords;
-    ctx.session.totalWords = newTotal;
-    const est = Math.ceil(newTotal / 250);
-    ctx.session.estimatedPages = est;
     ctx.session.collectedText = (ctx.session.collectedText ?? '') + '\n' + text;
+    const totalWords = ctx.session.collectedText.split(/\s+/).filter(Boolean).length;
+    const estimatedPages = Math.ceil(totalWords / 250);
+    ctx.session.totalWords = totalWords;
+    ctx.session.estimatedPages = estimatedPages;
 
     await ctx.reply(
-      `📝 الكلمات حتى الآن: ${newTotal}\n` +
-      `📄 الصفحات المتوقعة: ~${est}\n\n` +
-      `هل لديك محتوى إضافي؟ أرسله أو أرسل 'تم' للمتابعة`,
+      `📝 الكلمات حتى الآن: ${totalWords}\n` +
+      `📄 الصفحات المتوقعة: ~${estimatedPages}\n\n` +
+      `هل لديك محتوى إضافي؟ أرسله أو أرسل <b>تم</b> للمتابعة`,
       { parse_mode: 'HTML' }
     );
     return;
@@ -1684,34 +1683,31 @@ docBot.on('message:text', async (ctx, next) => {
 
       let rawText = '';
 
-      // Model 1: Llama 3.1 8B (primary)
-      try {
-        const response = await aiClient.chat.completions.create({
-          model: 'meta-llama/llama-3.1-8b-instruct:free',
-          messages: [
-            { role: 'system', content: FREE_AI_SYSTEM_PROMPT },
-            { role: 'user',   content: text },
-          ],
-        });
-        rawText = response.choices[0]?.message?.content ?? '';
-      } catch (primaryErr: any) {
-        console.warn('[DocBot Free AI] Primary model failed, trying fallback:', primaryErr?.message);
+      const FREE_MODELS = [
+        'deepseek/deepseek-v4-flash:free',
+        'google/gemma-4-31b-it:free',
+        'openai/gpt-oss-20b:free'
+      ];
 
-        // Model 2: Gemma 3 4B (fallback)
+      for (const model of FREE_MODELS) {
         try {
-          const fallbackResponse = await aiClient.chat.completions.create({
-            model: 'google/gemma-3-4b-it:free',
+          const response = await aiClient.chat.completions.create({
+            model,
             messages: [
               { role: 'system', content: FREE_AI_SYSTEM_PROMPT },
               { role: 'user',   content: text },
-            ],
+            ]
           });
-          rawText = fallbackResponse.choices[0]?.message?.content ?? '';
-        } catch (fallbackErr: any) {
-          console.error('[DocBot Free AI] Fallback model also failed:', fallbackErr?.message);
-          throw new Error(`كلا النموذجين فشلا. الأول: ${primaryErr?.message} — الثاني: ${fallbackErr?.message}`);
+          if (response.choices[0]?.message?.content) {
+            rawText = response.choices[0].message.content;
+            break;
+          }
+        } catch (e: any) {
+          console.error(`[Free AI] Model ${model} failed:`, e.message);
+          continue;
         }
       }
+      if (!rawText) throw new Error('كلا النموذجين فشلا');
 
       const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
       if (!cleanedText) throw new Error('AI returned empty content');
