@@ -5,9 +5,6 @@ import path from 'path';
 import sharp from 'sharp';
 import arabicReshaper from 'arabic-reshaper';
 import https from 'https';
-import bidiFactory from 'bidi-js';
-
-const bidiEngine = bidiFactory();
 
 /**
  * Reshapes Arabic characters so they connect properly, then
@@ -18,30 +15,33 @@ const bidiEngine = bidiFactory();
 function prepareArabicText(text: string): string {
   if (!text || typeof text !== 'string' || text.trim() === '') return '';
   try {
-    // Protect brackets and Latin runs with placeholders
-    const placeholders: string[] = [];
-    let protected_text = text.replace(
-      /(\([^)]*\)|\[[^\]]*\]|[A-Za-z0-9%$€£+\-=/<>]+)/g,
-      (match) => {
-        const idx = placeholders.length;
-        placeholders.push(match);
-        return `\u{E000}${idx}\u{E001}`;
+    // Tokenize into words and spaces
+    const tokens = text.split(/(\s+)/);
+
+    // Reshape Arabic tokens only — keep Latin/numbers/brackets untouched
+    const reshaped = tokens.map((token: string) => {
+      if (/[\u0600-\u06FF]/.test(token)) {
+        return arabicReshaper.convertArabic(token);
       }
-    );
+      return token;
+    });
 
-    // Reshape Arabic letters
-    const reshaped = arabicReshaper.convertArabic(protected_text);
+    // Separate words from spaces, preserving structure
+    const wordTokens: string[] = [];
+    const structure = reshaped.map((t: string) => {
+      if (/^\s+$/.test(t)) return { type: 'space', val: t };
+      wordTokens.push(t);
+      return { type: 'word', val: t };
+    });
 
-    // Apply bidi reordering
-    const reordered = bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
+    // Reverse word order for RTL visual rendering
+    wordTokens.reverse();
 
-    // Restore placeholders
-    const restored = reordered.replace(
-      /\u{E000}(\d+)\u{E001}/gu,
-      (_: string, idx: string) => placeholders[parseInt(idx)] ?? ''
-    );
-
-    return restored;
+    // Rebuild string with spaces in original positions
+    let wi = 0;
+    return structure.map((s: any) =>
+      s.type === 'space' ? s.val : wordTokens[wi++]
+    ).join('');
   } catch {
     return text;
   }
