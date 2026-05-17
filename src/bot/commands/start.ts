@@ -1,5 +1,4 @@
 // src/bot/commands/start.ts
-import { InlineKeyboard } from 'grammy';
 import { User } from '../../database/models/User';
 import { Settings } from '../../database/models/Settings';
 import { BotContext } from '../../utils/validators';
@@ -219,35 +218,65 @@ export async function startCommand(ctx: BotContext): Promise<void> {
 
     const nanoSettings = await getSettings();
     const nanoLocks = nanoSettings.locks;
-
-    const keyboard = new InlineKeyboard();
-    if (devLink) keyboard.url('المطور', devLink);
-    keyboard.row().text(
-      nanoLocks.btn_filters ? '🔒 فلاتر الصور — مقفل' : '🎨 فلاتر الصور',
-      'open_filters_menu'
-    );
-
-    keyboard.row().text('⚙️ تحسين الصور (Pro)', 'pro_enhance_start');
-    keyboard.row().text(nanoLocks.btn_nano ? '🔒 تحسين الصورة بالذكاء — مقفل' : '✨ تحسين الصورة بالذكاء', 'nano_banana_start');
-
     const eraserSettingsData = await getSettings();
     const eraserLocks = eraserSettingsData.locks;
-
-    keyboard.row().text('🔄 تحويل صيغة الصورة', 'convert_format_start');
-    keyboard.row().text(
-      eraserLocks.btn_eraser ? '🔒 مُزيل النجمة التلقائي — مقفل' : '🧹 مُزيل النجمة التلقائي',
-      'remove_watermark_auto'
-    );
-    keyboard.row().text('🎁 الهدية اليومية', 'claim_daily_reward');
-    if (chanLink) keyboard.row().url('القناة', chanLink);
-
     const totalStats = await getGlobalCounter();
-    keyboard.row().text(`📈 إحصائيات المعالجة (${totalStats})`, 'show_global_stats');
-    keyboard.row().text('🚨 إبلاغ المطور', 'report_to_dev');
+
+    const keyboard = {
+      inline_keyboard: [
+        // ROW 1 — Developer link (green) or empty if no link
+        ...(devLink ? [[
+          // @ts-ignore
+          { text: 'المطور', url: devLink, style: 'success' }
+        ]] : []),
+
+        // ROW 2 — Filters + Pro Enhance (blue)
+        [
+          // @ts-ignore
+          { text: nanoLocks.btn_filters ? '🔒 فلاتر الصور — مقفل' : '🎨 فلاتر الصور', callback_data: 'open_filters_menu', style: 'primary' },
+          // @ts-ignore
+          { text: '⚙️ تحسين الصور (Pro)', callback_data: 'pro_enhance_start', style: 'primary' },
+        ],
+
+        // ROW 3 — Nano AI + Format Conversion (blue)
+        [
+          // @ts-ignore
+          { text: nanoLocks.btn_nano ? '🔒 تحسين الصورة بالذكاء — مقفل' : '✨ تحسين الصورة بالذكاء', callback_data: 'nano_banana_start', style: 'primary' },
+          // @ts-ignore
+          { text: '🔄 تحويل صيغة الصورة', callback_data: 'convert_format_start', style: 'primary' },
+        ],
+
+        // ROW 4 — Auto Eraser + Daily Gift (blue)
+        [
+          // @ts-ignore
+          { text: eraserLocks.btn_eraser ? '🔒 مُزيل النجمة التلقائي — مقفل' : '🧹 مُزيل النجمة التلقائي', callback_data: 'remove_watermark_auto', style: 'primary' },
+          // @ts-ignore
+          { text: '🎁 الهدية اليومية', callback_data: 'claim_daily_reward', style: 'primary' },
+        ],
+
+        // ROW 5 — Channel link (if present)
+        ...(chanLink ? [[
+          // @ts-ignore
+          { text: 'القناة', url: chanLink, style: 'primary' }
+        ]] : []),
+
+        // ROW 6 — Statistics (green)
+        [
+          // @ts-ignore
+          { text: `📈 إحصائيات المعالجة (${totalStats})`, callback_data: 'show_global_stats', style: 'success' },
+        ],
+
+        // ROW 7 — Report Developer (red)
+        [
+          // @ts-ignore
+          { text: '🚨 إبلاغ المطور', callback_data: 'report_to_dev', style: 'danger' },
+        ],
+      ],
+    };
 
     await ctx.reply(greeting, {
       parse_mode: undefined,
-      reply_markup: devLink || chanLink ? keyboard : undefined,
+      reply_markup: keyboard as any,
     });
   } catch (err: unknown) {
     console.error('[Start] Error:', err);
