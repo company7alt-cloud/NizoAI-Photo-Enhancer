@@ -476,12 +476,15 @@ function drawArabicParagraph(
       const mainSize = doc._fontSize || 12;
       try {
         doc.font('NotoEmoji');
-        doc.text(finalLine, startX, currentY, {
-          width,
-          align: pdfAlign,
-          lineBreak: false,
-          features: []
-        });
+        try {
+          doc.text(finalLine, startX, currentY, {
+            width,
+            align: pdfAlign,
+            lineBreak: false
+          });
+        } catch (e) {
+          console.error('[PDF] doc.text crash, skipping line:', e);
+        }
         doc.font(mainFont).fontSize(mainSize);
       } catch {
         doc.font(mainFont).fontSize(mainSize);
@@ -489,20 +492,26 @@ function drawArabicParagraph(
           /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu,
           ''
         );
-        doc.text(stripped, startX, currentY, {
-          width,
-          align: pdfAlign,
-          lineBreak: false,
-          features: []
-        });
+        try {
+          doc.text(stripped, startX, currentY, {
+            width,
+            align: pdfAlign,
+            lineBreak: false
+          });
+        } catch (e) {
+          console.error('[PDF] doc.text crash, skipping line:', e);
+        }
       }
     } else {
-      doc.text(finalLine, startX, currentY, {
-        width,
-        align: pdfAlign,
-        lineBreak: false,
-        features: []
-      });
+      try {
+        doc.text(finalLine, startX, currentY, {
+          width,
+          align: pdfAlign,
+          lineBreak: false
+        });
+      } catch (e) {
+        console.error('[PDF] doc.text crash, skipping line:', e);
+      }
     }
 
     currentY = doc.y;
@@ -800,7 +809,12 @@ export async function generateDocumentFromLines(
         }
 
         // Render rich line
-        const advance = renderRichLine(doc, richLine, PADDING, currentY, contentW, BASE_SIZE, txtColor);
+        let advance = BASE_SIZE * 1.6;
+        try {
+          advance = renderRichLine(doc, richLine, PADDING, currentY, contentW, BASE_SIZE, txtColor);
+        } catch (e) {
+          console.error('[PDF] renderRichLine crash, skipping line:', e);
+        }
         currentY += advance;
       }
 
