@@ -1,9 +1,17 @@
 import puppeteer from 'puppeteer-core';
 import { marked } from 'marked';
 
+// Configure marked ONCE at module level (outside the function):
+marked.use({
+  gfm: true,        // Enables GitHub Flavored Markdown = enables TABLE parsing
+  breaks: true,     // Line breaks work correctly
+});
+
 export async function generateAiPDF(markdownText: string): Promise<Buffer> {
   // marked v9+: no setOptions needed, inline HTML enabled by default
-  const htmlContent = marked.parse(markdownText) as string;
+  const htmlContent = marked.parse(markdownText, {
+    async: false,
+  }) as string;
 
   const fullHtml = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -33,20 +41,9 @@ export async function generateAiPDF(markdownText: string): Promise<Buffer> {
     p  { margin: 10px 0; }
     ul, ol { padding-right: 25px; padding-left: 0; margin: 10px 0; }
     li { margin: 6px 0; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 20px 0;
-      direction: rtl;
-    }
-    th {
-      background: #1a1a2e;
-      color: #fff;
-      padding: 10px 14px;
-      text-align: right;
-      font-weight: bold;
-    }
-    td { border: 1px solid #ccc; padding: 10px 14px; text-align: right; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; direction: rtl; }
+    th { background: #1a1a2e; color: #fff; padding: 10px 14px; text-align: right; font-weight: bold; border: 1px solid #1a1a2e; }
+    td { border: 1px solid #aaa; padding: 10px 14px; text-align: right; }
     tr:nth-child(even) td { background: #f5f7fa; }
     strong { font-weight: 700; }
     blockquote {
@@ -55,7 +52,7 @@ export async function generateAiPDF(markdownText: string): Promise<Buffer> {
       background: #f0f4f8;
       margin: 10px 0;
     }
-    span[style] { display: inline; }
+    span[style] { display: inline !important; }
   </style>
 </head>
 <body>${htmlContent}</body>

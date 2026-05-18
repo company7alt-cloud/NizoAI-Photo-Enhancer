@@ -6,9 +6,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAiPDF = generateAiPDF;
 const puppeteer_core_1 = __importDefault(require("puppeteer-core"));
 const marked_1 = require("marked");
+// Configure marked ONCE at module level (outside the function):
+marked_1.marked.use({
+    gfm: true, // Enables GitHub Flavored Markdown = enables TABLE parsing
+    breaks: true, // Line breaks work correctly
+});
 async function generateAiPDF(markdownText) {
     // marked v9+: no setOptions needed, inline HTML enabled by default
-    const htmlContent = marked_1.marked.parse(markdownText);
+    const htmlContent = marked_1.marked.parse(markdownText, {
+        async: false,
+    });
     const fullHtml = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -37,20 +44,9 @@ async function generateAiPDF(markdownText) {
     p  { margin: 10px 0; }
     ul, ol { padding-right: 25px; padding-left: 0; margin: 10px 0; }
     li { margin: 6px 0; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 20px 0;
-      direction: rtl;
-    }
-    th {
-      background: #1a1a2e;
-      color: #fff;
-      padding: 10px 14px;
-      text-align: right;
-      font-weight: bold;
-    }
-    td { border: 1px solid #ccc; padding: 10px 14px; text-align: right; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; direction: rtl; }
+    th { background: #1a1a2e; color: #fff; padding: 10px 14px; text-align: right; font-weight: bold; border: 1px solid #1a1a2e; }
+    td { border: 1px solid #aaa; padding: 10px 14px; text-align: right; }
     tr:nth-child(even) td { background: #f5f7fa; }
     strong { font-weight: 700; }
     blockquote {
@@ -59,7 +55,7 @@ async function generateAiPDF(markdownText) {
       background: #f0f4f8;
       margin: 10px 0;
     }
-    span[style] { display: inline; }
+    span[style] { display: inline !important; }
   </style>
 </head>
 <body>${htmlContent}</body>
