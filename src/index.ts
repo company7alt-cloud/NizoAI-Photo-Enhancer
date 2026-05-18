@@ -1676,6 +1676,31 @@ docBot.on('message:text', async (ctx, next) => {
   // ── Free AI Topic Interceptor ───────────────────────────────────────────────
   if (ctx.session.awaitingFreeAiTopic) {
     ctx.session.awaitingFreeAiTopic = false;
+
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim());
+    const isAdminUser = adminIds.includes(ctx.from!.id.toString());
+
+    if (!isAdminUser) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (ctx.session.freeAiUsageDate !== today) {
+        ctx.session.freeAiUsageCount = 0;
+        ctx.session.freeAiUsageDate = today;
+      }
+      const usageCount = ctx.session.freeAiUsageCount ?? 0;
+      if (usageCount >= 7) {
+        ctx.session.awaitingFreeAiTopic = false;
+        await ctx.reply(
+          '⚠️ <b>لقد استنفدت حد الاستخدام اليومي المجاني</b>\n\n' +
+          '🆓 الحد اليومي: 7 مرات\n' +
+          '🔄 يتجدد الحد كل يوم عند منتصف الليل\n\n' +
+          '💡 للاستخدام غير المحدود جرب <b>NizoAI PDF</b> 🤖',
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+      ctx.session.freeAiUsageCount = usageCount + 1;
+    }
+
     const waitMsg = await ctx.reply('⏳ جاري الكتابة بالذكاء الاصطناعي...');
     try {
       const FREE_AI_SYSTEM_PROMPT = 'أنت كاتب محتوى عربي محترف. اكتب المحتوى المطلوب بشكل منظم واضح. استخدم العناوين والفقرات. لا تستخدم رموز تعبيرية. اكتب باللغة العربية فقط.';

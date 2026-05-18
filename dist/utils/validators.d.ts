@@ -102,6 +102,8 @@ export interface SessionData {
     pendingPremiumPages?: number;
     pendingPremiumCost?: number;
     docAwaitingReport?: boolean;
+    freeAiUsageCount?: number;
+    freeAiUsageDate?: string;
     referenceImageBuffer?: string;
     collectedText?: string;
     awaitingMoreText?: boolean;

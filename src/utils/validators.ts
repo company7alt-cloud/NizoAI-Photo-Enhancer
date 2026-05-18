@@ -112,6 +112,8 @@ export interface SessionData {
   pendingPremiumPages?: number;
   pendingPremiumCost?: number;
   docAwaitingReport?: boolean;
+  freeAiUsageCount?: number;
+  freeAiUsageDate?: string; // format: 'YYYY-MM-DD'
   
   // New Paid PDF Flow fields
   referenceImageBuffer?: string;
