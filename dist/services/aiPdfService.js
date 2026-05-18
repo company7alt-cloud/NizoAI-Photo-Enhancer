@@ -1,109 +1,115 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAiPDF = generateAiPDF;
+const pdfkit_1 = __importDefault(require("pdfkit"));
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const PdfPrinter = require('pdfmake/build/pdfmake.js');
-const vfsFonts = require('pdfmake/build/vfs_fonts');
-const fonts = {
-    Roboto: {
-        normal: Buffer.from(vfsFonts.pdfMake.vfs['Roboto-Regular.ttf'], 'base64'),
-        bold: Buffer.from(vfsFonts.pdfMake.vfs['Roboto-Medium.ttf'], 'base64'),
-        italics: Buffer.from(vfsFonts.pdfMake.vfs['Roboto-Italic.ttf'], 'base64'),
-        bolditalics: Buffer.from(vfsFonts.pdfMake.vfs['Roboto-MediumItalic.ttf'], 'base64'),
+const arabicReshaper = require('arabic-reshaper');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const bidiFactory = require('bidi-js');
+const bidiEngine = bidiFactory();
+function prepareText(text) {
+    if (!text)
+        return '';
+    const hasArabic = /[\u0600-\u06FF]/.test(text);
+    if (!hasArabic)
+        return text;
+    try {
+        const reshaped = arabicReshaper.convertArabic(text);
+        return bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
     }
-};
-function markdownToContent(markdown) {
-    const content = [];
-    const lines = markdown.split('\n');
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-            content.push({ text: ' ', margin: [0, 4] });
-            continue;
-        }
-        if (trimmed.startsWith('### ')) {
-            content.push({ text: trimmed.slice(4).replace(/\*\*(.*?)\*\*/g, '$1'), style: 'h3', alignment: 'right', margin: [0, 8, 0, 4] });
-        }
-        else if (trimmed.startsWith('## ')) {
-            content.push({ text: trimmed.slice(3).replace(/\*\*(.*?)\*\*/g, '$1'), style: 'h2', alignment: 'right', margin: [0, 10, 0, 5] });
-        }
-        else if (trimmed.startsWith('# ')) {
-            content.push({ text: trimmed.slice(2).replace(/\*\*(.*?)\*\*/g, '$1'), style: 'h1', alignment: 'right', margin: [0, 12, 0, 8] });
-        }
-        else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-            const itemText = trimmed.slice(2).replace(/\*\*(.*?)\*\*/g, '$1').replace(/<[^>]+>/g, '');
-            content.push({ text: '• ' + itemText, alignment: 'right', margin: [0, 2, 15, 2], fontSize: 12 });
-        }
-        else if (trimmed.match(/^\|.+\|$/)) {
-            // skip table rows — handled separately
-        }
-        else if (trimmed.match(/^\|[-:| ]+\|$/)) {
-            // skip separator
-        }
-        else {
-            const cleanText = trimmed.replace(/\*\*(.*?)\*\*/g, '$1').replace(/<[^>]+>/g, '');
-            if (cleanText)
-                content.push({ text: cleanText, alignment: 'right', fontSize: 12, margin: [0, 3] });
-        }
+    catch {
+        return text;
     }
-    // Parse tables
-    const tableRegex = /(\|.+\|\n?)+/g;
-    const fullText = markdown;
-    const tableMatches = fullText.match(tableRegex);
-    if (tableMatches) {
-        for (const tableStr of tableMatches) {
-            const rows = tableStr.trim().split('\n')
-                .filter(r => !r.match(/^\|[-:| ]+\|$/))
-                .map(row => row.split('|').filter(cell => cell.trim() !== '').map(cell => ({
-                text: cell.trim().replace(/<[^>]+>/g, '').replace(/\*\*(.*?)\*\*/g, '$1'),
-                alignment: 'right',
-                fontSize: 10,
-                margin: [4, 4, 4, 4]
-            })));
-            if (rows.length > 0 && rows[0].length > 0) {
-                const tableContent = {
-                    table: {
-                        headerRows: 1,
-                        widths: Array(rows[0].length).fill('*'),
-                        body: rows
-                    },
-                    layout: 'lightHorizontalLines',
-                    margin: [0, 10, 0, 10]
-                };
-                content.push(tableContent);
-            }
-        }
-    }
-    return content;
 }
 async function generateAiPDF(markdownText) {
-    const cleaned = markdownText
-        .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}]/gu, '')
-        .trim();
-    const printer = new PdfPrinter(fonts);
-    const docDefinition = {
-        content: markdownToContent(cleaned),
-        defaultStyle: {
-            font: 'Roboto',
-            fontSize: 12,
-            lineHeight: 1.6,
-        },
-        styles: {
-            h1: { fontSize: 20, bold: true, color: '#1a1a2e' },
-            h2: { fontSize: 16, bold: true, color: '#1a1a2e' },
-            h3: { fontSize: 14, bold: true, color: '#333333' },
-        },
-        pageMargins: [40, 60, 40, 60],
-        pageSize: 'A4',
-    };
     return new Promise((resolve, reject) => {
         try {
-            const pdfDoc = printer.createPdfKitDocument(docDefinition);
+            const doc = new pdfkit_1.default({
+                autoFirstPage: true,
+                size: 'A4',
+                margin: 50,
+                info: { Title: 'NizoAI Document' }
+            });
             const chunks = [];
-            pdfDoc.on('data', (chunk) => chunks.push(chunk));
-            pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
-            pdfDoc.on('error', reject);
-            pdfDoc.end();
+            doc.on('data', (chunk) => chunks.push(chunk));
+            doc.on('end', () => resolve(Buffer.concat(chunks)));
+            doc.on('error', reject);
+            const lines = markdownText.split('\n');
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) {
+                    doc.moveDown(0.5);
+                    continue;
+                }
+                // H3
+                if (trimmed.startsWith('### ')) {
+                    const text = prepareText(trimmed.slice(4).replace(/\*\*/g, ''));
+                    const isArabic = /[\u0600-\u06FF]/.test(trimmed);
+                    doc.fontSize(14).font('Helvetica-Bold')
+                        .text(text, { align: isArabic ? 'right' : 'left' });
+                    doc.moveDown(0.3);
+                    // H2
+                }
+                else if (trimmed.startsWith('## ')) {
+                    const text = prepareText(trimmed.slice(3).replace(/\*\*/g, ''));
+                    const isArabic = /[\u0600-\u06FF]/.test(trimmed);
+                    doc.fontSize(16).font('Helvetica-Bold')
+                        .text(text, { align: isArabic ? 'right' : 'left' });
+                    doc.moveDown(0.4);
+                    // H1
+                }
+                else if (trimmed.startsWith('# ')) {
+                    const text = prepareText(trimmed.slice(2).replace(/\*\*/g, ''));
+                    const isArabic = /[\u0600-\u06FF]/.test(trimmed);
+                    doc.fontSize(20).font('Helvetica-Bold')
+                        .fillColor('#1a1a2e')
+                        .text(text, { align: isArabic ? 'right' : 'left' });
+                    doc.moveDown(0.5).fillColor('black');
+                    // List items
+                }
+                else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                    const itemText = trimmed.slice(2)
+                        .replace(/\*\*(.*?)\*\*/g, '$1')
+                        .replace(/<[^>]+>/g, '');
+                    const prepared = prepareText(itemText);
+                    const isArabic = /[\u0600-\u06FF]/.test(itemText);
+                    doc.fontSize(12).font('Helvetica')
+                        .text((isArabic ? '' : '• ') + prepared + (isArabic ? ' •' : ''), {
+                        align: isArabic ? 'right' : 'left',
+                        indent: isArabic ? 0 : 15
+                    });
+                    // Table separator
+                }
+                else if (trimmed.match(/^\|[-:| ]+\|$/)) {
+                    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#cccccc').moveDown(0.2);
+                    // Table row
+                }
+                else if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+                    const cells = trimmed.split('|')
+                        .filter(c => c.trim())
+                        .map(c => c.trim().replace(/<[^>]+>/g, ''));
+                    const rowText = cells.map(c => prepareText(c)).join('  |  ');
+                    const isArabic = /[\u0600-\u06FF]/.test(rowText);
+                    doc.fontSize(11).font('Helvetica')
+                        .text(rowText, { align: isArabic ? 'right' : 'left' });
+                    // Normal paragraph
+                }
+                else {
+                    const cleanText = trimmed
+                        .replace(/\*\*(.*?)\*\*/g, '$1')
+                        .replace(/<[^>]+>/g, '');
+                    if (!cleanText)
+                        continue;
+                    const prepared = prepareText(cleanText);
+                    const isArabic = /[\u0600-\u06FF]/.test(cleanText);
+                    doc.fontSize(12).font('Helvetica')
+                        .text(prepared, { align: isArabic ? 'right' : 'left', lineGap: 4 });
+                }
+            }
+            doc.end();
         }
         catch (err) {
             reject(err);
