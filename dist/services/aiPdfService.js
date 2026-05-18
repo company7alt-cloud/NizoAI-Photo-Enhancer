@@ -1,15 +1,15 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAiPDF = generateAiPDF;
-// src/services/aiPdfService.ts
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const PdfPrinter = require('pdfmake/build/pdf.js');
+const PdfPrinter = require('pdfmake/build/pdfmake.js');
+const vfsFonts = require('pdfmake/build/vfs_fonts');
 const fonts = {
     Roboto: {
-        normal: 'node_modules/pdfmake/build/vfs_fonts.js',
-        bold: 'node_modules/pdfmake/build/vfs_fonts.js',
-        italics: 'node_modules/pdfmake/build/vfs_fonts.js',
-        bolditalics: 'node_modules/pdfmake/build/vfs_fonts.js',
+        normal: Buffer.from(vfsFonts.pdfMake.vfs['Roboto-Regular.ttf'], 'base64'),
+        bold: Buffer.from(vfsFonts.pdfMake.vfs['Roboto-Medium.ttf'], 'base64'),
+        italics: Buffer.from(vfsFonts.pdfMake.vfs['Roboto-Italic.ttf'], 'base64'),
+        bolditalics: Buffer.from(vfsFonts.pdfMake.vfs['Roboto-MediumItalic.ttf'], 'base64'),
     }
 };
 function markdownToContent(markdown) {
@@ -18,63 +18,59 @@ function markdownToContent(markdown) {
     for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) {
-            content.push({ text: ' ', margin: [0, 3] });
+            content.push({ text: ' ', margin: [0, 4] });
             continue;
         }
-        // Headers
         if (trimmed.startsWith('### ')) {
-            content.push({ text: trimmed.slice(4), style: 'h3', alignment: 'right', margin: [0, 8, 0, 4] });
+            content.push({ text: trimmed.slice(4).replace(/\*\*(.*?)\*\*/g, '$1'), style: 'h3', alignment: 'right', margin: [0, 8, 0, 4] });
         }
         else if (trimmed.startsWith('## ')) {
-            content.push({ text: trimmed.slice(3), style: 'h2', alignment: 'right', margin: [0, 10, 0, 5] });
+            content.push({ text: trimmed.slice(3).replace(/\*\*(.*?)\*\*/g, '$1'), style: 'h2', alignment: 'right', margin: [0, 10, 0, 5] });
         }
         else if (trimmed.startsWith('# ')) {
-            content.push({ text: trimmed.slice(2), style: 'h1', alignment: 'right', margin: [0, 12, 0, 6] });
+            content.push({ text: trimmed.slice(2).replace(/\*\*(.*?)\*\*/g, '$1'), style: 'h1', alignment: 'right', margin: [0, 12, 0, 8] });
         }
-        // Table rows — skip markdown table syntax
-        else if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-            // Handle tables separately below
-            continue;
-        }
-        // List items
         else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
             const itemText = trimmed.slice(2).replace(/\*\*(.*?)\*\*/g, '$1').replace(/<[^>]+>/g, '');
-            content.push({ text: '• ' + itemText, alignment: 'right', margin: [0, 2, 15, 2], style: 'body' });
+            content.push({ text: '• ' + itemText, alignment: 'right', margin: [0, 2, 15, 2], fontSize: 12 });
         }
-        // Bold
-        else if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
-            content.push({ text: trimmed.slice(2, -2), bold: true, alignment: 'right', style: 'body' });
+        else if (trimmed.match(/^\|.+\|$/)) {
+            // skip table rows — handled separately
         }
-        // Normal paragraph
+        else if (trimmed.match(/^\|[-:| ]+\|$/)) {
+            // skip separator
+        }
         else {
             const cleanText = trimmed.replace(/\*\*(.*?)\*\*/g, '$1').replace(/<[^>]+>/g, '');
-            content.push({ text: cleanText, alignment: 'right', style: 'body', margin: [0, 3] });
+            if (cleanText)
+                content.push({ text: cleanText, alignment: 'right', fontSize: 12, margin: [0, 3] });
         }
     }
-    // Parse tables from markdown
-    const tableRegex = /(\|.+\|\n)+/g;
-    const tableMatches = markdown.match(tableRegex);
+    // Parse tables
+    const tableRegex = /(\|.+\|\n?)+/g;
+    const fullText = markdown;
+    const tableMatches = fullText.match(tableRegex);
     if (tableMatches) {
         for (const tableStr of tableMatches) {
-            const rows = tableStr.trim().split('\n').filter(r => !r.match(/^\|[-:| ]+\|$/));
-            const tableBody = rows.map(row => row.split('|').filter(cell => cell.trim() !== '').map(cell => ({
-                text: cell.trim().replace(/<[^>]+>/g, ''),
+            const rows = tableStr.trim().split('\n')
+                .filter(r => !r.match(/^\|[-:| ]+\|$/))
+                .map(row => row.split('|').filter(cell => cell.trim() !== '').map(cell => ({
+                text: cell.trim().replace(/<[^>]+>/g, '').replace(/\*\*(.*?)\*\*/g, '$1'),
                 alignment: 'right',
-                fontSize: 11,
-                margin: [4, 4]
+                fontSize: 10,
+                margin: [4, 4, 4, 4]
             })));
-            if (tableBody.length > 0) {
-                content.push({
+            if (rows.length > 0 && rows[0].length > 0) {
+                const tableContent = {
                     table: {
                         headerRows: 1,
-                        widths: Array(tableBody[0]?.length || 3).fill('*'),
-                        body: tableBody
+                        widths: Array(rows[0].length).fill('*'),
+                        body: rows
                     },
-                    layout: {
-                        fillColor: (rowIndex) => rowIndex === 0 ? '#1a1a2e' : (rowIndex % 2 === 0 ? '#f5f5f5' : null),
-                    },
-                    margin: [0, 10]
-                });
+                    layout: 'lightHorizontalLines',
+                    margin: [0, 10, 0, 10]
+                };
+                content.push(tableContent);
             }
         }
     }
@@ -84,7 +80,6 @@ async function generateAiPDF(markdownText) {
     const cleaned = markdownText
         .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}]/gu, '')
         .trim();
-    // PdfPrinter is a CJS class — instantiate directly
     const printer = new PdfPrinter(fonts);
     const docDefinition = {
         content: markdownToContent(cleaned),
@@ -97,19 +92,22 @@ async function generateAiPDF(markdownText) {
             h1: { fontSize: 20, bold: true, color: '#1a1a2e' },
             h2: { fontSize: 16, bold: true, color: '#1a1a2e' },
             h3: { fontSize: 14, bold: true, color: '#333333' },
-            body: { fontSize: 12, color: '#1a1a1a' },
-            tableHeader: { bold: true, color: 'white', fillColor: '#1a1a2e' }
         },
         pageMargins: [40, 60, 40, 60],
         pageSize: 'A4',
     };
     return new Promise((resolve, reject) => {
-        const pdfDoc = printer.createPdfKitDocument(docDefinition);
-        const chunks = [];
-        pdfDoc.on('data', (chunk) => chunks.push(chunk));
-        pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
-        pdfDoc.on('error', reject);
-        pdfDoc.end();
+        try {
+            const pdfDoc = printer.createPdfKitDocument(docDefinition);
+            const chunks = [];
+            pdfDoc.on('data', (chunk) => chunks.push(chunk));
+            pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
+            pdfDoc.on('error', reject);
+            pdfDoc.end();
+        }
+        catch (err) {
+            reject(err);
+        }
     });
 }
 //# sourceMappingURL=aiPdfService.js.map
