@@ -19,6 +19,7 @@
     "bidi-js": "^1.0.3",
     "dotenv": "^16.4.5",
     "grammy": "^1.31.0",
+    "html-pdf-node": "^1.0.8",
     "marked": "^18.0.3",
     "mongoose": "^8.5.0",
     "onnxruntime-node": "^1.25.1",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
+    "@types/html-pdf-node": "^1.0.2",
     "@types/node": "^22.0.0",
     "@types/pdfkit": "^0.17.6",
     "@types/uuid": "^10.0.0",
