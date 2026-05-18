@@ -6,15 +6,42 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAiPDF = generateAiPDF;
 const puppeteer_core_1 = __importDefault(require("puppeteer-core"));
 const marked_1 = require("marked");
-// Configure marked ONCE at module level (outside the function):
-marked_1.marked.use({
-    gfm: true, // Enables GitHub Flavored Markdown = enables TABLE parsing
-    breaks: true, // Line breaks work correctly
-});
+// ─── Pre-processor: runs BEFORE marked ───────────────────────
+function preprocessMarkdown(text) {
+    // FIX 3: Strip LaTeX math — convert $formula$ to plain text
+    return text
+        .replace(/\$\$[\s\S]*?\$\$/g, '[معادلة]')
+        .replace(/\$([^$\n]+)\$/g, (_, inner) => inner
+        .replace(/\\mu/g, 'μ')
+        .replace(/\\times/g, '×')
+        .replace(/\^{([^}]+)}/g, (__, exp) => exp)
+        .replace(/[{}\\]/g, '')
+        .trim());
+}
 async function generateAiPDF(markdownText) {
-    // marked v9+: no setOptions needed, inline HTML enabled by default
-    const htmlContent = marked_1.marked.parse(markdownText, {
-        async: false,
+    // FIX 1+2: Configure marked with GFM tables + HTML passthrough
+    const renderer = new marked_1.marked.Renderer();
+    // @ts-ignore
+    marked_1.marked.use({
+        gfm: true,
+        breaks: true,
+        renderer,
+    });
+    // FIX 1: Force table detection — re-format pipe tables before parsing
+    const cleanedText = preprocessMarkdown(markdownText)
+        .split('\n')
+        .map(line => line.trim())
+        .join('\n');
+    // FIX 2: Use parseInline=false and do NOT sanitize — trust AI output
+    const htmlContent = marked_1.marked.parse(cleanedText);
+    // FIX 2: Restore any stripped span tags (fallback)
+    const safeHtml = htmlContent
+        .replace(/&lt;span style=/g, '<span style=')
+        .replace(/&lt;\/span&gt;/g, '</span>')
+        .replace(/&gt;/g, (m, offset, str) => {
+        // only restore > that are part of span tags
+        const before = str.substring(0, offset);
+        return before.match(/<span style=[^>]*$/) ? '>' : m;
     });
     const fullHtml = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -25,20 +52,10 @@ async function generateAiPDF(markdownText) {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Cairo', Tahoma, Arial, sans-serif;
-      font-size: 15px;
-      line-height: 2;
-      color: #1a1a1a;
-      padding: 40px 50px;
-      direction: rtl;
-      text-align: right;
+      font-size: 15px; line-height: 2; color: #1a1a1a;
+      padding: 40px 50px; direction: rtl; text-align: right;
     }
-    h1 {
-      font-size: 22px;
-      border-bottom: 3px solid #1a1a2e;
-      padding-bottom: 10px;
-      margin-bottom: 20px;
-      color: #1a1a2e;
-    }
+    h1 { font-size: 22px; border-bottom: 3px solid #1a1a2e; padding-bottom: 10px; margin-bottom: 20px; color: #1a1a2e; }
     h2 { font-size: 18px; margin: 20px 0 10px; color: #1a1a2e; }
     h3 { font-size: 16px; margin: 15px 0 8px; }
     p  { margin: 10px 0; }
@@ -49,42 +66,32 @@ async function generateAiPDF(markdownText) {
     td { border: 1px solid #aaa; padding: 10px 14px; text-align: right; }
     tr:nth-child(even) td { background: #f5f7fa; }
     strong { font-weight: 700; }
-    blockquote {
-      border-right: 4px solid #457B9D;
-      padding: 10px 16px;
-      background: #f0f4f8;
-      margin: 10px 0;
-    }
+    blockquote { border-right: 4px solid #457B9D; padding: 10px 16px; background: #f0f4f8; margin: 10px 0; }
     span[style] { display: inline !important; }
   </style>
 </head>
-<body>${htmlContent}</body>
+<body>${safeHtml}</body>
 </html>`;
     let browser;
     try {
         browser = await puppeteer_core_1.default.launch({
             executablePath: '/usr/bin/chromium-browser',
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--font-render-hinting=none',
-            ],
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
             headless: true,
         });
         const page = await browser.newPage();
+        // Use waitUntil: 'load' instead of 'networkidle0' to satisfy modern puppeteer types
         await page.setContent(fullHtml, { waitUntil: 'load' });
-        const pdfUint8Array = await page.pdf({
+        const pdf = await page.pdf({
             format: 'A4',
             margin: { top: '20mm', bottom: '20mm', left: '15mm', right: '15mm' },
             printBackground: true,
         });
-        return Buffer.from(pdfUint8Array);
+        return Buffer.from(pdf);
     }
-    catch (error) {
-        console.error('[PDF ERROR]', error);
-        throw new Error('فشل في توليد ملف PDF. يرجى المحاولة لاحقاً.');
+    catch (err) {
+        console.error('[PDF ERROR]', err);
+        throw new Error('فشل في توليد PDF. حاول مجدداً.');
     }
     finally {
         if (browser)
