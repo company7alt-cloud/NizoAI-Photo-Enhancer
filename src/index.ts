@@ -1378,120 +1378,91 @@ docBot.callbackQuery('premium_use_default', async (ctx) => {
   }
 });
 
-docBot.callbackQuery(/^pages_(1|2|3|5|10|15|20|auto)$/, async (ctx) => {
+docBot.callbackQuery(/^pages_(.*)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
-  const choice = ctx.match[1];
-  let pages = 1;
-  let msg = '';
-  if (choice === 'auto') {
-    pages = ctx.session.estimatedPages ?? 1;
-    msg = `🤖 البوت اختار ${pages} صفحات بناءً على حجم المحتوى`;
-  } else {
-    pages = parseInt(choice);
-    msg = `⏳ جاري معالجة ${pages} صفحة...`;
-  }
-  
-  const cost = calculatePremiumCost(pages);
-  const telegramId = ctx.from.id.toString();
-  const user = await User.findOne({ telegramId });
+  const data = ctx.callbackQuery.data || '';
+  if (data.startsWith('pages_')) {
+    const pageChoice = data.replace('pages_', '');
+    const totalWords = ctx.session.totalWords || 0;
+    const estimatedPages = Math.ceil(totalWords / 250);
+    const pages = pageChoice === 'auto' ? estimatedPages : parseInt(pageChoice);
+    
+    const waitMsg = await ctx.reply('⏳ جاري إنشاء المستند الاحترافي...');
+    
+    try {
+      // Build prompt for Claude
+      const prompt = 
+        `أنت مصمم مستندات PDF احترافي.\n\n` +
+        `المطلوب: صمم مستند بـ ${pages} صفحة.\n\n` +
+        `تعليمات مهمة:\n` +
+        `- احتفظ بنفس تصميم النموذج المرجعي المرفق\n` +
+        `- استبدل النص الموجود بالمحتوى التالي فقط\n` +
+        `- لا تضف محتوى من عندك\n` +
+        `- نظم المحتوى بشكل احترافي عبر ${pages} صفحة\n` +
+        `- لا تستخدم رموز * أو & أو ,\n\n` +
+        `المحتوى:\n${ctx.session.collectedText}`;
 
-  if (!user || user.dailyQuota < cost) {
-    await ctx.reply(`❌ رصيدك الحالي ${user?.dailyQuota ?? 0} نقطة، وتحتاج ${cost} نقطة.`);
+      // Call Claude API with image + text
+      const Anthropic = require('@anthropic-ai/sdk');
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      
+      const imageBase64 = ctx.session.referenceImageBuffer;
+      
+      const messages: any[] = [{
+        role: 'user',
+        content: imageBase64 ? [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 }
+          },
+          { type: 'text', text: prompt }
+        ] : [{ type: 'text', text: prompt }]
+      }];
+
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        messages
+      });
+
+      const aiText = response.content
+        .filter((b: any) => b.type === 'text')
+        .map((b: any) => b.text)
+        .join('\n');
+
+      const { generateDocumentFromLines } = await import('./services/pdfGeneratorService');
+      const lines = aiText.split('\n')
+        .filter((l: string) => l.trim())
+        .map((l: string) => ({ text: l.trim(), align: 'right' as const }));
+
+      const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, 'A4');
+
+      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
+      
+      await ctx.replyWithDocument(
+        new InputFile(pdfBuffer, `NizoAI_Doc_${Date.now()}.pdf`),
+        {
+          caption:
+            `✅ <b>تم إنشاء مستندك الاحترافي!</b>\n` +
+            `📄 الصفحات: ${pageCount}\n` +
+            `📝 الكلمات: ${totalWords}`,
+          parse_mode: 'HTML'
+        }
+      );
+
+      // Reset session
+      ctx.session.collectedText = '';
+      ctx.session.referenceImageBuffer = '';
+      ctx.session.totalWords = 0;
+      ctx.session.awaitingMoreText = false;
+
+    } catch (err: any) {
+      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
+      console.error('[Paid PDF] Error:', err?.message);
+      await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message}</code>`, { parse_mode: 'HTML' });
+    }
     return;
   }
-
-  await User.updateOne({ telegramId }, { $inc: { dailyQuota: -cost } });
-  await ctx.editMessageText(msg).catch(() => {});
-
-  try {
-    const imageB64 = ctx.session.referenceImageBuffer;
-    const collectedText = ctx.session.collectedText ?? '';
-    
-    const promptText = `أنت مصمم مستندات PDF احترافي.
-   
-المطلوب: صمم مستند PDF بـ ${pages} صفحة/صفحات.
-
-${imageB64 ? 'النموذج المرجعي: [الصورة المرفقة - احتفظ بنفس الألوان والتصميم والهيكل]' : 'النموذج المرجعي: استخدم النموذج الافتراضي الاحترافي'}
-
-المحتوى النصي المطلوب إدراجه:
-${collectedText}
-
-تعليمات مهمة:
-- احتفظ بنفس تصميم النموذج المرجعي (الألوان، الخطوط، الهيكل)
-- استبدل النص الموجود في النموذج بالمحتوى المقدم فقط
-- لا تضف محتوى من عندك
-- نظم المحتوى بشكل احترافي عبر ${pages} صفحة
-- اكتب باللغة العربية`;
-
-    let messages: any[] = [];
-    if (imageB64) {
-      messages = [
-        {
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageB64}` } },
-            { type: 'text', text: promptText }
-          ]
-        }
-      ];
-    } else {
-      messages = [{ role: 'user', content: promptText }];
-    }
-
-    const response = await aiClient.chat.completions.create({
-      model: 'anthropic/claude-sonnet-4-20250514',
-      max_tokens: 4000,
-      messages
-    });
-
-    const rawText = response.choices[0]?.message?.content ?? '';
-    const cleaned = rawText
-      .replace(/===\s*(HEADER|BODY|FOOTER|PAGE BREAK|صفحة \d+)\s*===/gi, '')
-      .replace(/===.*?===/gs, '')
-      .replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '')
-      .trim();
-
-    if (!cleaned) throw new Error('AI returned empty content');
-
-    const words = cleaned.split(/\s+/);
-    const pageChunks: string[] = [];
-    for (let i = 0; i < words.length; i += 350) {
-      pageChunks.push(words.slice(i, i + 350).join(' '));
-    }
-    
-    if (pageChunks.length > pages) pageChunks.length = pages;
-    while (pageChunks.length < pages) pageChunks.push(pageChunks[pageChunks.length - 1] || '');
-
-    const docLines: { text: string; align: 'right' }[] = [];
-    for (let i = 0; i < pageChunks.length; i++) {
-      const pgLines = pageChunks[i].split('\n').map(l => ({ text: l, align: 'right' as const }));
-      docLines.push(...pgLines);
-      if (i < pageChunks.length - 1) docLines.push({ text: '---PAGE_BREAK---', align: 'right' });
-    }
-
-    const { generateDocumentFromLines } = await import('./services/pdfGeneratorService');
-    const { buffer: pdfBuffer } = await generateDocumentFromLines(docLines, 'A4');
-
-    const remaining = (user.dailyQuota - cost);
-    const fileName  = `nizoai_premium_${Date.now()}.pdf`;
-    
-    await ctx.replyWithDocument(
-      new InputFile(pdfBuffer, fileName),
-      {
-        caption: `✅ مستندك جاهز! 🎉\n📄 ${pages} صفحة احترافية\n📝 ${ctx.session.totalWords} كلمة\n💰 تم خصم ${cost} نقطة\n💳 رصيدك الحالي: ${remaining} نقطة`,
-        parse_mode: 'HTML'
-      }
-    );
-  } catch (err: any) {
-    await User.updateOne({ telegramId }, { $inc: { dailyQuota: cost } });
-    console.error('[DocBot Premium AI] Error:', err?.message);
-    await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\nتم استرداد نقاطك.\n<code>${err?.message ?? 'unknown error'}</code>`, { parse_mode: 'HTML' });
-  }
-
-  ctx.session.awaitingPremiumImage  = false;
-  ctx.session.awaitingMoreText      = false;
-  ctx.session.referenceImageBuffer  = undefined;
-  ctx.session.collectedText         = '';
 });
 
 docBot.callbackQuery('cancel_premium_ai', async (ctx) => {
@@ -1563,6 +1534,60 @@ docBot.on('message:text', async (ctx, next) => {
 
   const text = ctx.message.text.trim();
 
+  // ── Paid PDF Text Loop ──────────────────────────────
+  if (ctx.session.awaitingMoreText && ctx.message?.text) {
+    const incoming = ctx.message.text.trim();
+    
+    if (incoming === 'تم' || incoming === 'تم.' || incoming === 'انتهيت') {
+      // Move to page selection
+      ctx.session.awaitingMoreText = false;
+      const totalWords = (ctx.session.collectedText || '').split(/\s+/).filter(Boolean).length;
+      const estimatedPages = Math.ceil(totalWords / 250);
+      
+      await ctx.reply(
+        `📊 <b>ملخص المحتوى:</b>\n` +
+        `─────────────────\n` +
+        `📝 إجمالي الكلمات: ${totalWords}\n` +
+        `📄 الصفحات المقترحة: ~${estimatedPages}\n\n` +
+        `<b>اختر عدد الصفحات:</b>`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '1 صفحة', callback_data: 'pages_1' },
+                { text: '2 صفحة', callback_data: 'pages_2' },
+                { text: '3 صفحات', callback_data: 'pages_3' },
+                { text: '5 صفحات', callback_data: 'pages_5' },
+              ],
+              [
+                { text: '10 صفحات', callback_data: 'pages_10' },
+                { text: '15 صفحة', callback_data: 'pages_15' },
+                { text: '20 صفحة', callback_data: 'pages_20' },
+              ],
+              [{ text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto' }],
+            ]
+          }
+        }
+      );
+      return;
+    }
+    
+    // Accumulate text
+    ctx.session.collectedText = (ctx.session.collectedText || '') + '\n' + incoming;
+    const totalWords = ctx.session.collectedText.split(/\s+/).filter(Boolean).length;
+    const estimatedPages = Math.ceil(totalWords / 250);
+    ctx.session.totalWords = totalWords;
+    
+    await ctx.reply(
+      `📝 <b>الكلمات حتى الآن:</b> ${totalWords}\n` +
+      `📄 <b>الصفحات المتوقعة:</b> ~${estimatedPages}\n\n` +
+      `هل لديك محتوى إضافي؟ أرسله أو أرسل <b>تم</b> للمتابعة`,
+      { parse_mode: 'HTML' }
+    );
+    return; // CRITICAL: must return to prevent other handlers
+  }
+
   // ── Report to Dev state ─────────────────────────────────────────────────────
   if (ctx.session?.docAwaitingReport) {
     const adminId = process.env.ADMIN_IDS?.split(',')[0]?.trim() || process.env.ADMIN_ID;
@@ -1631,48 +1656,7 @@ docBot.on('message:text', async (ctx, next) => {
     }
   }
 
-  // ── Paid PDF Text Loop ──────────────────────────────
-  if (ctx.session.awaitingMoreText) {
-    if (text === 'تم') {
-      ctx.session.awaitingMoreText = false;
-      const totalWords = ctx.session.totalWords ?? 0;
-      const estimatedPages = ctx.session.estimatedPages ?? 1;
-
-      const kb = new InlineKeyboard()
-        .text('1 صفحة', 'pages_1')
-        .text('2 صفحة', 'pages_2')
-        .text('3 صفحات', 'pages_3')
-        .text('5 صفحات', 'pages_5').row()
-        .text('10 صفحات', 'pages_10')
-        .text('15 صفحة', 'pages_15')
-        .text('20 صفحة', 'pages_20').row()
-        .text('🤖 تلقائي (يحدده البوت)', 'pages_auto');
-
-      await ctx.reply(
-        `📊 ملخص المحتوى:\n` +
-        `─────────────────\n` +
-        `📝 إجمالي الكلمات: ${totalWords}\n` +
-        `📄 الصفحات المقترحة: ~${estimatedPages}\n\n` +
-        `اختر عدد الصفحات:`,
-        { parse_mode: 'HTML', reply_markup: kb }
-      );
-      return;
-    }
-
-    ctx.session.collectedText = (ctx.session.collectedText ?? '') + '\n' + text;
-    const totalWords = ctx.session.collectedText.split(/\s+/).filter(Boolean).length;
-    const estimatedPages = Math.ceil(totalWords / 250);
-    ctx.session.totalWords = totalWords;
-    ctx.session.estimatedPages = estimatedPages;
-
-    await ctx.reply(
-      `📝 الكلمات حتى الآن: ${totalWords}\n` +
-      `📄 الصفحات المتوقعة: ~${estimatedPages}\n\n` +
-      `هل لديك محتوى إضافي؟ أرسله أو أرسل <b>تم</b> للمتابعة`,
-      { parse_mode: 'HTML' }
-    );
-    return;
-  }
+  // Paid PDF Text Loop moved to the top of the message interceptor.
 
   // ── Free AI Topic Interceptor ───────────────────────────────────────────────
   if (ctx.session.awaitingFreeAiTopic) {
