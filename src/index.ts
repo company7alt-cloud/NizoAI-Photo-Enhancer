@@ -1238,11 +1238,40 @@ docBot.command('start', async (ctx) => {
     {
       caption: `مرحباً ${firstName}! 👋\n\nأنا بوت صانع المستندات الاحترافي 📝\nيمكنك إنشاء مستندات PDF احترافية بسهولة تامة.\n\n💰 رصيدك الحالي: ${points} نقطة\n\nاضغط الزر بالأسفل للبدء:`,
       parse_mode: 'HTML',
-      reply_markup: new InlineKeyboard()
-        .text('📝 الدخول لصانع المستندات', 'start_doc_maker').row()
-        .text('🤖 NizoAI PDF', 'start_premium_ai')
-        .text('🆓 Ai Free PDF', 'start_free_ai').row()
-        .text('🚨 إبلاغ المطور', 'doc_report_dev')
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: '📝 الدخول لصانع المستندات',
+              callback_data: 'start_doc_maker',
+              // @ts-ignore
+              style: 'primary'
+            }
+          ],
+          [
+            {
+              text: '🤖 NizoAI PDF',
+              callback_data: 'start_premium_ai',
+              // @ts-ignore
+              style: 'primary'
+            },
+            {
+              text: '🆓 Ai Free PDF',
+              callback_data: 'start_free_ai',
+              // @ts-ignore
+              style: 'primary'
+            }
+          ],
+          [
+            {
+              text: '🚨 إبلاغ المطور',
+              callback_data: 'report_to_dev',
+              // @ts-ignore
+              style: 'danger'
+            }
+          ]
+        ]
+      }
     }
   );
 });
