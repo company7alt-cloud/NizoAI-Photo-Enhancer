@@ -1,116 +1,95 @@
-import PDFDocument from 'pdfkit';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const arabicReshaper = require('arabic-reshaper');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const bidiFactory = require('bidi-js');
-
-const bidiEngine = bidiFactory();
-
-function prepareText(text: string): string {
-  if (!text) return '';
-  const hasArabic = /[\u0600-\u06FF]/.test(text);
-  if (!hasArabic) return text;
-  try {
-    const reshaped: string = arabicReshaper.convertArabic(text);
-    return bidiEngine.getReorderedString(reshaped, { dir: 'rtl' });
-  } catch {
-    return text;
-  }
-}
+import puppeteer from 'puppeteer-core';
+import { marked } from 'marked';
 
 export async function generateAiPDF(markdownText: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({
-        autoFirstPage: true,
-        size: 'A4',
-        margin: 50,
-        info: { Title: 'NizoAI Document' }
-      });
+  // marked v9+: no setOptions needed, inline HTML enabled by default
+  const htmlContent = marked.parse(markdownText) as string;
 
-      const chunks: Buffer[] = [];
-      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      const lines = markdownText.split('\n');
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-
-        if (!trimmed) {
-          doc.moveDown(0.5);
-          continue;
-        }
-
-        // H3
-        if (trimmed.startsWith('### ')) {
-          const text = prepareText(trimmed.slice(4).replace(/\*\*/g, ''));
-          const isArabic = /[\u0600-\u06FF]/.test(trimmed);
-          doc.fontSize(14).font('Helvetica-Bold')
-            .text(text, { align: isArabic ? 'right' : 'left' });
-          doc.moveDown(0.3);
-
-        // H2
-        } else if (trimmed.startsWith('## ')) {
-          const text = prepareText(trimmed.slice(3).replace(/\*\*/g, ''));
-          const isArabic = /[\u0600-\u06FF]/.test(trimmed);
-          doc.fontSize(16).font('Helvetica-Bold')
-            .text(text, { align: isArabic ? 'right' : 'left' });
-          doc.moveDown(0.4);
-
-        // H1
-        } else if (trimmed.startsWith('# ')) {
-          const text = prepareText(trimmed.slice(2).replace(/\*\*/g, ''));
-          const isArabic = /[\u0600-\u06FF]/.test(trimmed);
-          doc.fontSize(20).font('Helvetica-Bold')
-            .fillColor('#1a1a2e')
-            .text(text, { align: isArabic ? 'right' : 'left' });
-          doc.moveDown(0.5).fillColor('black');
-
-        // List items
-        } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-          const itemText = trimmed.slice(2)
-            .replace(/\*\*(.*?)\*\*/g, '$1')
-            .replace(/<[^>]+>/g, '');
-          const prepared = prepareText(itemText);
-          const isArabic = /[\u0600-\u06FF]/.test(itemText);
-          doc.fontSize(12).font('Helvetica')
-            .text((isArabic ? '' : '• ') + prepared + (isArabic ? ' •' : ''), {
-              align: isArabic ? 'right' : 'left',
-              indent: isArabic ? 0 : 15
-            });
-
-        // Table separator
-        } else if (trimmed.match(/^\|[-:| ]+\|$/)) {
-          doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#cccccc').moveDown(0.2);
-
-        // Table row
-        } else if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-          const cells = trimmed.split('|')
-            .filter(c => c.trim())
-            .map(c => c.trim().replace(/<[^>]+>/g, ''));
-          const rowText = cells.map(c => prepareText(c)).join('  |  ');
-          const isArabic = /[\u0600-\u06FF]/.test(rowText);
-          doc.fontSize(11).font('Helvetica')
-            .text(rowText, { align: isArabic ? 'right' : 'left' });
-
-        // Normal paragraph
-        } else {
-          const cleanText = trimmed
-            .replace(/\*\*(.*?)\*\*/g, '$1')
-            .replace(/<[^>]+>/g, '');
-          if (!cleanText) continue;
-          const prepared = prepareText(cleanText);
-          const isArabic = /[\u0600-\u06FF]/.test(cleanText);
-          doc.fontSize(12).font('Helvetica')
-            .text(prepared, { align: isArabic ? 'right' : 'left', lineGap: 4 });
-        }
-      }
-
-      doc.end();
-    } catch (err) {
-      reject(err);
+  const fullHtml = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Cairo', Tahoma, Arial, sans-serif;
+      font-size: 15px;
+      line-height: 2;
+      color: #1a1a1a;
+      padding: 40px 50px;
+      direction: rtl;
+      text-align: right;
     }
-  });
+    h1 {
+      font-size: 22px;
+      border-bottom: 3px solid #1a1a2e;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+      color: #1a1a2e;
+    }
+    h2 { font-size: 18px; margin: 20px 0 10px; color: #1a1a2e; }
+    h3 { font-size: 16px; margin: 15px 0 8px; }
+    p  { margin: 10px 0; }
+    ul, ol { padding-right: 25px; padding-left: 0; margin: 10px 0; }
+    li { margin: 6px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      direction: rtl;
+    }
+    th {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 10px 14px;
+      text-align: right;
+      font-weight: bold;
+    }
+    td { border: 1px solid #ccc; padding: 10px 14px; text-align: right; }
+    tr:nth-child(even) td { background: #f5f7fa; }
+    strong { font-weight: 700; }
+    blockquote {
+      border-right: 4px solid #457B9D;
+      padding: 10px 16px;
+      background: #f0f4f8;
+      margin: 10px 0;
+    }
+    span[style] { display: inline; }
+  </style>
+</head>
+<body>${htmlContent}</body>
+</html>`;
+
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      executablePath: '/usr/bin/chromium-browser',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--font-render-hinting=none',
+      ],
+      headless: true,
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(fullHtml, { waitUntil: 'load' });
+
+    const pdfUint8Array = await page.pdf({
+      format: 'A4',
+      margin: { top: '20mm', bottom: '20mm', left: '15mm', right: '15mm' },
+      printBackground: true,
+    });
+
+    return Buffer.from(pdfUint8Array);
+
+  } catch (error) {
+    console.error('[PDF ERROR]', error);
+    throw new Error('فشل في توليد ملف PDF. يرجى المحاولة لاحقاً.');
+  } finally {
+    if (browser) await browser.close();
+  }
 }
