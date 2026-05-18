@@ -2,6 +2,7 @@
 import { marked } from 'marked';
 // html-pdf-node ships CJS only — use require to avoid ESM interop issues at runtime
 // The @types package gives us compile-time safety
+// @ts-ignore
 import htmlPdf from 'html-pdf-node';
 
 export async function generateAiPDF(markdownText: string): Promise<Buffer> {
@@ -58,6 +59,6 @@ export async function generateAiPDF(markdownText: string): Promise<Buffer> {
     printBackground: true,
   };
 
-  const pdfBuffer = await htmlPdf.generatePdf(file, options);
+  const pdfBuffer = await htmlPdf.generatePdf(file, options) as unknown as Buffer;
   return pdfBuffer;
 }

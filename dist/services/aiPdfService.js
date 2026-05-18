@@ -8,6 +8,7 @@ exports.generateAiPDF = generateAiPDF;
 const marked_1 = require("marked");
 // html-pdf-node ships CJS only — use require to avoid ESM interop issues at runtime
 // The @types package gives us compile-time safety
+// @ts-ignore
 const html_pdf_node_1 = __importDefault(require("html-pdf-node"));
 async function generateAiPDF(markdownText) {
     // Strip unsupported Unicode emoji ranges and trim
