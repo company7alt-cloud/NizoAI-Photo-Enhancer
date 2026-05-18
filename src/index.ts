@@ -27,6 +27,7 @@ import { callbackHandler } from './bot/handlers/callbackHandler';
 import { forceSubMiddleware } from './bot/middlewares/forceSubMiddleware';
 import { initBotTexts } from './services/botTextsService';
 import { getSettings } from './services/settingsService';
+import { generateAiPDF } from './services/aiPdfService';
 
 // ─── Bot Instances ─────────────────────────────────────────────────────────────
 const imageBot = new Bot<BotContext>(process.env.BOT_TOKEN!);
@@ -1354,16 +1355,6 @@ docBot.callbackQuery('start_free_ai', async (ctx) => {
 
 // ─── docBot: Premium AI Flow — Stage 1 (entry) ──────────────────────────────
 
-function calculatePremiumCost(pages: number): number {
-  if (pages <= 0) return 2;
-  if (pages === 1) return 2;
-  const extra = pages - 1;
-  const extraCost = Math.floor(extra / 3) + (extra % 3 > 0 ? 1 : 0);
-  return 2 + extraCost;
-}
-
-
-
 docBot.callbackQuery('start_premium_ai', async (ctx) => {
   ctx.session.awaitingPremiumImage = true;
   ctx.session.awaitingMoreText = false;
@@ -1459,21 +1450,16 @@ docBot.callbackQuery(/^pages_(.*)$/, async (ctx) => {
         .map((b: any) => b.text)
         .join('\n');
 
-      const { generateDocumentFromLines } = await import('./services/pdfGeneratorService');
-      const lines = aiText.split('\n')
-        .filter((l: string) => l.trim())
-        .map((l: string) => ({ text: l.trim(), align: 'right' as const }));
-
-      const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, 'A4');
+      // Generate PDF using Puppeteer + Markdown pipeline
+      const pdfBuffer = await generateAiPDF(aiText);
 
       await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
-      
+
       await ctx.replyWithDocument(
         new InputFile(pdfBuffer, `NizoAI_Doc_${Date.now()}.pdf`),
         {
           caption:
             `✅ <b>تم إنشاء مستندك الاحترافي!</b>\n` +
-            `📄 الصفحات: ${pageCount}\n` +
             `📝 الكلمات: ${totalWords}`,
           parse_mode: 'HTML'
         }
@@ -1724,13 +1710,12 @@ docBot.on('message:text', async (ctx, next) => {
 
       const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
       if (!cleanedText) throw new Error('AI returned empty content');
-      const { generateDocumentFromLines } = await import('./services/pdfGeneratorService');
-      const lines = cleanedText.split('\n').map(l => ({ text: l, align: 'right' as const }));
-      const { buffer: pdfBuffer, pageCount } = await generateDocumentFromLines(lines, 'A4');
+      // Generate PDF using Puppeteer + Markdown pipeline
+      const pdfBuffer = await generateAiPDF(cleanedText);
       const fileName = `nizoai_free_${Date.now()}.pdf`;
       await ctx.replyWithDocument(
         new InputFile(pdfBuffer, fileName),
-        { caption: `✅ <b>تم إنشاء مستندك المجاني!</b>\n📄 الصفحات: ${pageCount}`, parse_mode: 'HTML' }
+        { caption: '✅ مستندك المجاني جاهز! 📄\n\nمدعوم بـ AI Free PDF ⚡' }
       );
     } catch (err: any) {
       console.error('[DocBot Free AI] Error:', err?.message);
