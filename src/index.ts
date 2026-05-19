@@ -59,8 +59,7 @@ const aiClient = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY ?? '',
 });
 
-// ─── Shared emoji strip regex (used by AI output cleaning) ────────────────────
-const AI_EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu;
+// ─── Shared emoji strip regex (removed as it corrupts markdown tables) ────────────────────
 
 // ─── AI Hallucination Guard ────────────────────────────────────────────────────
 function sanitizeAiOutput(text: string, context: 'free' | 'premium'): string {
@@ -1909,12 +1908,15 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
       }
       if (!rawText) throw new Error('كلا النموذجين فشلا');
 
-      const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
-      // Guard: reject hallucinated / corrupt AI output before PDF rendering
-      const sanitizedFreeText = sanitizeAiOutput(cleanedText, 'free');
+      // rawAiResponse: pure, untouched markdown from the API — used for PDF rendering
+      // emoji stripping was causing table corruption, so we use the raw response
+      const rawAiResponse = rawText.trim();
 
-      // Generate PDF using wkhtmltopdf + Markdown pipeline
-      const pdfBuffer = await generateAiPDF(sanitizedFreeText);
+      // Guard: run hallucination check on the raw response before any rendering
+      sanitizeAiOutput(rawAiResponse, 'free'); // throws on hallucination — does NOT strip
+
+      // Generate PDF using wkhtmltopdf + Markdown pipeline (pure markdown — tables intact)
+      const pdfBuffer = await generateAiPDF(rawAiResponse);
       const fileName = `nizoai_free_${Date.now()}.pdf`;
       await ctx.replyWithDocument(
         new InputFile(pdfBuffer, fileName),

@@ -64,6 +64,12 @@ export async function generateAiPDF(markdownText: string): Promise<Buffer> {
       background: #f8f9fa;
       color: #555;
     }
+    @media print {
+      h1, h2 { page-break-before: auto; }
+      h1, h2, h3 { page-break-after: avoid; }
+      table, pre, blockquote, img { page-break-inside: avoid; }
+      p { orphans: 3; widows: 3; }
+    }
   </style>
 </head>
 <body>
