@@ -705,6 +705,7 @@ async function callbackHandler(ctx) {
             await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, fileName), {
                 caption: '✨ تم التحسين بنموذج RealESRGAN AI ×4 | NizoAI Bot 🚀',
+                reply_to_message_id: ctx.msg?.message_id,
             });
             // STEP 7 — Channel backup (untouched original logic) ───────────────────
             const actionUser = ctx.from;
@@ -1841,8 +1842,15 @@ async function callbackHandler(ctx) {
     // القائمة الجديدة المزدوجة (تظهر للمستخدم أولاً)
     if (data === 'remove_watermark_auto') {
         await ctx.answerCallbackQuery().catch(() => { });
-        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingAutoEraserImage: true } });
-        await ctx.reply('📎 <b>أرسل الصورة الآن لإزالة النجمة التلقائي:</b>', { parse_mode: 'HTML' });
+        await ctx.editMessageText(`✨ <b>وحدة التنقيح البصري الذكي</b>\n\nتعتمد هذه الأداة على خوارزميات الذكاء الاصطناعي التوليدي لتحليل بنية الصورة وإزالة أي عناصر أو علامات غير مرغوب فيها بدقة عالية دون تشويه المحتوى الأصلي.\n\n🔍 <b>اختر نوع المعالجة:</b>`, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '✨ إزالة نجمة Gemini تلقائياً', callback_data: 'watermark_auto_gemini' }],
+                    [{ text: '🖌️ إزالة عنصر مخصص', callback_data: 'watermark_custom_start' }]
+                ]
+            }
+        }).catch(() => { });
         return;
     }
     // مسار إزالة النجمة القديم (يشتغل لما يضغط الزر الأول)
