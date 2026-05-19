@@ -1,1 +1,1 @@
-export declare function generateAiPDF(markdownText: string): Promise<Buffer>;
+export declare function generateAiPDF(rawMarkdown: string): Promise<string>;
