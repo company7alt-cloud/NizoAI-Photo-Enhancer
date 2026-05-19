@@ -1,10 +1,9 @@
 // src/bot/commands/start.ts
-import { InputFile } from 'grammy';
 import path from 'path';
-import fs from 'fs';
 import { User } from '../../database/models/User';
 import { Settings } from '../../database/models/Settings';
 import { BotContext } from '../../utils/validators';
+import { safeReplyWithPhoto } from '../../utils/assetGuard';
 import { getSettings } from '../../services/settingsService';
 import { getGlobalCounter } from '../../services/statsService';
 
@@ -278,21 +277,15 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     };
 
     // ── 9. Send welcome message with image (bulletproof path) ─────────────────
+    // NOTE: This file must be committed to GitHub.
+    // Files only on the server will be wiped by git reset --hard.
     const welcomeImagePath = path.join(process.cwd(), 'dist', 'assets', 'welcome_image.jpg');
 
-    if (fs.existsSync(welcomeImagePath)) {
-      await ctx.replyWithPhoto(new InputFile(welcomeImagePath), {
-        caption: greeting,
-        parse_mode: 'HTML',
-        reply_markup: keyboard as any,
-      });
-    } else {
-      console.error('🚨 [ERROR] Welcome image not found at:', welcomeImagePath);
-      await ctx.reply(greeting, {
-        parse_mode: 'HTML',
-        reply_markup: keyboard as any,
-      });
-    }
+    await safeReplyWithPhoto(ctx, welcomeImagePath, {
+      caption: greeting,
+      parse_mode: 'HTML',
+      reply_markup: keyboard as any,
+    });
   } catch (err: unknown) {
     console.error('[Start] Error:', err);
     await ctx.reply('❌ حدث خطأ أثناء بدء البوت.');
