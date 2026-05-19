@@ -20,38 +20,64 @@ async function generateAiPDF(markdownText) {
 <head>
   <meta charset="UTF-8">
   <style>
-    @page { margin: 2.5cm; }
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+    @page { margin: 25mm 20mm; }
     * { box-sizing: border-box; }
     body {
       direction: rtl;
       text-align: right;
-      font-family: 'Arial', sans-serif;
-      font-size: 13pt;
-      line-height: 1.8;
-      color: #222;
+      font-family: 'Tajawal', sans-serif;
+      font-size: 15px;
+      line-height: 2;
+      padding: 0;
+      margin: 0;
+      color: #1a1a1a;
       background: #fff;
     }
-    h1 { font-size: 20pt; border-bottom: 2px solid #333; padding-bottom: 8px; }
-    h2 { font-size: 16pt; margin-top: 24px; }
-    h3 { font-size: 14pt; }
+    h1 {
+      font-size: 28px;
+      line-height: 1.6;
+      font-weight: 800;
+      color: #111827;
+      border-bottom: 3px solid #2c3e50;
+      padding-bottom: 10px;
+      margin: 0 0 22px;
+    }
+    h2 {
+      font-size: 22px;
+      line-height: 1.7;
+      font-weight: 700;
+      color: #1f2937;
+      margin: 28px 0 12px;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 18px;
+      line-height: 1.8;
+      font-weight: 700;
+      color: #374151;
+      margin: 22px 0 8px;
+      page-break-after: avoid;
+    }
     p, li, td, th, span { unicode-bidi: plaintext; }
-    p { margin: 10px 0; }
-    ul, ol { padding-right: 25px; padding-left: 0; margin: 10px 0; }
-    li { margin: 5px 0; }
-    table { width: 100%; border-collapse: collapse; margin: 16px 0; page-break-inside: avoid; direction: rtl; }
-    th, td { border: 1px solid #555; padding: 8px 12px; text-align: right; }
-    th { background: #f0f0f0; font-weight: bold; }
+    p { margin: 0 0 13px; }
+    ul, ol { padding-right: 28px; padding-left: 0; margin: 12px 0 18px; }
+    li { margin: 6px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 25px 0; font-size: 14px; page-break-inside: avoid; direction: rtl; }
+    th { background-color: #2c3e50; color: white; padding: 12px; border: 1px solid #2c3e50; text-align: right; font-weight: 700; }
+    td { padding: 12px; border: 1px solid #dddddd; text-align: right; vertical-align: top; }
+    tr:nth-child(even) { background-color: #f8f9fa; }
     p, li, td { widows: 3; orphans: 3; }
     strong { font-weight: 700; }
     em { font-style: italic; }
-    hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
+    hr { border: none; border-top: 1px solid #d1d5db; margin: 24px 0; }
     blockquote {
-      border-right: 4px solid #457B9D;
+      border-right: 4px solid #2c3e50;
       border-left: none;
-      padding: 10px 15px;
-      margin: 15px 0;
+      padding: 12px 16px;
+      margin: 18px 0;
       background: #f8f9fa;
-      color: #555;
+      color: #374151;
     }
     @media print {
       h1, h2 { page-break-before: auto; }
@@ -70,7 +96,7 @@ ${convertedHtml}
     const tmpPdf = path_1.default.join(os_1.default.tmpdir(), `doc_${uniqueId}.pdf`);
     try {
         await fs_1.default.promises.writeFile(tmpHtml, htmlContent, 'utf8');
-        await execAsync(`wkhtmltopdf --encoding utf-8 --page-size A4 --margin-top 25mm --margin-bottom 25mm --margin-left 25mm --margin-right 25mm --enable-local-file-access "${tmpHtml}" "${tmpPdf}"`, { timeout: 30000 });
+        await execAsync(`wkhtmltopdf --encoding utf-8 --page-size A4 --margin-top 25mm --margin-bottom 25mm --margin-left 20mm --margin-right 20mm --enable-local-file-access "${tmpHtml}" "${tmpPdf}"`, { timeout: 30000 });
         return await fs_1.default.promises.readFile(tmpPdf);
     }
     finally {

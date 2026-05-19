@@ -1668,16 +1668,14 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
         temperature: 0.4,
       });
 
-      const aiText = response.choices[0]?.message?.content ?? '';
-      if (!aiText) throw new Error('AI returned empty content');
+      const rawMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
+      if (!rawMarkdown) throw new Error('AI returned empty content');
 
-      const rawPremiumResponse = aiText.trim();
-
-      // Guard: reject hallucinated / corrupt AI output before PDF rendering.
-      sanitizeAiOutput(rawPremiumResponse, 'premium');
+      // Guard checks the raw API output and never mutates the Markdown sent to PDF.
+      sanitizeAiOutput(rawMarkdown, 'premium');
 
       // Generate PDF from the pure AI Markdown response.
-      const pdfBuffer = await generateAiPDF(rawPremiumResponse);
+      const pdfBuffer = await generateAiPDF(rawMarkdown);
 
       await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
         .catch((error: unknown) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
@@ -1985,18 +1983,14 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
         max_tokens: 4000,
         temperature: 0.4,
       });
-      const rawText = response.choices[0]?.message?.content ?? '';
-      if (!rawText) throw new Error('AI returned empty content');
+      const rawMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
+      if (!rawMarkdown) throw new Error('AI returned empty content');
 
-      // rawAiResponse: pure, untouched markdown from the API — used for PDF rendering
-      // emoji stripping was causing table corruption, so we use the raw response
-      const rawAiResponse = rawText.trim();
-
-      // Guard: run hallucination check on the raw response before any rendering
-      sanitizeAiOutput(rawAiResponse, 'free'); // throws on hallucination — does NOT strip
+      // rawMarkdown is pure, untouched Markdown from the API. Guarding does not strip tables.
+      sanitizeAiOutput(rawMarkdown, 'free');
 
       // Generate PDF using wkhtmltopdf + Markdown pipeline (pure markdown — tables intact)
-      const pdfBuffer = await generateAiPDF(rawAiResponse);
+      const pdfBuffer = await generateAiPDF(rawMarkdown);
       const fileName = `nizoai_free_${Date.now()}.pdf`;
       await ctx.replyWithDocument(
         new InputFile(pdfBuffer, fileName),

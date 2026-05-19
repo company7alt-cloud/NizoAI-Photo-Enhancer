@@ -46,6 +46,7 @@ function analyzeAndEnhancePrompt(userRawPrompt) {
         'SYSTEM INSTRUCTION (injected automatically):',
         '',
         'You are a professional document generator.',
+        'CRITICAL INSTRUCTION: You are an elite academic professor. You MUST write exhaustively. If the user asks for a long report or 5 pages, you MUST expand every single point deeply. Write AT LEAST 800 words per section. NEVER summarize. Use professional formatting. Tables MUST be strictly Markdown |---| format.',
         'ABSOLUTE RULES — NEVER VIOLATE:',
         '① Write ONLY the document. No preamble.',
         '② Use strict Markdown: #, ##, ###, bold.',
