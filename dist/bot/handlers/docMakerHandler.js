@@ -115,6 +115,55 @@ function buildFormattingKeyboard(fmt) {
     return { inline_keyboard: rows };
 }
 const BACKUP_CHANNEL_ID = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID || '';
+const DOC_MAKER_CALLBACK_LOCK_MS = 200;
+const docMakerCallbackLocks = new Map();
+function logDocMakerError(scope, error) {
+    console.error(scope, error);
+}
+function logDocMakerCleanup(scope) {
+    return (error) => {
+        logDocMakerError(scope, error);
+    };
+}
+async function acknowledgeDocMakerCallback(ctx, data) {
+    const originalAnswerCallbackQuery = ctx.answerCallbackQuery.bind(ctx);
+    let callbackAnswered = false;
+    ctx.answerCallbackQuery = async (...args) => {
+        if (callbackAnswered)
+            return undefined;
+        callbackAnswered = true;
+        return originalAnswerCallbackQuery(...args).catch((error) => {
+            logDocMakerError(`[DocMaker:${data}] answerCallbackQuery failed:`, error);
+            return undefined;
+        });
+    };
+    const initialAnswer = data === 'doc_type_image_locked'
+        ? { text: '🔒 مستند الصور غير متاح حالياً.', show_alert: true }
+        : undefined;
+    await ctx.answerCallbackQuery(initialAnswer).catch((error) => {
+        logDocMakerError(`[DocMaker:${data}] initial answerCallbackQuery failed:`, error);
+    });
+}
+function isRapidDocMakerCallback(ctx, data) {
+    const userId = ctx.from?.id;
+    if (!userId)
+        return false;
+    const key = `${userId}:${data}`;
+    const now = Date.now();
+    const last = docMakerCallbackLocks.get(key) ?? 0;
+    if (now - last < DOC_MAKER_CALLBACK_LOCK_MS) {
+        return true;
+    }
+    docMakerCallbackLocks.set(key, now);
+    if (docMakerCallbackLocks.size > 5000) {
+        for (const [lockKey, timestamp] of docMakerCallbackLocks.entries()) {
+            if (now - timestamp > 15 * 60 * 1000) {
+                docMakerCallbackLocks.delete(lockKey);
+            }
+        }
+    }
+    return false;
+}
 function smartWrap(text, pageSize) {
     const MAX_CHARS = pageSize === 'A5' ? 40 : 65;
     const words = text.split(/\s+/);
@@ -195,6 +244,16 @@ const SIZE_KB = {
     ],
 };
 async function renderActiveSession(ctx) {
+    try {
+        await renderActiveSessionInner(ctx);
+    }
+    catch (error) {
+        logDocMakerError('[DocMaker] renderActiveSession failed:', error);
+        await ctx.reply('⚠️ تعذّر تحديث جلسة المستند. يرجى المحاولة مرة أخرى.')
+            .catch(logDocMakerCleanup('[DocMaker] renderActiveSession fallback reply failed:'));
+    }
+}
+async function renderActiveSessionInner(ctx) {
     const lines = ctx.session.documentLines || [];
     const preview = lines.map((l, i) => {
         if (l.type === 'image_cover')
@@ -239,25 +298,20 @@ async function refreshPreview(ctx) {
 }
 // ── CALLBACK HANDLER ─────────────────────────────────────────────────────────
 async function handleDocMakerCallback(ctx) {
-    if (!ctx.session || !ctx.from)
-        return false;
-    ctx.session.pendingBatchFiles ??= [];
+    try {
+        return await handleDocMakerCallbackInner(ctx);
+    }
+    catch (error) {
+        logDocMakerError('[DocMaker] Unhandled callback error:', error);
+        await ctx.reply('⚠️ حدث خطأ أثناء تنفيذ الزر. يرجى المحاولة مرة أخرى.')
+            .catch(logDocMakerCleanup('[DocMaker] Failed to notify user after callback error:'));
+        return true;
+    }
+}
+async function handleDocMakerCallbackInner(ctx) {
     const data = ctx.callbackQuery?.data;
     if (!data)
         return false;
-    if (data === 'doc_maker_start' || data === 'start_doc_maker') {
-        const adminIds = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim());
-        if (!adminIds.includes(ctx.from.id.toString())) {
-            const lock = await (0, settingsService_1.getSettings)();
-            if (lock.locks.btn_doc_maker === true) {
-                const u = await User_1.User.findOne({ telegramId: ctx.from.id.toString() }).select('canBypassLocks');
-                if (!u?.canBypassLocks) {
-                    await ctx.answerCallbackQuery({ text: '⚠️ هذا القسم مغلق مؤقتاً.', show_alert: true }).catch(() => { });
-                    return true;
-                }
-            }
-        }
-    }
     const docCallbacks = [
         'doc_maker_start', 'start_doc_maker', 'doc_maker_cancel',
         'doc_type_text', 'doc_type_image', 'doc_type_image_locked',
@@ -293,7 +347,33 @@ async function handleDocMakerCallback(ctx) {
         data.startsWith('color_');
     if (!isDoc)
         return false;
+    await acknowledgeDocMakerCallback(ctx, data);
+    if (!ctx.session) {
+        logDocMakerError(`[DocMaker:${data}] Missing session:`, ctx.update);
+        return true;
+    }
+    if (!ctx.from) {
+        logDocMakerError(`[DocMaker:${data}] Missing ctx.from:`, ctx.update);
+        return true;
+    }
+    if (isRapidDocMakerCallback(ctx, data)) {
+        return true;
+    }
+    ctx.session.pendingBatchFiles ??= [];
     const telegramId = ctx.from.id.toString();
+    if (data === 'doc_maker_start' || data === 'start_doc_maker') {
+        const adminIds = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim());
+        if (!adminIds.includes(ctx.from.id.toString())) {
+            const lock = await (0, settingsService_1.getSettings)();
+            if (lock.locks.btn_doc_maker === true) {
+                const u = await User_1.User.findOne({ telegramId: ctx.from.id.toString() }).select('canBypassLocks');
+                if (!u?.canBypassLocks) {
+                    await ctx.reply('⚠️ هذا القسم مغلق مؤقتاً.');
+                    return true;
+                }
+            }
+        }
+    }
     // ── Entry ─────────────────────────────────────────────────────────────────
     if (data === 'doc_maker_start' || data === 'start_doc_maker') {
         await ctx.answerCallbackQuery();
@@ -307,6 +387,10 @@ async function handleDocMakerCallback(ctx) {
                 ],
             },
         });
+        return true;
+    }
+    if (data === 'doc_type_image_locked') {
+        await ctx.reply('🔒 مستند الصور غير متاح حالياً. يمكنك استخدام المستند النصي وإضافة الصور داخله بعد بدء الجلسة.');
         return true;
     }
     // ── Type Selected → Template Selection ───────────────────────────────────
@@ -345,12 +429,13 @@ async function handleDocMakerCallback(ctx) {
         try {
             png = await (0, previewGeneratorService_1.generatePreviewPNG)({ templateId: tplId, pageSize: ctx.session.pageSize || 'A4', lines: [] });
         }
-        catch {
+        catch (error) {
+            logDocMakerError('[DocMaker] template preview generation failed:', error);
             await ctx.reply('⚠️ تعذّر توليد المعاينة. اختر المقاس:', { reply_markup: SIZE_KB });
             return true;
         }
         // Delete current text message, send photo
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] delete template menu failed:'));
         const sent = await ctx.replyWithPhoto(new grammy_1.InputFile(png, 'preview.png'), {
             caption: `🎨 <b>معاينة النموذج: ${previewGeneratorService_1.TEMPLATE_NAMES[tplId]}</b>\n\nهذه معاينة مبدئية للإطار. اضغط ✅ موافق للمتابعة.`,
             parse_mode: 'HTML',
@@ -371,13 +456,13 @@ async function handleDocMakerCallback(ctx) {
             caption: '📐 <b>اختر مقاس الصفحة:</b>',
             parse_mode: 'HTML',
             reply_markup: SIZE_KB,
-        }).catch(() => { });
+        }).catch(logDocMakerCleanup('[DocMaker] edit template caption failed:'));
         return true;
     }
     // ── Back from Preview → Restore Template List ─────────────────────────────
     if (data === 'doc_tpl_back') {
         await ctx.answerCallbackQuery();
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] delete template preview failed:'));
         ctx.session.previewMessageId = undefined;
         await ctx.reply('🎨 <b>اختر نموذج التصميم:</b>\n\n' +
             '1️⃣ كلاسيكي · 2️⃣ احترافي · 3️⃣ زوايا · 4️⃣ أشرطة · 5️⃣ إطار مزدوج', {
@@ -404,7 +489,7 @@ async function handleDocMakerCallback(ctx) {
                 caption: '📐 <b>مقاس مخصص</b>\n\nأرسل <b>العرض</b> بالسنتيمتر (مثال: 21):',
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'doc_tpl_back' }]] },
-            }).catch(() => { });
+            }).catch(logDocMakerCleanup('[DocMaker] edit custom size prompt failed:'));
         }
         catch (e) {
             console.error('[DocMaker] custom_size error:', e);
@@ -430,7 +515,7 @@ async function handleDocMakerCallback(ctx) {
                     [{ text: '❌ إلغاء', callback_data: 'doc_cancel_end' }],
                 ],
             },
-        }).catch(() => { });
+        }).catch(logDocMakerCleanup('[DocMaker] edit font menu failed:'));
         return true;
     }
     // ── Font Selected → Start Session ────────────────────────────────────
@@ -460,7 +545,9 @@ async function handleDocMakerCallback(ctx) {
                     parse_mode: 'HTML',
                 });
             }
-            catch { /* silent */ }
+            catch (error) {
+                logDocMakerError('[DocMaker] initial live preview update failed:', error);
+            }
         }
         await ctx.reply(`📋 <b>دليل الاستخدام:</b>
 
@@ -488,7 +575,7 @@ async function handleDocMakerCallback(ctx) {
         ctx.session.tempImage = undefined;
         ctx.session.rowImages = undefined;
         ctx.session.docState = 'active';
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] delete cover prompt failed:'));
         const total = ctx.session.documentLines.length;
         const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
         await ctx.reply(`✅ تمت إضافة الغلاف للمستند!\n📄 الأسطر: ${total} | الصفحات: ~${pages}`);
@@ -523,7 +610,7 @@ async function handleDocMakerCallback(ctx) {
         await ctx.answerCallbackQuery();
         ctx.session.tempImage = undefined;
         ctx.session.docState = 'active';
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] delete image menu failed:'));
         await renderActiveSession(ctx);
         return true;
     }
@@ -535,7 +622,7 @@ async function handleDocMakerCallback(ctx) {
         ctx.session.tempLine = null;
         ctx.session.tempFormatting = null;
         ctx.session.previewMessageId = undefined;
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] delete cancel menu failed:'));
         return true;
     }
     if (data === 'fmt_align_right') {
@@ -698,7 +785,7 @@ async function handleDocMakerCallback(ctx) {
         await ctx.answerCallbackQuery();
         ctx.session.awaitingCustomColor = false;
         ctx.session.customColorPromptId = undefined;
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] delete custom color prompt failed:'));
         return true;
     }
     if (data === 'fmt_apply') {
@@ -798,13 +885,9 @@ async function handleDocMakerCallback(ctx) {
     }
     if (data === 'doc_export_confirm') {
         const cost = ctx.session.pendingExportCost || 1;
-        // Fetch real user from database
-        const user = await User_1.User.findOne({ telegramId });
-        if (!user)
-            return true;
-        if (user.dailyQuota < cost) {
+        const chargedUser = await User_1.User.findOneAndUpdate({ telegramId, dailyQuota: { $gte: cost } }, { $inc: { dailyQuota: -cost } }, { new: true });
+        if (!chargedUser) {
             await ctx.editMessageText('❌ <b>رصيدك غير كافٍ!</b>\n\n' +
-                `💳 رصيدك الحالي: <b>${user.dailyQuota} محاولة</b>\n` +
                 `💸 المطلوب: <b>${cost} محاولات</b>\n\n` +
                 'أضف رصيداً للمتابعة.', {
                 parse_mode: 'HTML',
@@ -816,8 +899,6 @@ async function handleDocMakerCallback(ctx) {
             });
             return true;
         }
-        // Deduct attempts from real database
-        await User_1.User.updateOne({ telegramId }, { $inc: { dailyQuota: -cost } });
         await ctx.editMessageText('⏳ <b>جاري إنشاء ملف PDF...</b>', { parse_mode: 'HTML' });
         try {
             const { generateDocumentFromLines } = await Promise.resolve().then(() => __importStar(require('../../services/pdfGeneratorService')));
@@ -842,15 +923,15 @@ async function handleDocMakerCallback(ctx) {
             if (BACKUP_CHANNEL_ID) {
                 await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new InputFile(pdfBuffer, fileName), {
                     caption: `📦 أرشيف صانع المستندات\n🆔 ${telegramId}`, disable_notification: true,
-                }).catch(() => { });
+                }).catch(logDocMakerCleanup('[DocMaker:export] Backup sendDocument failed:'));
             }
             ctx.session.pendingExportCost = undefined;
             ctx.session.pendingExportPages = undefined;
         }
         catch (err) {
-            console.error('[EXPORT] Failed:', err?.message, err?.stack);
+            console.error('[EXPORT] Failed:', err);
             // Refund on failure — real database rollback
-            await User_1.User.updateOne({ telegramId }, { $inc: { dailyQuota: cost } });
+            await User_1.User.findOneAndUpdate({ telegramId }, { $inc: { dailyQuota: cost } }, { new: true });
             await ctx.reply('❌ <b>فشل إنشاء المستند.</b>\n' +
                 'تم استرداد محاولاتك تلقائياً.\n\n' +
                 `<code>${err?.message || 'unknown error'}</code>`, { parse_mode: 'HTML' });
@@ -909,7 +990,7 @@ async function handleDocMakerCallback(ctx) {
                     [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
                 ]
             }
-        }).catch(() => { });
+        }).catch(logDocMakerCleanup('[DocMaker] undo editMessageText failed:'));
         await refreshPreview(ctx);
         return true;
     }
@@ -961,7 +1042,7 @@ async function handleDocMakerCallback(ctx) {
         await ctx.answerCallbackQuery();
         ctx.session.tempLine = null;
         ctx.session.tempFormatting = null;
-        await ctx.editMessageReplyMarkup(undefined).catch(() => { });
+        await ctx.editMessageReplyMarkup(undefined).catch(logDocMakerCleanup('[DocMaker] clear reply markup failed:'));
         return true;
     }
     // ── Finish ─────────────────────────────────────────────────────────────────
@@ -975,7 +1056,8 @@ async function handleDocMakerCallback(ctx) {
         ctx.session.awaitingLineEditText = false;
         ctx.session.editingLineIndex = undefined;
         ctx.session.previewMessageId = undefined;
-        await ctx.editMessageText('✅ تم إنهاء المستند. يمكنك البدء من جديد.').catch(() => { });
+        await ctx.editMessageText('✅ تم إنهاء المستند. يمكنك البدء من جديد.')
+            .catch(logDocMakerCleanup('[DocMaker] finish editMessageText failed:'));
         return true;
     }
     // ── Formatting toggles ─────────────────────────────────────────────────────
@@ -1207,7 +1289,8 @@ async function handleDocMakerCallback(ctx) {
             ctx.session.awaitingLineEditIndex = false;
             ctx.session.awaitingLineEditText = false;
             ctx.session.previewMessageId = undefined;
-            await ctx.editMessageText('✅ تم إنهاء الجلسة. يمكنك البدء من جديد.', { reply_markup: undefined }).catch(() => { });
+            await ctx.editMessageText('✅ تم إنهاء الجلسة. يمكنك البدء من جديد.', { reply_markup: undefined })
+                .catch(logDocMakerCleanup('[DocMaker] confirm end editMessageText failed:'));
         }
         catch (e) {
             console.error('[DocMaker] confirm_end error:', e);
@@ -1217,7 +1300,7 @@ async function handleDocMakerCallback(ctx) {
     if (data === 'doc_cancel_end') {
         try {
             await ctx.answerCallbackQuery();
-            await ctx.deleteMessage().catch(() => { });
+            await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] cancel end deleteMessage failed:'));
         }
         catch (e) {
             console.error('[DocMaker] cancel_end error:', e);
@@ -1308,7 +1391,7 @@ async function handleDocMakerCallback(ctx) {
                 .composite([{ input: Buffer.from(svgText), blend: 'over' }])
                 .png()
                 .toBuffer();
-            await ctx.deleteMessage().catch(() => { });
+            await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] delete colored text menu failed:'));
             const sent = await ctx.replyWithPhoto(new grammy_1.InputFile(previewBuffer, 'color_preview.png'), {
                 caption: `🎨 <b>معاينة النموذج: ملون</b>\n\n` +
                     `<b>خلفية:</b> <code>${bgColor}</code>  ·  <b>نص:</b> <code>${txtColor}</code>\n\n` +
@@ -1329,7 +1412,11 @@ async function handleDocMakerCallback(ctx) {
                 reply_markup: { inline_keyboard: [[
                             { text: 'متابعة ➡️', callback_data: 'doc_colored_approve' },
                         ]] },
-            }).catch(() => ctx.reply(`✅ تم حفظ الألوان. اضغط متابعة:`));
+            }).catch(async (error) => {
+                logDocMakerError('[DocMaker] color fallback editMessageText failed:', error);
+                await ctx.reply(`✅ تم حفظ الألوان. اضغط متابعة:`)
+                    .catch(logDocMakerCleanup('[DocMaker] color fallback reply failed:'));
+            });
         }
         return true;
     }
@@ -1341,13 +1428,13 @@ async function handleDocMakerCallback(ctx) {
             caption: '📐 <b>اختر مقاس الصفحة:</b>',
             parse_mode: 'HTML',
             reply_markup: SIZE_KB,
-        }).catch(() => { });
+        }).catch(logDocMakerCleanup('[DocMaker] colored approve edit caption failed:'));
         return true;
     }
     // 5. Colored back → re-show text color selection
     if (data === 'doc_colored_back') {
         await ctx.answerCallbackQuery();
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] colored back deleteMessage failed:'));
         await ctx.reply('🔤 <b>تصميم نموذج ملون (خطوة 2/2):</b>\n\nاختر <b>لون النص</b> المتناسق مع الخلفية:', {
             parse_mode: 'HTML',
             reply_markup: {
@@ -1497,7 +1584,7 @@ async function handleDocMakerCallback(ctx) {
         ctx.session.tempCaptionTarget = undefined;
         ctx.session.docState = 'active';
         await ctx.answerCallbackQuery({ text: '✅ تمت إضافة السطر للمستند!' });
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] row finish deleteMessage failed:'));
         await refreshPreview(ctx);
         await renderActiveSession(ctx);
         return true;
@@ -1513,6 +1600,17 @@ async function handleDocMakerCallback(ctx) {
 // but stored here so they don't get lost in future merges.
 // They are handled inside handleDocMakerCallback via the docCallbacks array.
 async function handleTypographyCallback(ctx, data) {
+    try {
+        return await handleTypographyCallbackInner(ctx, data);
+    }
+    catch (error) {
+        logDocMakerError(`[DocMaker:${data}] Typography callback failed:`, error);
+        await ctx.reply('⚠️ حدث خطأ أثناء ضبط التباعد. يرجى المحاولة مرة أخرى.')
+            .catch(logDocMakerCleanup('[DocMaker] Typography fallback reply failed:'));
+        return true;
+    }
+}
+async function handleTypographyCallbackInner(ctx, data) {
     if (data === 'typo_letter' || data === 'typo_line') {
         if (!ctx.session.tempFormatting) {
             await ctx.answerCallbackQuery('⚠️ لا يوجد نص نشط');
@@ -1536,16 +1634,28 @@ async function handleTypographyCallback(ctx, data) {
         await ctx.answerCallbackQuery('↩️ إلغاء');
         ctx.session.awaitingTypographyValue = undefined;
         if (ctx.session.typographyPromptId && ctx.chat) {
-            await ctx.api.deleteMessage(ctx.chat.id, ctx.session.typographyPromptId).catch(() => { });
+            await ctx.api.deleteMessage(ctx.chat.id, ctx.session.typographyPromptId)
+                .catch(logDocMakerCleanup('[DocMaker] typography prompt delete failed:'));
             ctx.session.typographyPromptId = undefined;
         }
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] typography cancel delete failed:'));
         return true;
     }
     return false;
 }
 // ── MESSAGE HANDLER ────────────────────────────────────────────────────────────
 async function handleDocMakerMessage(ctx) {
+    try {
+        return await handleDocMakerMessageInner(ctx);
+    }
+    catch (error) {
+        logDocMakerError('[DocMaker] Message handler failed:', error);
+        await ctx.reply('⚠️ حدث خطأ أثناء معالجة الرسالة. يرجى المحاولة مرة أخرى.')
+            .catch(logDocMakerCleanup('[DocMaker] Message fallback reply failed:'));
+        return true;
+    }
+}
+async function handleDocMakerMessageInner(ctx) {
     if (!ctx.session || !ctx.from)
         return false;
     // ── TYPOGRAPHY VALUE INTERCEPTOR ─────────────────────────────────────
@@ -1564,9 +1674,10 @@ async function handleDocMakerMessage(ctx) {
             }
         }
         ctx.session.awaitingTypographyValue = undefined;
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] typography value delete failed:'));
         if (ctx.session.typographyPromptId && ctx.chat) {
-            await ctx.api.deleteMessage(ctx.chat.id, ctx.session.typographyPromptId).catch(() => { });
+            await ctx.api.deleteMessage(ctx.chat.id, ctx.session.typographyPromptId)
+                .catch(logDocMakerCleanup('[DocMaker] typography prompt delete after value failed:'));
             ctx.session.typographyPromptId = undefined;
         }
         if (ctx.session.tempFormatting && ctx.session.tempLine) {
@@ -1618,10 +1729,11 @@ async function handleDocMakerMessage(ctx) {
         }
         ctx.session.awaitingCustomColor = false;
         // Delete user's message
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] custom color input delete failed:'));
         // Delete bot's prompt message
         if (ctx.session.customColorPromptId && ctx.chat) {
-            await ctx.api.deleteMessage(ctx.chat.id, ctx.session.customColorPromptId).catch(() => { });
+            await ctx.api.deleteMessage(ctx.chat.id, ctx.session.customColorPromptId)
+                .catch(logDocMakerCleanup('[DocMaker] custom color prompt delete failed:'));
             ctx.session.customColorPromptId = undefined;
         }
         await ctx.reply(`✅ تم تحديد اللون: ${hexText}\n\nاضغط ✅ تطبيق في رسالة التنسيق للحفظ.`, { parse_mode: 'HTML' });
@@ -1741,7 +1853,7 @@ async function handleDocMakerMessage(ctx) {
     // Awaiting replacement text
     if (ctx.session.awaitingLineEditText) {
         if (ctx.session.tempLine) {
-            await ctx.deleteMessage().catch(() => { });
+            await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] duplicate edit text delete failed:'));
             return true;
         }
         ctx.session.tempLine = text;
@@ -1766,7 +1878,7 @@ async function handleDocMakerMessage(ctx) {
     // Just delete the user's new message silently and do nothing else.
     // The existing formatting message stays visible with all its buttons.
     if (ctx.session.tempLine) {
-        await ctx.deleteMessage().catch(() => { });
+        await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] pending temp line delete failed:'));
         return true;
     }
     // ── STEP 1: Detect emojis / unsupported symbols ────────────────────────────
@@ -1823,6 +1935,16 @@ async function handleDocMakerMessage(ctx) {
 }
 // ── Image Format Menu Helper ───────────────────────────────────────────────────
 async function showImageFormatMenu(ctx) {
+    try {
+        await showImageFormatMenuInner(ctx);
+    }
+    catch (error) {
+        logDocMakerError('[DocMaker] showImageFormatMenu failed:', error);
+        await ctx.reply('⚠️ تعذّر عرض خيارات الصورة. يرجى المحاولة مرة أخرى.')
+            .catch(logDocMakerCleanup('[DocMaker] showImageFormatMenu fallback reply failed:'));
+    }
+}
+async function showImageFormatMenuInner(ctx) {
     const rowImages = ctx.session.rowImages || [];
     const usedAligns = rowImages.map((img) => img.align).filter(Boolean);
     // Current active selections

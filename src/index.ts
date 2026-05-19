@@ -67,7 +67,130 @@ let docBotLocked = false;
 
 // ─── docBot Admin Input State (in-memory, admin is one person) ─────────────────
 type DocAdminInputState = 'awaiting_user_id' | 'awaiting_points' | 'awaiting_broadcast';
-const docAdminState = new Map<number, DocAdminInputState>();
+const DOC_TRANSIENT_STATE_TTL_MS = 15 * 60 * 1000;
+const DOC_CALLBACK_LOCK_MS = 200;
+const docAdminState = new Map<number, { state: DocAdminInputState; updatedAt: number }>();
+const docCallbackLocks = new Map<string, number>();
+let lastDocStateCleanup = 0;
+
+function logDocBotError(scope: string, error: unknown): void {
+  console.error(scope, error);
+}
+
+function setDocAdminState(userId: number, state: DocAdminInputState): void {
+  docAdminState.set(userId, { state, updatedAt: Date.now() });
+}
+
+function getDocAdminState(userId: number): DocAdminInputState | undefined {
+  const entry = docAdminState.get(userId);
+  if (!entry) return undefined;
+  if (Date.now() - entry.updatedAt > DOC_TRANSIENT_STATE_TTL_MS) {
+    docAdminState.delete(userId);
+    return undefined;
+  }
+  return entry.state;
+}
+
+function clearDocAdminState(userId: number): void {
+  docAdminState.delete(userId);
+}
+
+function cleanupDocTransientState(): void {
+  const now = Date.now();
+  if (now - lastDocStateCleanup < 60_000) return;
+  lastDocStateCleanup = now;
+
+  for (const [userId, entry] of docAdminState.entries()) {
+    if (now - entry.updatedAt > DOC_TRANSIENT_STATE_TTL_MS) {
+      docAdminState.delete(userId);
+    }
+  }
+
+  for (const [key, timestamp] of docBotRateMap.entries()) {
+    if (now - timestamp > DOC_TRANSIENT_STATE_TTL_MS) {
+      docBotRateMap.delete(key);
+    }
+  }
+
+  for (const [key, timestamp] of docCallbackLocks.entries()) {
+    if (now - timestamp > DOC_TRANSIENT_STATE_TTL_MS) {
+      docCallbackLocks.delete(key);
+    }
+  }
+}
+
+function isRapidDocCallback(ctx: BotContext, label: string): boolean {
+  const userId = ctx.from?.id;
+  const data = ctx.callbackQuery?.data || label;
+  if (!userId) return false;
+
+  const key = `${userId}:${data}`;
+  const now = Date.now();
+  const last = docCallbackLocks.get(key) ?? 0;
+  if (now - last < DOC_CALLBACK_LOCK_MS) {
+    return true;
+  }
+
+  docCallbackLocks.set(key, now);
+  return false;
+}
+
+function withDocBotHandler(
+  label: string,
+  handler: (ctx: BotContext, next: NextFunction) => Promise<void>
+) {
+  return async (ctx: BotContext, next: NextFunction): Promise<void> => {
+    try {
+      await handler(ctx, next);
+    } catch (error: unknown) {
+      logDocBotError(`[DocBot:${label}] Handler failed:`, error);
+      await ctx.reply('⚠️ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.')
+        .catch((replyError: unknown) => logDocBotError(`[DocBot:${label}] Failed to notify user:`, replyError));
+    }
+  };
+}
+
+function registerDocCallback(
+  trigger: string | RegExp,
+  label: string,
+  handler: (ctx: BotContext) => Promise<void>
+): void {
+  docBot.callbackQuery(trigger as any, async (ctx: BotContext): Promise<void> => {
+    const originalAnswerCallbackQuery = ctx.answerCallbackQuery.bind(ctx);
+    let callbackAnswered = false;
+    (ctx as any).answerCallbackQuery = async (...args: Parameters<typeof ctx.answerCallbackQuery>) => {
+      if (callbackAnswered) return undefined;
+      callbackAnswered = true;
+      return originalAnswerCallbackQuery(...args).catch((answerError: unknown) => {
+        logDocBotError(`[DocBot:${label}] answerCallbackQuery failed:`, answerError);
+        return undefined as never;
+      });
+    };
+
+    await ctx.answerCallbackQuery().catch((answerError: unknown) => {
+      logDocBotError(`[DocBot:${label}] initial answerCallbackQuery failed:`, answerError);
+    });
+
+    try {
+      if (!ctx.callbackQuery) {
+        logDocBotError(`[DocBot:${label}] Missing callbackQuery:`, ctx.update);
+        return;
+      }
+      if (!ctx.from) {
+        logDocBotError(`[DocBot:${label}] Missing ctx.from:`, ctx.update);
+        return;
+      }
+      if (isRapidDocCallback(ctx, label)) {
+        return;
+      }
+      await handler(ctx);
+    } catch (error: unknown) {
+      logDocBotError(`[DocBot:${label}] Callback failed:`, error);
+      await ctx.reply('⚠️ حدث خطأ أثناء تنفيذ الزر. يرجى المحاولة مرة أخرى.')
+        .catch((replyError: unknown) => logDocBotError(`[DocBot:${label}] Failed to notify user:`, replyError));
+    }
+  });
+}
 
 // ─── docBot Admin Panel Keyboard ──────────────────────────────────────────────
 const docAdminKeyboard = new InlineKeyboard()
@@ -1208,6 +1331,7 @@ docBot.use(session({
 
 // 3. Maintenance / ban middleware
 docBot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
+  cleanupDocTransientState();
   const userId = ctx.from?.id;
   if (!userId) return next();
   try {
@@ -1222,14 +1346,17 @@ docBot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
       if (ctx.callbackQuery) { void ctx.answerCallbackQuery({ text: msg, show_alert: true }).catch(() => { }); return; }
       await ctx.reply(msg); return;
     }
-    if (user) { user.lastSeen = new Date(); await user.save(); }
+    if (user) {
+      await User.updateOne({ telegramId: userId }, { $set: { lastSeen: new Date() } });
+    }
   } catch (err: unknown) { console.error('[DocBot Auth] Middleware error:', err); }
   await next();
 });
 
 // ─── docBot: /start command ────────────────────────────────────────────────────
 
-docBot.command('start', async (ctx) => {
+docBot.command('start', withDocBotHandler('start_command', async (ctx) => {
+  if (!ctx.from) return;
   const user = await User.findOne({ telegramId: ctx.from!.id.toString() });
   const points = user?.dailyQuota ?? 0;
   const firstName = ctx.from?.first_name ?? 'مستخدم';
@@ -1266,7 +1393,7 @@ docBot.command('start', async (ctx) => {
           [
             {
               text: '🚨 إبلاغ المطور',
-              callback_data: 'report_to_dev',
+              callback_data: 'doc_report_dev',
               // @ts-ignore
               style: 'danger'
             }
@@ -1275,15 +1402,16 @@ docBot.command('start', async (ctx) => {
       }
     }
   );
-});
+}));
 
-docBot.callbackQuery('doc_report_dev', async (ctx) => {
+const handleDocReportDev = async (ctx: BotContext): Promise<void> => {
   if (ctx.session) ctx.session.docAwaitingReport = true;
-  await ctx.answerCallbackQuery();
   await ctx.reply("🚨 <b>إبلاغ المطور:</b>\n\nأرسل رسالتك، مشكلتك، أو اقتراحك الآن في رسالة واحدة، وسيتم إيصالها للمطور مباشرة.", { parse_mode: 'HTML' });
-});
+};
+registerDocCallback('doc_report_dev', 'doc_report_dev', handleDocReportDev);
+registerDocCallback('report_to_dev', 'report_to_dev', handleDocReportDev);
 
-docBot.command('admin', async (ctx) => {
+docBot.command('admin', withDocBotHandler('admin_command', async (ctx) => {
   if (!ctx.from) return;
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
   if (!adminIds.includes(ctx.from.id.toString())) return;
@@ -1295,23 +1423,21 @@ docBot.command('admin', async (ctx) => {
       reply_markup: docAdminKeyboard
     }
   );
-});
+}));
 
 // ─── docBot: Admin panel callbacks ────────────────────────────────────────────
 
-docBot.callbackQuery('doc_admin_lock', async (ctx) => {
-  if (!isAdmin(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+registerDocCallback('doc_admin_lock', 'doc_admin_lock', async (ctx) => {
+  if (!ctx.from || !isAdmin(ctx.from.id)) return;
   docBotLocked = !docBotLocked;
-  await ctx.answerCallbackQuery(docBotLocked ? '🔒 تم قفل البوت' : '🔓 تم فتح البوت');
   await ctx.editMessageText(
     `🔧 <b>لوحة تحكم المشرف</b>\n\nحالة البوت: ${docBotLocked ? '🔒 مقفول' : '🔓 مفتوح'}`,
     { parse_mode: 'HTML', reply_markup: docAdminKeyboard }
-  ).catch(() => { });
+  ).catch((error: unknown) => logDocBotError('[DocBot:doc_admin_lock] editMessageText failed:', error));
 });
 
-docBot.callbackQuery('doc_admin_stats', async (ctx) => {
-  if (!isAdmin(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
-  await ctx.answerCallbackQuery();
+registerDocCallback('doc_admin_stats', 'doc_admin_stats', async (ctx) => {
+  if (!ctx.from || !isAdmin(ctx.from.id)) return;
   const totalUsers = await User.countDocuments();
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const activeToday = await User.countDocuments({ lastSeen: { $gte: today } });
@@ -1324,45 +1450,45 @@ docBot.callbackQuery('doc_admin_stats', async (ctx) => {
   );
 });
 
-docBot.callbackQuery('doc_admin_users', async (ctx) => {
-  if (!isAdmin(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
-  await ctx.answerCallbackQuery();
-  docAdminState.set(ctx.from.id, 'awaiting_user_id');
+registerDocCallback('doc_admin_users', 'doc_admin_users', async (ctx) => {
+  if (!ctx.from || !isAdmin(ctx.from.id)) return;
+  setDocAdminState(ctx.from.id, 'awaiting_user_id');
   await ctx.reply('👤 أرسل معرف العميل (Telegram ID):');
 });
 
-docBot.callbackQuery('doc_admin_points', async (ctx) => {
-  if (!isAdmin(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
-  await ctx.answerCallbackQuery();
-  docAdminState.set(ctx.from.id, 'awaiting_points');
+registerDocCallback('doc_admin_points', 'doc_admin_points', async (ctx) => {
+  if (!ctx.from || !isAdmin(ctx.from.id)) return;
+  setDocAdminState(ctx.from.id, 'awaiting_points');
   await ctx.reply('💰 أرسل [معرف العميل] [عدد النقاط] (مثال: 123456789 10):');
 });
 
-docBot.callbackQuery('doc_admin_broadcast', async (ctx) => {
-  if (!isAdmin(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
-  await ctx.answerCallbackQuery();
-  docAdminState.set(ctx.from.id, 'awaiting_broadcast');
+registerDocCallback('doc_admin_broadcast', 'doc_admin_broadcast', async (ctx) => {
+  if (!ctx.from || !isAdmin(ctx.from.id)) return;
+  setDocAdminState(ctx.from.id, 'awaiting_broadcast');
   await ctx.reply('📢 أرسل نص الإشعار الجماعي:');
 });
 
 // ─── docBot: Free AI Flow ──────────────────────────────────────────────────────
 
-docBot.callbackQuery('start_free_ai', async (ctx) => {
+registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {
   ctx.session.awaitingFreeAiTopic = true;
-  await ctx.answerCallbackQuery();
   await ctx.reply('🆓 أرسل لي الموضوع الذي تريد كتابته وسأنشئ لك مستنداً مجاناً:');
 });
 
 // ─── docBot: Premium AI Flow — Stage 1 (entry) ──────────────────────────────
 
-docBot.callbackQuery('start_premium_ai', async (ctx) => {
+registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
   ctx.session.awaitingPremiumImage = true;
   ctx.session.awaitingMoreText = false;
+  ctx.session.awaitingPremiumText = false;
+  ctx.session.pendingPremiumImage = undefined;
+  ctx.session.pendingPremiumPrompt = undefined;
+  ctx.session.pendingPremiumPages = undefined;
+  ctx.session.pendingPremiumCost = undefined;
   ctx.session.referenceImageBuffer = undefined;
   ctx.session.collectedText = '';
   ctx.session.totalWords = 0;
   ctx.session.estimatedPages = 0;
-  await ctx.answerCallbackQuery();
   await ctx.reply(
     `🤖 <b>NizoAI PDF</b>\n\n` +
     `🔍 <b>ابحث عن نموذج يعجبك:</b>\n` +
@@ -1378,29 +1504,26 @@ docBot.callbackQuery('start_premium_ai', async (ctx) => {
   );
 });
 
-docBot.callbackQuery('premium_use_default', async (ctx) => {
+registerDocCallback('premium_use_default', 'premium_use_default', async (ctx) => {
   if (ctx.session.awaitingPremiumImage) {
     ctx.session.referenceImageBuffer = undefined;
     ctx.session.awaitingPremiumImage = false;
+    ctx.session.awaitingPremiumText = false;
     ctx.session.awaitingMoreText = true;
     ctx.session.collectedText = '';
     ctx.session.totalWords = 0;
     ctx.session.estimatedPages = 0;
-    await ctx.answerCallbackQuery('النموذج الافتراضي');
     await ctx.editMessageText(
       `✅ تم حفظ النموذج. الآن أرسل المحتوى النصي رسالة رسالة.\n` +
       `في كل رسالة سأحسب لك عدد الكلمات والصفحات المتوقعة.\n` +
       `عندما تنتهي أرسل كلمة: تم`,
       { parse_mode: 'HTML' }
     );
-  } else {
-    await ctx.answerCallbackQuery('هذا الخيار غير متاح الآن');
   }
 });
 
-docBot.callbackQuery(/^pages_(.*)$/, async (ctx) => {
-  await ctx.answerCallbackQuery();
-  const data = ctx.callbackQuery.data || '';
+registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
+  const data = ctx.callbackQuery?.data || '';
   if (data.startsWith('pages_')) {
     const pageChoice = data.replace('pages_', '');
     const totalWords = ctx.session.totalWords || 0;
@@ -1453,7 +1576,8 @@ docBot.callbackQuery(/^pages_(.*)$/, async (ctx) => {
       // Generate PDF using Puppeteer + Markdown pipeline
       const pdfBuffer = await generateAiPDF(aiText);
 
-      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
+        .catch((error: unknown) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
 
       await ctx.replyWithDocument(
         new InputFile(pdfBuffer, `NizoAI_Doc_${Date.now()}.pdf`),
@@ -1472,36 +1596,35 @@ docBot.callbackQuery(/^pages_(.*)$/, async (ctx) => {
       ctx.session.awaitingMoreText = false;
 
     } catch (err: any) {
-      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
-      console.error('[Paid PDF] Error:', err?.message);
+      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
+        .catch((error: unknown) => logDocBotError('[DocBot:pages] delete wait message after failure failed:', error));
+      console.error('[Paid PDF] Error:', err);
       await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message}</code>`, { parse_mode: 'HTML' });
     }
     return;
   }
 });
 
-docBot.callbackQuery('cancel_premium_ai', async (ctx) => {
-  await ctx.answerCallbackQuery('تم الإلغاء');
-  await ctx.editMessageText('❌ تم إلغاء الطلب.').catch(() => {});
+registerDocCallback('cancel_premium_ai', 'cancel_premium_ai', async (ctx) => {
+  await ctx.editMessageText('❌ تم إلغاء الطلب.')
+    .catch((error: unknown) => logDocBotError('[DocBot:cancel_premium_ai] editMessageText failed:', error));
   ctx.session.awaitingPremiumImage  = false;
   ctx.session.awaitingMoreText      = false;
-});
-
-docBot.callbackQuery('cancel_premium_ai', async (ctx) => {
-  await ctx.answerCallbackQuery('تم الإلغاء');
-  await ctx.editMessageText('❌ تم إلغاء الطلب.').catch(() => {});
-  ctx.session.awaitingPremiumImage  = false;
   ctx.session.awaitingPremiumText   = false;
   ctx.session.awaitingCustomPages   = false;
   ctx.session.pendingPremiumImage   = undefined;
   ctx.session.pendingPremiumPrompt  = undefined;
   ctx.session.pendingPremiumPages   = undefined;
   ctx.session.pendingPremiumCost    = undefined;
+  ctx.session.referenceImageBuffer  = undefined;
+  ctx.session.collectedText         = '';
+  ctx.session.totalWords            = 0;
+  ctx.session.estimatedPages        = 0;
 });
 
 // ─── docBot: Premium Image Upload Handler ───────────────────────────────────────
 
-docBot.on(['message:photo', 'message:document'], async (ctx, next) => {
+docBot.on(['message:photo', 'message:document'], withDocBotHandler('premium_image_upload', async (ctx, next) => {
   if (ctx.session.awaitingPremiumImage) {
     let fileId: string | undefined;
     if (ctx.message?.photo) {
@@ -1522,14 +1645,20 @@ docBot.on(['message:photo', 'message:document'], async (ctx, next) => {
       const arrayBuffer = await res.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       
-      ctx.session.pendingPremiumImage = buffer.toString('base64');
+      ctx.session.referenceImageBuffer = buffer.toString('base64');
+      ctx.session.pendingPremiumImage = undefined;
       ctx.session.awaitingPremiumImage = false;
-      ctx.session.awaitingPremiumText = true;
+      ctx.session.awaitingPremiumText = false;
+      ctx.session.awaitingMoreText = true;
+      ctx.session.collectedText = '';
+      ctx.session.totalWords = 0;
+      ctx.session.estimatedPages = 0;
 
-      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
+        .catch((error: unknown) => logDocBotError('[DocBot:premium_image_upload] delete wait message failed:', error));
       await ctx.reply(
         '✅ <b>تم حفظ النموذج المرجعي!</b>\n\n' +
-        '📝 أرسل الآن المحتوى الذي تريده في المستند:',
+        '📝 أرسل الآن المحتوى رسالة رسالة، وعند الانتهاء أرسل كلمة: تم',
         { parse_mode: 'HTML' }
       );
     } catch (error) {
@@ -1539,15 +1668,16 @@ docBot.on(['message:photo', 'message:document'], async (ctx, next) => {
     return;
   }
   return next();
-});
+}));
 
 // ─── docBot: Admin + AI text input handler ────────────────────────────────────
 
-docBot.on('message:text', async (ctx, next) => {
+docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
   const userId = ctx.from?.id;
   if (!userId) return next();
 
-  const text = ctx.message.text.trim();
+  const text = ctx.message?.text?.trim();
+  if (!text) return next();
 
   // ── Paid PDF Text Loop ──────────────────────────────
   if (ctx.session.awaitingMoreText && ctx.message?.text) {
@@ -1627,9 +1757,9 @@ docBot.on('message:text', async (ctx, next) => {
 
   // ── Admin state machine ─────────────────────────────────────────────────────
   if (isAdmin(userId)) {
-    const state = docAdminState.get(userId);
+    const state = getDocAdminState(userId);
     if (state) {
-      docAdminState.delete(userId);
+      clearDocAdminState(userId);
       if (state === 'awaiting_user_id') {
         const targetUser = await User.findOne({ telegramId: text });
         if (!targetUser) { await ctx.reply('❌ المستخدم غير موجود.'); return; }
@@ -1662,7 +1792,13 @@ docBot.on('message:text', async (ctx, next) => {
         const allUsers = await User.find({ isBanned: { $ne: true } }).select('telegramId').lean();
         let ok = 0; let fail = 0;
         for (const u of allUsers) {
-          try { await docBot.api.sendMessage(u.telegramId, text); ok++; } catch { fail++; }
+          try {
+            await docBot.api.sendMessage(u.telegramId, text);
+            ok++;
+          } catch (error: unknown) {
+            fail++;
+            logDocBotError('[DocBot:broadcast] Failed to send broadcast message:', error);
+          }
           if ((ok + fail) % 25 === 0) await new Promise(r => setTimeout(r, 1000));
         }
         await ctx.reply(`📢 <b>تم إرسال الإشعار</b>\n✅ نجح: ${ok}\n❌ فشل: ${fail}`, { parse_mode: 'HTML' });
@@ -1743,21 +1879,22 @@ docBot.on('message:text', async (ctx, next) => {
         { caption: '✅ مستندك المجاني جاهز! 📄\n\nمدعوم بـ AI Free PDF ⚡' }
       );
     } catch (err: any) {
-      console.error('[DocBot Free AI] Error:', err?.message);
+      console.error('[DocBot Free AI] Error:', err);
       await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message ?? 'unknown error'}</code>`, { parse_mode: 'HTML' });
     }
-    await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id).catch(() => {});
+    await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
+      .catch((error: unknown) => logDocBotError('[DocBot:free_ai] delete wait message failed:', error));
     return;
   }
 
   return next();
-});
+}));
 
 
 
 // ─── docBot: DocMaker handler (all remaining messages & callbacks) ─────────────
 
-docBot.on(['message', 'callback_query'], async (ctx, next) => {
+docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', async (ctx, next) => {
   const { handleDocMakerCallback, handleDocMakerMessage, showImageFormatMenu } = await import('./bot/handlers/docMakerHandler');
 
   if (ctx.callbackQuery) {
@@ -1902,7 +2039,7 @@ docBot.on(['message', 'callback_query'], async (ctx, next) => {
     const handled = await handleDocMakerMessage(ctx as any);
     if (!handled) return next();
   }
-});
+}));
 
 // ─── docBot Error Handler ──────────────────────────────────────────────────────
 

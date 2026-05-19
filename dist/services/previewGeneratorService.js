@@ -24,7 +24,8 @@ function prepareArabic(text) {
     try {
         return arabic_reshaper_1.default.convertArabic(text);
     }
-    catch {
+    catch (error) {
+        console.error('[Preview] Arabic shaping failed:', error);
         return text;
     }
 }

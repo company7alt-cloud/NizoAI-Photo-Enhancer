@@ -42,7 +42,8 @@ function prepareArabicText(text: string): string {
     return structure.map((s: any) =>
       s.type === 'space' ? s.val : wordTokens[wi++]
     ).join('');
-  } catch {
+  } catch (error) {
+    console.error('[PDF] Arabic text preparation failed:', error);
     return text;
   }
 }
@@ -564,7 +565,7 @@ export async function generateDocumentFromLines(
       let pageCount = 0;
       doc.on('pageAdded', () => {
         pageCount++;
-        try { doc.font(chosenFont); } catch {}
+        try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font on pageAdded:', error); }
         doc.fontSize(BASE_SIZE).fillColor(txtColor);
       });
 
@@ -592,7 +593,7 @@ export async function generateDocumentFromLines(
       const maxY     = H - PADDING;
       let currentY   = PADDING;
 
-      try { doc.font(chosenFont); } catch {}
+      try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to set initial font:', error); }
 
       doc.fontSize(BASE_SIZE).fillColor(txtColor);
 
@@ -623,7 +624,7 @@ export async function generateDocumentFromLines(
             ({ W, H } = addPage());
             currentY = PADDING;
             doc.y = currentY;
-            try { doc.font(chosenFont); } catch {}
+            try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font after cover:', error); }
             doc.fontSize(BASE_SIZE).fillColor(txtColor);
           } catch (err) {
             console.error('[PDF] Cover render failed:', err);
@@ -660,7 +661,7 @@ export async function generateDocumentFromLines(
             ({ W, H } = addPage());
             currentY = PADDING;
             doc.y = currentY;
-            try { doc.font(chosenFont); } catch {}
+            try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font before image row:', error); }
             doc.fontSize(BASE_SIZE).fillColor(txtColor);
           }
 
@@ -774,7 +775,7 @@ export async function generateDocumentFromLines(
         if (raw === '---PAGE_BREAK---') {
           ({ W, H } = addPage());
           currentY = PADDING;
-          try { doc.font(chosenFont); } catch {}
+          try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font after page break:', error); }
           doc.fontSize(BASE_SIZE).fillColor(txtColor);
           continue;
         }
@@ -789,7 +790,7 @@ export async function generateDocumentFromLines(
           ({ W, H } = addPage());
           currentY = doc.page.margins.top ?? PADDING;
           doc.y = currentY;
-          try { doc.font(chosenFont); } catch {}
+          try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font during pagination:', error); }
           doc.fontSize(BASE_SIZE).fillColor(txtColor);
         }
 

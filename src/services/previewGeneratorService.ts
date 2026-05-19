@@ -54,7 +54,8 @@ function prepareArabic(text: string): string {
   if (!text) return '';
   try {
     return arabicReshaper.convertArabic(text);
-  } catch {
+  } catch (error) {
+    console.error('[Preview] Arabic shaping failed:', error);
     return text;
   }
 }

@@ -46,7 +46,8 @@ function prepareArabicText(text) {
         let wi = 0;
         return structure.map((s) => s.type === 'space' ? s.val : wordTokens[wi++]).join('');
     }
-    catch {
+    catch (error) {
+        console.error('[PDF] Arabic text preparation failed:', error);
         return text;
     }
 }
@@ -457,7 +458,9 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                 try {
                     doc.font(chosenFont);
                 }
-                catch { }
+                catch (error) {
+                    console.error('[PDF] Failed to restore font on pageAdded:', error);
+                }
                 doc.fontSize(BASE_SIZE).fillColor(txtColor);
             });
             const drawBackground = () => {
@@ -484,7 +487,9 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
             try {
                 doc.font(chosenFont);
             }
-            catch { }
+            catch (error) {
+                console.error('[PDF] Failed to set initial font:', error);
+            }
             doc.fontSize(BASE_SIZE).fillColor(txtColor);
             for (const line of lines) {
                 // CRASH FIX: skip null/undefined entries
@@ -513,7 +518,9 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                         try {
                             doc.font(chosenFont);
                         }
-                        catch { }
+                        catch (error) {
+                            console.error('[PDF] Failed to restore font after cover:', error);
+                        }
                         doc.fontSize(BASE_SIZE).fillColor(txtColor);
                     }
                     catch (err) {
@@ -549,7 +556,9 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                         try {
                             doc.font(chosenFont);
                         }
-                        catch { }
+                        catch (error) {
+                            console.error('[PDF] Failed to restore font before image row:', error);
+                        }
                         doc.fontSize(BASE_SIZE).fillColor(txtColor);
                     }
                     for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
@@ -651,7 +660,9 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                     try {
                         doc.font(chosenFont);
                     }
-                    catch { }
+                    catch (error) {
+                        console.error('[PDF] Failed to restore font after page break:', error);
+                    }
                     doc.fontSize(BASE_SIZE).fillColor(txtColor);
                     continue;
                 }
@@ -667,7 +678,9 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                     try {
                         doc.font(chosenFont);
                     }
-                    catch { }
+                    catch (error) {
+                        console.error('[PDF] Failed to restore font during pagination:', error);
+                    }
                     doc.fontSize(BASE_SIZE).fillColor(txtColor);
                 }
                 if (raw === '') {
