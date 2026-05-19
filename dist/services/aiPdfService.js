@@ -12,8 +12,14 @@ const os_1 = __importDefault(require("os"));
 const util_1 = __importDefault(require("util"));
 const execAsync = util_1.default.promisify(child_process_1.exec);
 marked_1.marked.use({ gfm: true, breaks: true });
+function assertRawPdfMarkdown(markdownText) {
+    if (/The following table:\s*(?:"|\r?\n\s*")/i.test(markdownText)) {
+        throw new Error('AI_PDF_INPUT_CONTAMINATED: Telegram table text reached PDF renderer');
+    }
+}
 async function generateAiPDF(markdownText) {
     // Parse the raw AI Markdown directly. Telegram-safe text must never enter here.
+    assertRawPdfMarkdown(markdownText);
     const htmlContent = await marked_1.marked.parse(markdownText);
     const renderedHtml = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -21,52 +27,42 @@ async function generateAiPDF(markdownText) {
   <meta charset="UTF-8">
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    /* CRITICAL WRAP & OVERLAP FIXES */
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Tajawal', sans-serif;
-      direction: rtl;
-      text-align: right;
-      color: #1a1a1a;
-      line-height: 2.4; /* Prevents vertical overlapping */
-      font-size: 16px;
-      margin: 0;
-      padding: 0;
-      word-wrap: break-word; /* Forces long lines to break */
-      overflow-wrap: break-word;
-      white-space: pre-wrap; /* Respects paragraphs but wraps */
-      max-width: 100%;
-    }
-    /* CONTAINER TO PREVENT BLEEDING OFF PAGE */
-    .page-container {
-      width: 100%;
-      max-width: 185mm; /* Safe A4 width */
-      margin: 0 auto;
-    }
-    h1, h2, h3 { line-height: 1.5; color: #2c3e50; page-break-after: avoid; margin-top: 20px; }
-    p { margin-bottom: 15px; text-align: justify; }
-    /* BULLETPROOF TABLES */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 25px 0;
-      table-layout: fixed; /* Forces table to stay inside page */
-      page-break-inside: avoid;
-    }
-    th, td {
-      border: 2px solid #2c3e50; /* Clear grid lines */
-      padding: 12px;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-    }
-    th { background-color: #2c3e50; color: white; }
-    tr:nth-child(even) { background-color: #f8f9fa; }
+  @page { size: A4; margin: 15mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Tajawal', Arial, sans-serif;
+    direction: rtl;
+    text-align: right;
+    font-size: 16px;
+    line-height: 2.2;
+    color: #000;
+    margin: 0 auto;
+    padding: 0;
+    width: 100%;
+    max-width: 175mm !important; /* STRICT A4 BOUNDARY */
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    white-space: pre-wrap !important; /* FORCES WRAP ON LONG ARABIC STRINGS */
+  }
+  h1, h2, h3 { color: #1a1a2e; page-break-after: avoid; }
+  table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    margin: 20px 0; 
+    table-layout: fixed !important; /* FORCES TABLE TO FIT */
+    page-break-inside: avoid;
+  }
+  th, td { 
+    border: 1px solid #333; 
+    padding: 10px; 
+    word-wrap: break-word !important; 
+    overflow-wrap: break-word !important;
+  }
+  th { background-color: #f4f4f4; font-weight: bold; }
   </style>
 </head>
 <body>
-  <div class="page-container">
-    ${htmlContent}
-  </div>
+${htmlContent}
 </body>
 </html>`;
     const documentHtml = '\uFEFF' + renderedHtml;
@@ -75,7 +71,7 @@ async function generateAiPDF(markdownText) {
     const tmpPdf = path_1.default.join(os_1.default.tmpdir(), `doc_${uniqueId}.pdf`);
     try {
         await fs_1.default.promises.writeFile(tmpHtml, documentHtml, 'utf8');
-        await execAsync(`wkhtmltopdf --encoding utf-8 --page-size A4 --margin-top 25mm --margin-bottom 25mm --margin-left 20mm --margin-right 20mm --enable-local-file-access "${tmpHtml}" "${tmpPdf}"`, { timeout: 30000 });
+        await execAsync(`wkhtmltopdf --encoding utf-8 --page-size A4 --margin-top 15mm --margin-bottom 15mm --margin-left 15mm --margin-right 15mm --enable-local-file-access "${tmpHtml}" "${tmpPdf}"`, { timeout: 30000 });
         return await fs_1.default.promises.readFile(tmpPdf);
     }
     finally {

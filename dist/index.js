@@ -105,6 +105,54 @@ async function getUserPageLimit(userId) {
 }
 // ─── Shared emoji strip regex (removed as it corrupts markdown tables) ────────────────────
 // ─── AI Hallucination Guard ────────────────────────────────────────────────────
+function sanitizeMarkdownForTelegram(text) {
+    const lines = text.split(/\r?\n/);
+    const output = [];
+    for (let index = 0; index < lines.length; index++) {
+        if (!isMarkdownTableRow(lines[index])) {
+            output.push(lines[index]);
+            continue;
+        }
+        const tableRows = [];
+        let cursor = index;
+        while (cursor < lines.length && isMarkdownTableRow(lines[cursor])) {
+            tableRows.push(lines[cursor].trim());
+            cursor++;
+        }
+        if (tableRows.length >= 2 && isMarkdownSeparatorRow(tableRows[1])) {
+            const csvRows = [
+                parseMarkdownTableCells(tableRows[0]),
+                ...tableRows.slice(2).map(parseMarkdownTableCells),
+            ].map(formatCsvRow);
+            output.push(`The following table:\n${csvRows.join('\n')}`);
+            index = cursor - 1;
+            continue;
+        }
+        output.push(...tableRows);
+        index = cursor - 1;
+    }
+    return output.join('\n').trim();
+}
+function parseMarkdownTableCells(row) {
+    return row
+        .trim()
+        .replace(/^\|/, '')
+        .replace(/\|$/, '')
+        .split('|')
+        .map((cell) => cell.trim());
+}
+function formatCsvRow(cells) {
+    return cells.map(formatCsvCell).join(', ');
+}
+function formatCsvCell(cell) {
+    return `"${cell.replace(/"/g, '""')}"`;
+}
+async function replyTelegramText(ctx, textForTelegram) {
+    const maxTelegramMessageLength = 3900;
+    for (let start = 0; start < textForTelegram.length; start += maxTelegramMessageLength) {
+        await ctx.reply(textForTelegram.slice(start, start + maxTelegramMessageLength));
+    }
+}
 function assertSafeAiMarkdown(text, context) {
     if (!text || text.trim().length === 0) {
         throw new Error('AI returned empty content');
@@ -1387,13 +1435,15 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
                 max_tokens: 4000,
                 temperature: 0.4,
             });
-            const rawAiMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
-            if (!rawAiMarkdown)
+            const aiResponseText = response.choices[0]?.message?.content ?? '';
+            if (!aiResponseText.trim())
                 throw new Error('AI returned empty content');
+            const textForPDF = aiResponseText;
+            const textForTelegram = sanitizeMarkdownForTelegram(aiResponseText);
             // Guard checks the raw API output and never mutates the Markdown sent to PDF.
-            assertSafeAiMarkdown(rawAiMarkdown, 'premium');
+            assertSafeAiMarkdown(textForPDF, 'premium');
             // Generate PDF from the pure AI Markdown response.
-            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(rawAiMarkdown);
+            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(textForPDF);
             await ctx.api.deleteMessage(ctx.chat.id, waitMsg.message_id)
                 .catch((error) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, `NizoAI_Doc_${Date.now()}.pdf`), {
@@ -1401,6 +1451,8 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
                     `📝 الكلمات: ${totalWords}`,
                 parse_mode: 'HTML'
             });
+            await replyTelegramText(ctx, textForTelegram)
+                .catch((error) => logDocBotError('[DocBot:pages] telegram text reply failed:', error));
             // Reset session
             ctx.session.collectedText = '';
             ctx.session.referenceImageBuffer = '';
@@ -1659,15 +1711,19 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
                 max_tokens: 4000,
                 temperature: 0.4,
             });
-            const rawAiMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
-            if (!rawAiMarkdown)
+            const aiResponseText = response.choices[0]?.message?.content ?? '';
+            if (!aiResponseText.trim())
                 throw new Error('AI returned empty content');
-            // rawAiMarkdown is pure, untouched Markdown from the API. Guarding does not strip tables.
-            assertSafeAiMarkdown(rawAiMarkdown, 'free');
+            const textForPDF = aiResponseText;
+            const textForTelegram = sanitizeMarkdownForTelegram(aiResponseText);
+            // textForPDF is pure, untouched Markdown from the API. Guarding does not strip tables.
+            assertSafeAiMarkdown(textForPDF, 'free');
             // Generate PDF using wkhtmltopdf + Markdown pipeline (pure markdown — tables intact)
-            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(rawAiMarkdown);
+            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(textForPDF);
             const fileName = `nizoai_free_${Date.now()}.pdf`;
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), { caption: '✅ مستندك المجاني جاهز! 📄\n\nمدعوم بـ AI Free PDF ⚡' });
+            await replyTelegramText(ctx, textForTelegram)
+                .catch((error) => logDocBotError('[DocBot:free_ai] telegram text reply failed:', error));
         }
         catch (err) {
             console.error('[DocBot Free AI] Error:', err);
