@@ -77,7 +77,7 @@ ${htmlContent}
   const tmpPdf = path.join(os.tmpdir(), `doc_${uniqueId}.pdf`);
 
   try {
-    await fs.promises.writeFile(tmpHtml, fullHtml, 'utf8');
+    await fs.promises.writeFile(tmpHtml, '\uFEFF' + fullHtml, 'utf8');
     
     // Execute asynchronously to avoid blocking the Node.js event loop
     await execAsync(`wkhtmltopdf --encoding utf-8 --page-size A4 --margin-top 15mm --margin-bottom 15mm --margin-left 15mm --margin-right 15mm --enable-local-file-access "${tmpHtml}" "${tmpPdf}"`, { timeout: 30000 });

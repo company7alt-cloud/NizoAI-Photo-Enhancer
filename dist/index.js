@@ -98,6 +98,38 @@ const aiClient = new openai_1.default({
 });
 // ─── Shared emoji strip regex (used by AI output cleaning) ────────────────────
 const AI_EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu;
+// ─── AI Hallucination Guard ────────────────────────────────────────────────────
+function sanitizeAiOutput(text, context) {
+    if (!text || text.trim().length === 0) {
+        throw new Error('AI returned empty content');
+    }
+    // 1. CJK hallucination check: >5% CJK chars in an Arabic context = corrupted output
+    const cjkMatches = text.match(/[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/g) ?? [];
+    const cjkRatio = cjkMatches.length / text.length;
+    if (cjkRatio > 0.05) {
+        console.error(`[AI Guard] CJK hallucination detected (${(cjkRatio * 100).toFixed(1)}% CJK) in ${context} flow`);
+        throw new Error('AI_HALLUCINATION: unexpected language characters detected');
+    }
+    // 2. System noise / apology fingerprints
+    const hallucPatterns = [
+        /apologize/i,
+        /\breroute\b/i,
+        /i'm sorry/i,
+        /as an ai/i,
+        /\berror:\s/i,
+        /\bexception\b/i,
+        /\bstacktrace\b/i,
+        /\bsyntaxerror\b/i,
+        /\btypeerror\b/i,
+    ];
+    for (const pattern of hallucPatterns) {
+        if (pattern.test(text)) {
+            console.error(`[AI Guard] Hallucination fingerprint matched: ${pattern} in ${context} flow`);
+            throw new Error('AI_HALLUCINATION: system noise detected in output');
+        }
+    }
+    return text.trim();
+}
 // ─── docBot Maintenance Flag ───────────────────────────────────────────────────
 let docBotLocked = false;
 const DOC_TRANSIENT_STATE_TTL_MS = 15 * 60 * 1000;
@@ -1312,8 +1344,10 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
                 .filter((b) => b.type === 'text')
                 .map((b) => b.text)
                 .join('\n');
-            // Generate PDF using Puppeteer + Markdown pipeline
-            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(aiText);
+            // Guard: reject hallucinated / corrupt AI output before PDF rendering
+            const sanitizedPremiumText = sanitizeAiOutput(aiText, 'premium');
+            // Generate PDF using wkhtmltopdf + Markdown pipeline
+            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(sanitizedPremiumText);
             await ctx.api.deleteMessage(ctx.chat.id, waitMsg.message_id)
                 .catch((error) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, `NizoAI_Doc_${Date.now()}.pdf`), {
@@ -1560,7 +1594,8 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
                         messages: [
                             { role: 'system', content: FREE_AI_SYSTEM_PROMPT },
                             { role: 'user', content: text },
-                        ]
+                        ],
+                        max_tokens: 4000,
                     });
                     if (response.choices[0]?.message?.content) {
                         rawText = response.choices[0].message.content;
@@ -1575,10 +1610,10 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
             if (!rawText)
                 throw new Error('كلا النموذجين فشلا');
             const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
-            if (!cleanedText)
-                throw new Error('AI returned empty content');
-            // Generate PDF using Puppeteer + Markdown pipeline
-            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(cleanedText);
+            // Guard: reject hallucinated / corrupt AI output before PDF rendering
+            const sanitizedFreeText = sanitizeAiOutput(cleanedText, 'free');
+            // Generate PDF using wkhtmltopdf + Markdown pipeline
+            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(sanitizedFreeText);
             const fileName = `nizoai_free_${Date.now()}.pdf`;
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), { caption: '✅ مستندك المجاني جاهز! 📄\n\nمدعوم بـ AI Free PDF ⚡' });
         }

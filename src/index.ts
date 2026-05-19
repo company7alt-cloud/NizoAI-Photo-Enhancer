@@ -62,6 +62,42 @@ const aiClient = new OpenAI({
 // ─── Shared emoji strip regex (used by AI output cleaning) ────────────────────
 const AI_EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu;
 
+// ─── AI Hallucination Guard ────────────────────────────────────────────────────
+function sanitizeAiOutput(text: string, context: 'free' | 'premium'): string {
+  if (!text || text.trim().length === 0) {
+    throw new Error('AI returned empty content');
+  }
+
+  // 1. CJK hallucination check: >5% CJK chars in an Arabic context = corrupted output
+  const cjkMatches = text.match(/[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/g) ?? [];
+  const cjkRatio = cjkMatches.length / text.length;
+  if (cjkRatio > 0.05) {
+    console.error(`[AI Guard] CJK hallucination detected (${(cjkRatio * 100).toFixed(1)}% CJK) in ${context} flow`);
+    throw new Error('AI_HALLUCINATION: unexpected language characters detected');
+  }
+
+  // 2. System noise / apology fingerprints
+  const hallucPatterns: RegExp[] = [
+    /apologize/i,
+    /\breroute\b/i,
+    /i'm sorry/i,
+    /as an ai/i,
+    /\berror:\s/i,
+    /\bexception\b/i,
+    /\bstacktrace\b/i,
+    /\bsyntaxerror\b/i,
+    /\btypeerror\b/i,
+  ];
+  for (const pattern of hallucPatterns) {
+    if (pattern.test(text)) {
+      console.error(`[AI Guard] Hallucination fingerprint matched: ${pattern} in ${context} flow`);
+      throw new Error('AI_HALLUCINATION: system noise detected in output');
+    }
+  }
+
+  return text.trim();
+}
+
 // ─── docBot Maintenance Flag ───────────────────────────────────────────────────
 let docBotLocked = false;
 
@@ -1573,8 +1609,11 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
         .map((b: any) => b.text)
         .join('\n');
 
-      // Generate PDF using Puppeteer + Markdown pipeline
-      const pdfBuffer = await generateAiPDF(aiText);
+      // Guard: reject hallucinated / corrupt AI output before PDF rendering
+      const sanitizedPremiumText = sanitizeAiOutput(aiText, 'premium');
+
+      // Generate PDF using wkhtmltopdf + Markdown pipeline
+      const pdfBuffer = await generateAiPDF(sanitizedPremiumText);
 
       await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
         .catch((error: unknown) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
@@ -1856,7 +1895,8 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
             messages: [
               { role: 'system', content: FREE_AI_SYSTEM_PROMPT },
               { role: 'user',   content: text },
-            ]
+            ],
+            max_tokens: 4000,
           });
           if (response.choices[0]?.message?.content) {
             rawText = response.choices[0].message.content;
@@ -1870,9 +1910,11 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
       if (!rawText) throw new Error('كلا النموذجين فشلا');
 
       const cleanedText = rawText.replace(new RegExp(AI_EMOJI_REGEX.source, 'gu'), '').trim();
-      if (!cleanedText) throw new Error('AI returned empty content');
-      // Generate PDF using Puppeteer + Markdown pipeline
-      const pdfBuffer = await generateAiPDF(cleanedText);
+      // Guard: reject hallucinated / corrupt AI output before PDF rendering
+      const sanitizedFreeText = sanitizeAiOutput(cleanedText, 'free');
+
+      // Generate PDF using wkhtmltopdf + Markdown pipeline
+      const pdfBuffer = await generateAiPDF(sanitizedFreeText);
       const fileName = `nizoai_free_${Date.now()}.pdf`;
       await ctx.replyWithDocument(
         new InputFile(pdfBuffer, fileName),
