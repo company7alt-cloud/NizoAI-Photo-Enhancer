@@ -838,7 +838,6 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         new InputFile(resultBuffer, fileName),
         {
           caption: '✨ تم التحسين بنموذج RealESRGAN AI ×4 | NizoAI Bot 🚀',
-          reply_to_message_id: ctx.msg?.message_id,
         }
       );
 

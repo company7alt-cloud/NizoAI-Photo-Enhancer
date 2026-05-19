@@ -705,7 +705,6 @@ async function callbackHandler(ctx) {
             await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, fileName), {
                 caption: '✨ تم التحسين بنموذج RealESRGAN AI ×4 | NizoAI Bot 🚀',
-                reply_to_message_id: ctx.msg?.message_id,
             });
             // STEP 7 — Channel backup (untouched original logic) ───────────────────
             const actionUser = ctx.from;
