@@ -73,7 +73,7 @@ async function getUserPageLimit(userId: number | string): Promise<number> {
 // ─── Shared emoji strip regex (removed as it corrupts markdown tables) ────────────────────
 
 // ─── AI Hallucination Guard ────────────────────────────────────────────────────
-function sanitizeAiOutput(text: string, context: 'free' | 'premium'): string {
+function assertSafeAiMarkdown(text: string, context: 'free' | 'premium'): void {
   if (!text || text.trim().length === 0) {
     throw new Error('AI returned empty content');
   }
@@ -107,7 +107,6 @@ function sanitizeAiOutput(text: string, context: 'free' | 'premium'): string {
 
   assertMarkdownTablesComplete(text, context);
 
-  return text.trim();
 }
 
 function assertMarkdownTablesComplete(text: string, context: 'free' | 'premium'): void {
@@ -1668,14 +1667,14 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
         temperature: 0.4,
       });
 
-      const rawMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
-      if (!rawMarkdown) throw new Error('AI returned empty content');
+      const rawAiMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
+      if (!rawAiMarkdown) throw new Error('AI returned empty content');
 
       // Guard checks the raw API output and never mutates the Markdown sent to PDF.
-      sanitizeAiOutput(rawMarkdown, 'premium');
+      assertSafeAiMarkdown(rawAiMarkdown, 'premium');
 
       // Generate PDF from the pure AI Markdown response.
-      const pdfBuffer = await generateAiPDF(rawMarkdown);
+      const pdfBuffer = await generateAiPDF(rawAiMarkdown);
 
       await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
         .catch((error: unknown) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
@@ -1983,14 +1982,14 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
         max_tokens: 4000,
         temperature: 0.4,
       });
-      const rawMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
-      if (!rawMarkdown) throw new Error('AI returned empty content');
+      const rawAiMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
+      if (!rawAiMarkdown) throw new Error('AI returned empty content');
 
-      // rawMarkdown is pure, untouched Markdown from the API. Guarding does not strip tables.
-      sanitizeAiOutput(rawMarkdown, 'free');
+      // rawAiMarkdown is pure, untouched Markdown from the API. Guarding does not strip tables.
+      assertSafeAiMarkdown(rawAiMarkdown, 'free');
 
       // Generate PDF using wkhtmltopdf + Markdown pipeline (pure markdown — tables intact)
-      const pdfBuffer = await generateAiPDF(rawMarkdown);
+      const pdfBuffer = await generateAiPDF(rawAiMarkdown);
       const fileName = `nizoai_free_${Date.now()}.pdf`;
       await ctx.replyWithDocument(
         new InputFile(pdfBuffer, fileName),

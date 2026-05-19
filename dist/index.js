@@ -105,7 +105,7 @@ async function getUserPageLimit(userId) {
 }
 // ─── Shared emoji strip regex (removed as it corrupts markdown tables) ────────────────────
 // ─── AI Hallucination Guard ────────────────────────────────────────────────────
-function sanitizeAiOutput(text, context) {
+function assertSafeAiMarkdown(text, context) {
     if (!text || text.trim().length === 0) {
         throw new Error('AI returned empty content');
     }
@@ -135,7 +135,6 @@ function sanitizeAiOutput(text, context) {
         }
     }
     assertMarkdownTablesComplete(text, context);
-    return text.trim();
 }
 function assertMarkdownTablesComplete(text, context) {
     const lines = text.split(/\r?\n/);
@@ -1388,13 +1387,13 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
                 max_tokens: 4000,
                 temperature: 0.4,
             });
-            const rawMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
-            if (!rawMarkdown)
+            const rawAiMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
+            if (!rawAiMarkdown)
                 throw new Error('AI returned empty content');
             // Guard checks the raw API output and never mutates the Markdown sent to PDF.
-            sanitizeAiOutput(rawMarkdown, 'premium');
+            assertSafeAiMarkdown(rawAiMarkdown, 'premium');
             // Generate PDF from the pure AI Markdown response.
-            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(rawMarkdown);
+            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(rawAiMarkdown);
             await ctx.api.deleteMessage(ctx.chat.id, waitMsg.message_id)
                 .catch((error) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, `NizoAI_Doc_${Date.now()}.pdf`), {
@@ -1660,13 +1659,13 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
                 max_tokens: 4000,
                 temperature: 0.4,
             });
-            const rawMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
-            if (!rawMarkdown)
+            const rawAiMarkdown = response.choices[0]?.message?.content?.trim() ?? '';
+            if (!rawAiMarkdown)
                 throw new Error('AI returned empty content');
-            // rawMarkdown is pure, untouched Markdown from the API. Guarding does not strip tables.
-            sanitizeAiOutput(rawMarkdown, 'free');
+            // rawAiMarkdown is pure, untouched Markdown from the API. Guarding does not strip tables.
+            assertSafeAiMarkdown(rawAiMarkdown, 'free');
             // Generate PDF using wkhtmltopdf + Markdown pipeline (pure markdown — tables intact)
-            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(rawMarkdown);
+            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(rawAiMarkdown);
             const fileName = `nizoai_free_${Date.now()}.pdf`;
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), { caption: '✅ مستندك المجاني جاهز! 📄\n\nمدعوم بـ AI Free PDF ⚡' });
         }
