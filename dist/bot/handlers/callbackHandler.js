@@ -1806,51 +1806,21 @@ async function callbackHandler(ctx) {
             '(يدعم HTML: <b>عريض</b> و <i>مائل</i>)');
         return;
     }
-    if (data === 'eraser_start') {
-        await ctx.answerCallbackQuery().catch(() => { });
-        const eraserUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
-        if (!eraserUser)
-            return;
-        const eraserAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-        const isEraserAdmin = eraserAdminIds.includes(ctx.from.id.toString());
-        if (!isEraserAdmin && eraserUser.dailyQuota < 1) {
-            await ctx.reply(`⚠️ أوه لا! رصيدك خلص 🥺\n` +
-                `تحتاج <b>محاولة واحدة</b> فقط للممحاة السحرية 🪄\n` +
-                `رصيدك الحالي: <b>${eraserUser.dailyQuota}</b>\n\n` +
-                `💡 احصل على محاولات مجانية من زر الهدية اليومية 🎁`, { parse_mode: 'HTML' });
-            return;
-        }
-        await ctx.reply('✨ <b>مُزيل العلامات المائية — النظام الاحترافي</b>\n\n' +
-            '📝 <b>الخطوة 1 من 2:</b>\n\n' +
-            '1️⃣ افتح الصورة في أي تطبيق رسم\n' +
-            '2️⃣ ارسم مربعاً أو خطاً <b>باللون الأحمر</b> 🔴 فوق العلامة المائية أو الشيء المراد حذفه\n' +
-            '3️⃣ أرسل هذه الصورة المُعدَّلة هنا (صورة عادية أو ملف) 📎\n\n' +
-            '💡 <b>ملاحظة:</b> البوت سيحفظ الموقع فقط، ثم يطلب منك الصورة الأصلية النظيفة\n\n' +
-            '💎 <b>السعر: نقطتان (2)</b>', {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_eraser' }]]
-            }
-        });
-        // Set state: waiting for reference image (marked)
-        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingEraserImage: true, awaitingEraserOriginal: false } });
-        return;
-    }
     // ══════════════════════════════════════
-    // 🧹 مُزيل النجمة التلقائي — one-shot auto watermark removal
+    // 🧹 مُزيل العلامات المائية — القائمة الرئيسية
     // ══════════════════════════════════════
-    // القائمة الجديدة المزدوجة (تظهر للمستخدم أولاً)
-    if (data === 'remove_watermark_auto') {
+    if (data === 'remove_watermark_auto' || data === 'eraser_start') {
         await ctx.answerCallbackQuery().catch(() => { });
-        await ctx.editMessageText(`✨ <b>وحدة التنقيح البصري الذكي</b>\n\nتعتمد هذه الأداة على خوارزميات الذكاء الاصطناعي التوليدي لتحليل بنية الصورة وإزالة أي عناصر أو علامات غير مرغوب فيها بدقة عالية دون تشويه المحتوى الأصلي.\n\n🔍 <b>اختر نوع المعالجة:</b>`, {
+        await ctx.reply('✨ <b>مُزيل العلامات المائية</b>\n\nاختر نوع الإزالة الذي تريده:', {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '✨ إزالة نجمة Gemini تلقائياً', callback_data: 'watermark_auto_gemini' }],
-                    [{ text: '🖌️ إزالة عنصر مخصص', callback_data: 'watermark_custom_start' }]
+                    [{ text: '✨ إزالة نجمة Gemini (تلقائي)', callback_data: 'watermark_auto_gemini' }],
+                    [{ text: '🖌️ إزالة عنصر مخصص (يدوي)', callback_data: 'watermark_custom_start' }],
+                    [{ text: '❌ إلغاء', callback_data: 'cancel_eraser' }]
                 ]
             }
-        }).catch(() => { });
+        });
         return;
     }
     // مسار إزالة النجمة القديم (يشتغل لما يضغط الزر الأول)
