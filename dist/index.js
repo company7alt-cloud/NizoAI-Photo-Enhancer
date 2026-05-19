@@ -105,121 +105,6 @@ async function getUserPageLimit(userId) {
 }
 // ─── Shared emoji strip regex (removed as it corrupts markdown tables) ────────────────────
 // ─── AI Hallucination Guard ────────────────────────────────────────────────────
-function sanitizeMarkdownForTelegram(text) {
-    const lines = text.split(/\r?\n/);
-    const output = [];
-    for (let index = 0; index < lines.length; index++) {
-        if (!isMarkdownTableRow(lines[index])) {
-            output.push(lines[index]);
-            continue;
-        }
-        const tableRows = [];
-        let cursor = index;
-        while (cursor < lines.length && isMarkdownTableRow(lines[cursor])) {
-            tableRows.push(lines[cursor].trim());
-            cursor++;
-        }
-        if (tableRows.length >= 2 && isMarkdownSeparatorRow(tableRows[1])) {
-            const csvRows = [
-                parseMarkdownTableCells(tableRows[0]),
-                ...tableRows.slice(2).map(parseMarkdownTableCells),
-            ].map(formatCsvRow);
-            output.push(`The following table:\n${csvRows.join('\n')}`);
-            index = cursor - 1;
-            continue;
-        }
-        output.push(...tableRows);
-        index = cursor - 1;
-    }
-    return output.join('\n').trim();
-}
-function parseMarkdownTableCells(row) {
-    return row
-        .trim()
-        .replace(/^\|/, '')
-        .replace(/\|$/, '')
-        .split('|')
-        .map((cell) => cell.trim());
-}
-function formatCsvRow(cells) {
-    return cells.map(formatCsvCell).join(', ');
-}
-function formatCsvCell(cell) {
-    return `"${cell.replace(/"/g, '""')}"`;
-}
-async function replyTelegramText(ctx, textForTelegram) {
-    const maxTelegramMessageLength = 3900;
-    for (let start = 0; start < textForTelegram.length; start += maxTelegramMessageLength) {
-        await ctx.reply(textForTelegram.slice(start, start + maxTelegramMessageLength));
-    }
-}
-function assertSafeAiMarkdown(text, context) {
-    if (!text || text.trim().length === 0) {
-        throw new Error('AI returned empty content');
-    }
-    // 1. CJK hallucination check: >5% CJK chars in an Arabic context = corrupted output
-    const cjkMatches = text.match(/[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/g) ?? [];
-    const cjkRatio = cjkMatches.length / text.length;
-    if (cjkRatio > 0.05) {
-        console.error(`[AI Guard] CJK hallucination detected (${(cjkRatio * 100).toFixed(1)}% CJK) in ${context} flow`);
-        throw new Error('AI_HALLUCINATION: unexpected language characters detected');
-    }
-    // 2. System noise / apology fingerprints
-    const hallucPatterns = [
-        /apologize/i,
-        /\breroute\b/i,
-        /i'm sorry/i,
-        /as an ai/i,
-        /\berror:\s/i,
-        /\bexception\b/i,
-        /\bstacktrace\b/i,
-        /\bsyntaxerror\b/i,
-        /\btypeerror\b/i,
-    ];
-    for (const pattern of hallucPatterns) {
-        if (pattern.test(text)) {
-            console.error(`[AI Guard] Hallucination fingerprint matched: ${pattern} in ${context} flow`);
-            throw new Error('AI_HALLUCINATION: system noise detected in output');
-        }
-    }
-    assertMarkdownTablesComplete(text, context);
-}
-function assertMarkdownTablesComplete(text, context) {
-    const lines = text.split(/\r?\n/);
-    for (let index = 0; index < lines.length; index++) {
-        if (!isMarkdownTableRow(lines[index]))
-            continue;
-        const tableRows = [];
-        let cursor = index;
-        while (cursor < lines.length && isMarkdownTableRow(lines[cursor])) {
-            tableRows.push(lines[cursor].trim());
-            cursor++;
-        }
-        const hasSeparator = tableRows.length >= 2 && isMarkdownSeparatorRow(tableRows[1]);
-        if (!hasSeparator) {
-            console.error(`[AI Guard] Broken markdown table detected in ${context} flow:`, tableRows);
-            throw new Error('AI_TABLE_CORRUPTION: markdown table separator is missing');
-        }
-        const expectedCells = countMarkdownCells(tableRows[0]);
-        for (const row of tableRows.slice(2)) {
-            if (countMarkdownCells(row) !== expectedCells) {
-                console.error(`[AI Guard] Markdown table cell mismatch in ${context} flow:`, tableRows);
-                throw new Error('AI_TABLE_CORRUPTION: markdown table cells are inconsistent');
-            }
-        }
-        index = cursor - 1;
-    }
-}
-function isMarkdownTableRow(line) {
-    const trimmed = line.trim();
-    return trimmed.startsWith('|') && trimmed.endsWith('|') && (trimmed.match(/\|/g)?.length ?? 0) >= 3;
-}
-function isMarkdownSeparatorRow(line) {
-    return /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|$/.test(line.trim());
-}
-function countMarkdownCells(line) {
-    return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').length;
-}
 // ─── docBot Maintenance Flag ───────────────────────────────────────────────────
 let docBotLocked = false;
 const DOC_TRANSIENT_STATE_TTL_MS = 15 * 60 * 1000;
@@ -1435,15 +1320,10 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
                 max_tokens: 4000,
                 temperature: 0.4,
             });
-            const aiResponseText = response.choices[0]?.message?.content ?? '';
-            if (!aiResponseText.trim())
+            const aiResponse = response.choices[0]?.message?.content ?? '';
+            if (!aiResponse.trim())
                 throw new Error('AI returned empty content');
-            const textForPDF = aiResponseText;
-            const textForTelegram = sanitizeMarkdownForTelegram(aiResponseText);
-            // Guard checks the raw API output and never mutates the Markdown sent to PDF.
-            assertSafeAiMarkdown(textForPDF, 'premium');
-            // Generate PDF from the pure AI Markdown response.
-            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(textForPDF);
+            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(aiResponse);
             await ctx.api.deleteMessage(ctx.chat.id, waitMsg.message_id)
                 .catch((error) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, `NizoAI_Doc_${Date.now()}.pdf`), {
@@ -1451,8 +1331,6 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
                     `📝 الكلمات: ${totalWords}`,
                 parse_mode: 'HTML'
             });
-            await replyTelegramText(ctx, textForTelegram)
-                .catch((error) => logDocBotError('[DocBot:pages] telegram text reply failed:', error));
             // Reset session
             ctx.session.collectedText = '';
             ctx.session.referenceImageBuffer = '';
@@ -1711,19 +1589,12 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
                 max_tokens: 4000,
                 temperature: 0.4,
             });
-            const aiResponseText = response.choices[0]?.message?.content ?? '';
-            if (!aiResponseText.trim())
+            const aiResponse = response.choices[0]?.message?.content ?? '';
+            if (!aiResponse.trim())
                 throw new Error('AI returned empty content');
-            const textForPDF = aiResponseText;
-            const textForTelegram = sanitizeMarkdownForTelegram(aiResponseText);
-            // textForPDF is pure, untouched Markdown from the API. Guarding does not strip tables.
-            assertSafeAiMarkdown(textForPDF, 'free');
-            // Generate PDF using wkhtmltopdf + Markdown pipeline (pure markdown — tables intact)
-            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(textForPDF);
+            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(aiResponse);
             const fileName = `nizoai_free_${Date.now()}.pdf`;
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), { caption: '✅ مستندك المجاني جاهز! 📄\n\nمدعوم بـ AI Free PDF ⚡' });
-            await replyTelegramText(ctx, textForTelegram)
-                .catch((error) => logDocBotError('[DocBot:free_ai] telegram text reply failed:', error));
         }
         catch (err) {
             console.error('[DocBot Free AI] Error:', err);

@@ -28,53 +28,34 @@ async function generateAiPDF(markdownText) {
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
   @page { size: A4; margin: 15mm; }
-  * { box-sizing: border-box; }
   body {
-    font-family: 'Tajawal', Arial, sans-serif;
+    font-family: 'Tajawal', sans-serif;
     direction: rtl;
     text-align: right;
     font-size: 16px;
-    line-height: 2.0; /* Restored to a natural height */
-    color: #1a1a1a;
-    margin: 0 auto;
-    padding: 0;
+    line-height: 1.8;
+    color: #111;
     width: 100%;
-    max-width: 175mm;
-    word-wrap: break-word; /* Safe wrapping */
+    margin: 0;
+    padding: 0;
+    word-wrap: break-word;
   }
-
-  /* THE MAGIC BIDI FIX: Forces natural text direction based on language */
-  p, li, td, th, span, div { 
-    unicode-bidi: plaintext; 
-    text-align: right; 
-  }
-
-  h1, h2, h3 { 
-    color: #2c3e50; 
-    page-break-after: avoid; 
-    margin-top: 24px; 
-    margin-bottom: 12px;
-    unicode-bidi: plaintext;
-  }
-
-  p { margin-bottom: 16px; text-align: justify; }
-
-  /* BEAUTIFUL & SAFE TABLES */
+  h1, h2, h3 { color: #2c3e50; page-break-after: avoid; margin-bottom: 10px; }
+  p { margin-bottom: 15px; }
   table { 
     width: 100%; 
     border-collapse: collapse; 
-    margin: 25px 0; 
-    table-layout: fixed; 
-    page-break-inside: avoid;
+    margin: 20px 0; 
+    page-break-inside: avoid; 
   }
   th, td { 
-    border: 1px solid #bdc3c7; 
-    padding: 12px; 
-    word-wrap: break-word; 
-    unicode-bidi: plaintext;
+    border: 1px solid #333; 
+    padding: 8px; 
+    text-align: right; 
   }
-  th { background-color: #34495e; color: white; font-weight: bold; }
-  tr:nth-child(even) { background-color: #f8f9fa; }
+  th { background-color: #eee; font-weight: bold; }
+  /* Inline LTR fix for old webkit */
+  b, strong, span, i { direction: rtl; unicode-bidi: embed; }
   </style>
 </head>
 <body>
