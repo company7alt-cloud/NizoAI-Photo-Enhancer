@@ -28,6 +28,10 @@ import { forceSubMiddleware } from './bot/middlewares/forceSubMiddleware';
 import { initBotTexts } from './services/botTextsService';
 import { getSettings } from './services/settingsService';
 import { generateAiPDF } from './services/aiPdfService';
+import {
+  analyzeAndEnhancePrompt,
+  buildPageLimitGuardMessage,
+} from './services/promptAnalyzerService';
 
 // ─── Bot Instances ─────────────────────────────────────────────────────────────
 const imageBot = new Bot<BotContext>(process.env.BOT_TOKEN!);
@@ -58,6 +62,13 @@ const aiClient = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
   apiKey: process.env.OPENROUTER_API_KEY ?? '',
 });
+
+async function getUserPageLimit(userId: number | string): Promise<number> {
+  const user = await User.findOne({ telegramId: userId }).select('docPageLimit');
+  return Number.isFinite(user?.docPageLimit) && Number(user?.docPageLimit) > 0
+    ? Number(user?.docPageLimit)
+    : 5;
+}
 
 // ─── Shared emoji strip regex (removed as it corrupts markdown tables) ────────────────────
 
@@ -94,14 +105,64 @@ function sanitizeAiOutput(text: string, context: 'free' | 'premium'): string {
     }
   }
 
+  assertMarkdownTablesComplete(text, context);
+
   return text.trim();
+}
+
+function assertMarkdownTablesComplete(text: string, context: 'free' | 'premium'): void {
+  const lines = text.split(/\r?\n/);
+
+  for (let index = 0; index < lines.length; index++) {
+    if (!isMarkdownTableRow(lines[index])) continue;
+
+    const tableRows: string[] = [];
+    let cursor = index;
+    while (cursor < lines.length && isMarkdownTableRow(lines[cursor])) {
+      tableRows.push(lines[cursor].trim());
+      cursor++;
+    }
+
+    const hasSeparator = tableRows.length >= 2 && isMarkdownSeparatorRow(tableRows[1]);
+    if (!hasSeparator) {
+      console.error(`[AI Guard] Broken markdown table detected in ${context} flow:`, tableRows);
+      throw new Error('AI_TABLE_CORRUPTION: markdown table separator is missing');
+    }
+
+    const expectedCells = countMarkdownCells(tableRows[0]);
+    for (const row of tableRows.slice(2)) {
+      if (countMarkdownCells(row) !== expectedCells) {
+        console.error(`[AI Guard] Markdown table cell mismatch in ${context} flow:`, tableRows);
+        throw new Error('AI_TABLE_CORRUPTION: markdown table cells are inconsistent');
+      }
+    }
+
+    index = cursor - 1;
+  }
+}
+
+function isMarkdownTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith('|') && trimmed.endsWith('|') && (trimmed.match(/\|/g)?.length ?? 0) >= 3;
+}
+
+function isMarkdownSeparatorRow(line: string): boolean {
+  return /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|$/.test(line.trim());
+}
+
+function countMarkdownCells(line: string): number {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').length;
 }
 
 // ─── docBot Maintenance Flag ───────────────────────────────────────────────────
 let docBotLocked = false;
 
 // ─── docBot Admin Input State (in-memory, admin is one person) ─────────────────
-type DocAdminInputState = 'awaiting_user_id' | 'awaiting_points' | 'awaiting_broadcast';
+type DocAdminInputState =
+  | 'awaiting_user_id'
+  | 'awaiting_points'
+  | 'awaiting_broadcast'
+  | 'awaiting_doc_page_unlock';
 const DOC_TRANSIENT_STATE_TTL_MS = 15 * 60 * 1000;
 const DOC_CALLBACK_LOCK_MS = 200;
 const docAdminState = new Map<number, { state: DocAdminInputState; updatedAt: number }>();
@@ -233,6 +294,7 @@ const docAdminKeyboard = new InlineKeyboard()
   .text('🔒 قفل/فتح البوت', 'doc_admin_lock').row()
   .text('📊 الإحصائيات', 'doc_admin_stats')
   .text('💰 إدارة النقاط', 'doc_admin_points').row()
+  .text('🔓 فتح صلاحية المستندات', 'doc_admin_unlock_documents').row()
   .text('📢 إشعار جماعي', 'doc_admin_broadcast');
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1497,6 +1559,13 @@ registerDocCallback('doc_admin_points', 'doc_admin_points', async (ctx) => {
   await ctx.reply('💰 أرسل [معرف العميل] [عدد النقاط] (مثال: 123456789 10):');
 });
 
+registerDocCallback('doc_admin_unlock_documents', 'doc_admin_unlock_documents', async (ctx) => {
+  await ctx.answerCallbackQuery().catch(() => {});
+  if (!ctx.from || !isAdmin(ctx.from.id)) return;
+  setDocAdminState(ctx.from.id, 'awaiting_doc_page_unlock');
+  await ctx.reply('أرسل userId الخاص بالمستخدم');
+});
+
 registerDocCallback('doc_admin_broadcast', 'doc_admin_broadcast', async (ctx) => {
   if (!ctx.from || !isAdmin(ctx.from.id)) return;
   setDocAdminState(ctx.from.id, 'awaiting_broadcast');
@@ -1563,56 +1632,52 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
     const pageChoice = data.replace('pages_', '');
     const totalWords = ctx.session.totalWords || 0;
     const estimatedPages = Math.ceil(totalWords / 250);
-    const pages = pageChoice === 'auto' ? estimatedPages : parseInt(pageChoice);
+    const selectedPages = pageChoice === 'auto' ? estimatedPages || 2 : parseInt(pageChoice, 10);
+    const pages = Number.isFinite(selectedPages) ? Math.max(1, selectedPages) : 2;
+    const pageLimit = await getUserPageLimit(ctx.from!.id);
+
+    if (pages > pageLimit) {
+      await ctx.reply(buildPageLimitGuardMessage(pageLimit), { parse_mode: 'Markdown' });
+      return;
+    }
     
     const waitMsg = await ctx.reply('⏳ جاري إنشاء المستند الاحترافي...');
     
     try {
-      // Build prompt for Claude
-      const prompt = 
-        `أنت مصمم مستندات PDF احترافي.\n\n` +
-        `المطلوب: صمم مستند بـ ${pages} صفحة.\n\n` +
-        `تعليمات مهمة:\n` +
-        `- احتفظ بنفس تصميم النموذج المرجعي المرفق\n` +
-        `- استبدل النص الموجود بالمحتوى التالي فقط\n` +
-        `- لا تضف محتوى من عندك\n` +
-        `- نظم المحتوى بشكل احترافي عبر ${pages} صفحة\n` +
-        `- لا تستخدم رموز * أو & أو ,\n\n` +
-        `المحتوى:\n${ctx.session.collectedText}`;
-
-      // Call Claude API with image + text
-      const Anthropic = require('@anthropic-ai/sdk');
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      
+      const rawPremiumPrompt =
+        `اكتب وثيقة من ${pages} صفحات.\n\n` +
+        'حافظ على روح النموذج المرجعي إذا كان مرفقاً، واستخدم المحتوى التالي فقط دون اختراع معلومات:\n\n' +
+        `${ctx.session.collectedText || ''}`;
+      const promptAnalysis = analyzeAndEnhancePrompt(rawPremiumPrompt);
       const imageBase64 = ctx.session.referenceImageBuffer;
-      
-      const messages: any[] = [{
-        role: 'user',
-        content: imageBase64 ? [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 }
-          },
-          { type: 'text', text: prompt }
-        ] : [{ type: 'text', text: prompt }]
-      }];
 
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+      const userContent: any = imageBase64 ? [
+        { type: 'text', text: promptAnalysis.enhancedPrompt },
+        {
+          type: 'image_url',
+          image_url: { url: `data:image/jpeg;base64,${imageBase64}` },
+        },
+      ] : promptAnalysis.enhancedPrompt;
+
+      const response = await aiClient.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: 'user', content: userContent },
+        ],
         max_tokens: 4000,
-        messages
+        temperature: 0.4,
       });
 
-      const aiText = response.content
-        .filter((b: any) => b.type === 'text')
-        .map((b: any) => b.text)
-        .join('\n');
+      const aiText = response.choices[0]?.message?.content ?? '';
+      if (!aiText) throw new Error('AI returned empty content');
 
-      // Guard: reject hallucinated / corrupt AI output before PDF rendering
-      const sanitizedPremiumText = sanitizeAiOutput(aiText, 'premium');
+      const rawPremiumResponse = aiText.trim();
 
-      // Generate PDF using wkhtmltopdf + Markdown pipeline
-      const pdfBuffer = await generateAiPDF(sanitizedPremiumText);
+      // Guard: reject hallucinated / corrupt AI output before PDF rendering.
+      sanitizeAiOutput(rawPremiumResponse, 'premium');
+
+      // Generate PDF from the pure AI Markdown response.
+      const pdfBuffer = await generateAiPDF(rawPremiumResponse);
 
       await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
         .catch((error: unknown) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
@@ -1826,6 +1891,33 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
         await ctx.reply(`✅ تمت إضافة <b>${amount}</b> نقطة للمستخدم <code>${targetId}</code>. الرصيد: ${updated.dailyQuota}`, { parse_mode: 'HTML' });
         return;
       }
+      if (state === 'awaiting_doc_page_unlock') {
+        const targetId = text.trim();
+        if (!/^\d+$/.test(targetId)) {
+          await ctx.reply('❌ أرسل userId صحيحاً بالأرقام فقط.');
+          return;
+        }
+
+        const updated = await User.findOneAndUpdate(
+          { telegramId: targetId },
+          { $set: { docPageLimit: 999 } },
+          { new: true }
+        );
+        if (!updated) {
+          await ctx.reply('❌ المستخدم غير موجود.');
+          return;
+        }
+
+        const username = updated.username
+          ? `@${updated.username}`
+          : (updated.firstName || String(updated.telegramId));
+
+        await ctx.reply(
+          `✅ تم فتح الصلاحية لـ ${username}. يمكنه الآن إنشاء\n` +
+          'وثائق غير محدودة الصفحات.'
+        );
+        return;
+      }
       if (state === 'awaiting_broadcast') {
         const allUsers = await User.find({ isBanned: { $ne: true } }).select('telegramId').lean();
         let ok = 0; let fail = 0;
@@ -1853,6 +1945,14 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
 
     const adminIds = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim());
     const isAdminUser = adminIds.includes(ctx.from!.id.toString());
+    const promptAnalysis = analyzeAndEnhancePrompt(text);
+    const detectedPages = promptAnalysis.detectedPages;
+    const pageLimit = await getUserPageLimit(userId);
+
+    if (detectedPages > pageLimit) {
+      await ctx.reply(buildPageLimitGuardMessage(pageLimit), { parse_mode: 'Markdown' });
+      return;
+    }
 
     if (!isAdminUser) {
       const today = new Date().toISOString().slice(0, 10);
@@ -1877,36 +1977,16 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
 
     const waitMsg = await ctx.reply('⏳ جاري الكتابة بالذكاء الاصطناعي...');
     try {
-      const FREE_AI_SYSTEM_PROMPT = 'أنت كاتب محتوى عربي محترف. اكتب المحتوى المطلوب بشكل منظم واضح. استخدم العناوين والفقرات. لا تستخدم رموز تعبيرية. اكتب باللغة العربية فقط.';
-
-      let rawText = '';
-
-      const FREE_MODELS = [
-        'deepseek/deepseek-v4-flash:free',
-        'google/gemma-4-31b-it:free',
-        'openai/gpt-oss-20b:free'
-      ];
-
-      for (const model of FREE_MODELS) {
-        try {
-          const response = await aiClient.chat.completions.create({
-            model,
-            messages: [
-              { role: 'system', content: FREE_AI_SYSTEM_PROMPT },
-              { role: 'user',   content: text },
-            ],
-            max_tokens: 4000,
-          });
-          if (response.choices[0]?.message?.content) {
-            rawText = response.choices[0].message.content;
-            break;
-          }
-        } catch (e: any) {
-          console.error(`[Free AI] Model ${model} failed:`, e.message);
-          continue;
-        }
-      }
-      if (!rawText) throw new Error('كلا النموذجين فشلا');
+      const response = await aiClient.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: 'user', content: promptAnalysis.enhancedPrompt },
+        ],
+        max_tokens: 4000,
+        temperature: 0.4,
+      });
+      const rawText = response.choices[0]?.message?.content ?? '';
+      if (!rawText) throw new Error('AI returned empty content');
 
       // rawAiResponse: pure, untouched markdown from the API — used for PDF rendering
       // emoji stripping was causing table corruption, so we use the raw response

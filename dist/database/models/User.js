@@ -27,6 +27,10 @@ const UserSchema = new mongoose_1.Schema({
         default: 5,
         // No min — negative values represent debt from channel-fund penalties
     },
+    docPageLimit: {
+        type: Number,
+        default: 5,
+    },
     lastQuotaReset: {
         type: Date,
         default: () => new Date(),

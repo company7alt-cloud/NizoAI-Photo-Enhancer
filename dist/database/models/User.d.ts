@@ -5,6 +5,7 @@ export interface IUser extends Document {
     firstName: string;
     language: string;
     dailyQuota: number;
+    docPageLimit: number;
     lastQuotaReset: Date;
     totalEnhancements: number;
     referralCount: number;
