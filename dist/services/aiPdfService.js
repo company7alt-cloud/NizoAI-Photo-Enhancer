@@ -4,103 +4,96 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAiPDF = generateAiPDF;
-const puppeteer_core_1 = __importDefault(require("puppeteer-core"));
 const marked_1 = require("marked");
-function preprocessMarkdown(text) {
-    return text
-        // Strip block LaTeX
-        .replace(/\$\$[\s\S]*?\$\$/g, '[معادلة]')
-        // Convert inline LaTeX to readable text
-        .replace(/\$([^$\n]+)\$/g, (_, inner) => inner
-        .replace(/\\mu/g, 'μ')
-        .replace(/\\times/g, '×')
-        .replace(/\^{([^}]+)}/g, (_2, exp) => exp)
-        .replace(/[{}\\]/g, '')
-        .trim())
-        // FIX TABLES: ensure blank line before every pipe table row
-        .replace(/([^\n])\n(\|)/g, '$1\n\n$2')
-        // Remove any hardcoded injected strings from AI
-        .replace(/The following table:/gi, '')
-        .replace(/الجدول التالي:/g, '');
-}
+const child_process_1 = require("child_process");
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
+const os_1 = __importDefault(require("os"));
+const util_1 = __importDefault(require("util"));
+const execAsync = util_1.default.promisify(child_process_1.exec);
+marked_1.marked.use({ gfm: true, breaks: true });
 async function generateAiPDF(markdownText) {
-    // Configure marked: GFM enables tables, html:true allows <span> passthrough
-    marked_1.marked.use({
-        gfm: true,
-        breaks: true,
-    });
-    const cleaned = preprocessMarkdown(markdownText);
-    // CRITICAL: marked.parse is async — must await
-    const htmlContent = await marked_1.marked.parse(cleaned);
-    // CRITICAL: un-escape any span tags that marked may have escaped
-    const safeHtml = htmlContent
-        .replace(/&lt;span(\s[^>]*?)?&gt;/gi, (m) => m.replace(/&lt;/g, '<').replace(/&gt;/g, '>'))
-        .replace(/&lt;\/span&gt;/gi, '</span>');
+    // Step 1: Parse markdown to HTML — NO preprocessing, pass raw text
+    const htmlContent = await marked_1.marked.parse(markdownText);
+    // Step 2: Wrap in RTL-aware HTML
     const fullHtml = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
+      direction: rtl;
+      text-align: right;
       font-family: 'Cairo', Tahoma, Arial, sans-serif;
-      font-size: 15px; line-height: 2; color: #1a1a1a;
-      padding: 40px 50px; direction: rtl; text-align: right;
+      font-size: 15px;
+      line-height: 1.9;
+      color: #222;
+      padding: 50px 60px;
+      background: #fff;
     }
-    h1 { font-size: 22px; border-bottom: 3px solid #1a1a2e; padding-bottom: 10px; margin-bottom: 20px; color: #1a1a2e; }
-    h2 { font-size: 18px; margin: 20px 0 10px; color: #1a1a2e; }
-    h3 { font-size: 16px; margin: 15px 0 8px; }
-    p  { margin: 10px 0; }
+    h1 { font-size: 24px; font-weight: 700; color: #1a1a2e; border-bottom: 3px solid #1a1a2e; padding-bottom: 10px; margin-bottom: 20px; }
+    h2 { font-size: 19px; font-weight: 700; color: #1a1a2e; margin: 20px 0 10px; }
+    h3 { font-size: 16px; font-weight: 700; color: #333; margin: 15px 0 8px; }
+    p, li, td, th, span { unicode-bidi: plaintext; }
+    p { margin: 10px 0; }
     ul, ol { padding-right: 25px; padding-left: 0; margin: 10px 0; }
-    li { margin: 6px 0; }
+    li { margin: 5px 0; }
     table { width: 100%; border-collapse: collapse; margin: 20px 0; direction: rtl; }
     th {
-      background: #1a1a2e; color: #fff;
-      padding: 10px 14px; text-align: right;
-      font-weight: bold; border: 1px solid #1a1a2e;
+      background-color: #1a1a2e;
+      color: #ffffff;
+      font-weight: 700;
+      padding: 12px 15px;
+      text-align: right;
+      border: 1px solid #1a1a2e;
     }
-    td { border: 1px solid #aaa; padding: 10px 14px; text-align: right; }
-    tr:nth-child(even) td { background: #f5f7fa; }
+    td {
+      padding: 10px 15px;
+      text-align: right;
+      border: 1px solid #ccc;
+    }
+    tr:nth-child(even) td { background-color: #f5f7fa; }
+    tr:hover td { background-color: #eef1f7; }
     strong { font-weight: 700; }
+    em { font-style: italic; }
+    hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
     blockquote {
       border-right: 4px solid #457B9D;
-      padding: 10px 16px; background: #f0f4f8; margin: 10px 0;
+      border-left: none;
+      padding: 10px 15px;
+      margin: 15px 0;
+      background: #f8f9fa;
+      color: #555;
     }
-    span[style] { display: inline !important; }
   </style>
 </head>
-<body>${safeHtml}</body>
+<body>
+${htmlContent}
+</body>
 </html>`;
-    let browser;
+    // Step 3: Use wkhtmltopdf via child_process asynchronously
+    const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const tmpHtml = path_1.default.join(os_1.default.tmpdir(), `doc_${uniqueId}.html`);
+    const tmpPdf = path_1.default.join(os_1.default.tmpdir(), `doc_${uniqueId}.pdf`);
     try {
-        browser = await puppeteer_core_1.default.launch({
-            executablePath: '/usr/bin/chromium-browser',
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-            ],
-            headless: true,
-        });
-        const page = await browser.newPage();
-        // networkidle0 = wait for Cairo font to fully load before printing
-        await page.setContent(fullHtml, { waitUntil: 'load' }); // NOTE: using load instead of networkidle0 as before due to ts error
-        const pdf = await page.pdf({
-            format: 'A4',
-            margin: { top: '20mm', bottom: '20mm', left: '15mm', right: '15mm' },
-            printBackground: true,
-        });
-        return Buffer.from(pdf);
-    }
-    catch (err) {
-        console.error('[PDF ERROR]', err);
-        throw new Error('فشل في توليد PDF. حاول مجدداً.');
+        await fs_1.default.promises.writeFile(tmpHtml, fullHtml, 'utf8');
+        // Execute asynchronously to avoid blocking the Node.js event loop
+        await execAsync(`wkhtmltopdf --encoding utf-8 --page-size A4 --margin-top 15mm --margin-bottom 15mm --margin-left 15mm --margin-right 15mm --enable-local-file-access "${tmpHtml}" "${tmpPdf}"`, { timeout: 30000 });
+        const pdfBuffer = await fs_1.default.promises.readFile(tmpPdf);
+        return pdfBuffer;
     }
     finally {
-        if (browser)
-            await browser.close();
+        // Clean up temporary files
+        try {
+            await fs_1.default.promises.unlink(tmpHtml);
+        }
+        catch { }
+        try {
+            await fs_1.default.promises.unlink(tmpPdf);
+        }
+        catch { }
     }
 }
 //# sourceMappingURL=aiPdfService.js.map
