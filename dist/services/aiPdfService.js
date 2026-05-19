@@ -34,31 +34,47 @@ async function generateAiPDF(markdownText) {
     direction: rtl;
     text-align: right;
     font-size: 16px;
-    line-height: 2.2;
-    color: #000;
+    line-height: 2.0; /* Restored to a natural height */
+    color: #1a1a1a;
     margin: 0 auto;
     padding: 0;
     width: 100%;
-    max-width: 175mm !important; /* STRICT A4 BOUNDARY */
-    word-wrap: break-word !important;
-    overflow-wrap: break-word !important;
-    white-space: pre-wrap !important; /* FORCES WRAP ON LONG ARABIC STRINGS */
+    max-width: 175mm;
+    word-wrap: break-word; /* Safe wrapping */
   }
-  h1, h2, h3 { color: #1a1a2e; page-break-after: avoid; }
+
+  /* THE MAGIC BIDI FIX: Forces natural text direction based on language */
+  p, li, td, th, span, div { 
+    unicode-bidi: plaintext; 
+    text-align: right; 
+  }
+
+  h1, h2, h3 { 
+    color: #2c3e50; 
+    page-break-after: avoid; 
+    margin-top: 24px; 
+    margin-bottom: 12px;
+    unicode-bidi: plaintext;
+  }
+
+  p { margin-bottom: 16px; text-align: justify; }
+
+  /* BEAUTIFUL & SAFE TABLES */
   table { 
     width: 100%; 
     border-collapse: collapse; 
-    margin: 20px 0; 
-    table-layout: fixed !important; /* FORCES TABLE TO FIT */
+    margin: 25px 0; 
+    table-layout: fixed; 
     page-break-inside: avoid;
   }
   th, td { 
-    border: 1px solid #333; 
-    padding: 10px; 
-    word-wrap: break-word !important; 
-    overflow-wrap: break-word !important;
+    border: 1px solid #bdc3c7; 
+    padding: 12px; 
+    word-wrap: break-word; 
+    unicode-bidi: plaintext;
   }
-  th { background-color: #f4f4f4; font-weight: bold; }
+  th { background-color: #34495e; color: white; font-weight: bold; }
+  tr:nth-child(even) { background-color: #f8f9fa; }
   </style>
 </head>
 <body>
