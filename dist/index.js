@@ -1169,8 +1169,8 @@ docBot.command('start', withDocBotHandler('start_command', async (ctx) => {
             ],
             [
                 {
-                    text: '🖼️ تحويل صورة إلى PDF',
-                    callback_data: 'start_image_to_pdf',
+                    text: '📑 القوالب الجاهزة (Template-Style)',
+                    callback_data: 'start_template_pdf',
                     // @ts-ignore
                     style: 'primary'
                 }
@@ -1260,166 +1260,189 @@ registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {
     await ctx.reply('🆓 أرسل لي الموضوع الذي تريد كتابته وسأنشئ لك مستنداً مجاناً:');
 });
 // ─── docBot: Image-to-Styled-PDF Workflow (New) ─────────────────────────────
-const fs_1 = __importDefault(require("fs"));
-registerDocCallback('start_image_to_pdf', 'start_image_to_pdf', async (ctx) => {
-    ctx.session.workflowState = 'idle';
-    ctx.session.designAnalysis = null;
-    ctx.session.structuredContent = null;
-    ctx.session.lastActivityAt = Date.now();
-    ctx.session.tempFiles = [];
-    await ctx.reply(`🖼️ <b>تحويل صورة إلى PDF احترافي</b>\n\n` +
-        `يرجى إرسال <b>صورة التصميم المرجعي</b> التي تود استخراج التصميم منها.\n` +
-        `ملاحظة: تأكد من أن الصورة واضحة وبصيغة (jpg, png, webp) ولا تتجاوز 10 ميغابايت.`, { parse_mode: 'HTML' });
-});
-docBot.on(['message:photo', 'message:document'], withDocBotHandler('image_to_pdf_upload', async (ctx, next) => {
-    if (ctx.session.workflowState === 'idle') {
-        let fileId;
-        if (ctx.message?.photo) {
-            fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
-        }
-        else if (ctx.message?.document && ctx.message.document.mime_type?.startsWith('image/')) {
-            fileId = ctx.message.document.file_id;
-        }
-        if (!fileId) {
-            await ctx.reply('⚠️ يرجى إرسال صورة بصيغة صالحة (jpg, png, webp).');
-            return;
-        }
-        const waitMsg = await ctx.reply('⏳ جاري تحليل التصميم المرجعي...');
+// ─── docBot: Template-Style PDF Workflow (New Enterprise) ───────────────────
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+async function withRetry(fn, maxRetries = 3) {
+    let attempt = 0;
+    while (attempt < maxRetries) {
         try {
-            const file = await ctx.api.getFile(fileId);
-            if (file.file_size && file.file_size > 10 * 1024 * 1024) {
-                throw new Error('حجم الصورة يتجاوز 10 ميغابايت.');
-            }
-            const filePath = file.file_path;
-            if (!filePath)
-                throw new Error('File path not found');
-            const res = await fetch(`https://api.telegram.org/file/bot${process.env.DOC_BOT_TOKEN}/${filePath}`);
-            const arrayBuffer = await res.arrayBuffer();
-            const base64Image = Buffer.from(arrayBuffer).toString('base64');
-            // Call Vision API
-            const visionPrompt = `You are a design extraction AI. Analyze this reference image and extract the EXACT design logic. 
-Return ONLY a valid JSON object matching this schema:
-{
-  "layout": {}, "colors": {}, "typography": {}, "spacing": {}, "hierarchy": {},
-  "decorations": {}, "borders": {}, "shadows": {}, "textures": {}, "patterns": {},
-  "alignment": {}, "header": {}, "footer": {}, "visualStyle": {}, "pageStructure": {}
-}`;
-            const aiResponse = await Promise.race([
-                aiClient.chat.completions.create({
-                    model: "gpt-4o-mini", // fallback to mini if 4o-latest is too heavy, or standard 4o. Using standard OpenRouter.
-                    messages: [
-                        { role: 'system', content: visionPrompt },
-                        { role: 'user', content: [{ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }] }
-                    ],
-                    response_format: { type: 'json_object' }
-                }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Vision API Timeout')), 30000))
-            ]);
-            let designJSON;
-            try {
-                designJSON = JSON.parse(aiResponse.choices[0]?.message?.content ?? '{}');
-            }
-            catch (e) {
-                throw new Error('فشل في تحليل التصميم (JSON غير صالح).');
-            }
-            ctx.session.designAnalysis = designJSON;
-            ctx.session.workflowState = 'waiting_for_text';
-            ctx.session.lastActivityAt = Date.now();
-            await ctx.api.deleteMessage(ctx.chat.id, waitMsg.message_id).catch(() => { });
-            await ctx.reply('✅ <b>تم حفظ التصميم المرجعي بنجاح!</b>\n\n' +
-                '📝 أرسل الآن المحتوى النصي الذي تريد تحويله إلى PDF.', { parse_mode: 'HTML' });
+            return await fn();
         }
-        catch (error) {
-            console.error('[Image-to-PDF Vision Error]', error);
-            ctx.session.workflowState = undefined;
-            ctx.session.tempFiles?.forEach(f => { try {
-                fs_1.default.unlinkSync(f);
-            }
-            catch { } });
-            ctx.session.tempFiles = [];
-            await ctx.api.deleteMessage(ctx.chat.id, waitMsg.message_id).catch(() => { });
-            await ctx.reply(`❌ فشل تحليل التصميم المرجعي: ${error.message || 'خطأ غير معروف'}\nتم إلغاء العملية.`);
+        catch (err) {
+            attempt++;
+            if (attempt >= maxRetries)
+                throw err;
+            await wait(1000 * Math.pow(2, attempt)); // Exponential backoff: 2s, 4s, etc.
         }
-        return;
     }
-    return next();
-}));
-docBot.on('message:text', withDocBotHandler('image_to_pdf_text', async (ctx, next) => {
-    if (ctx.session.workflowState === 'waiting_for_text') {
-        const text = ctx.message?.text?.trim();
-        if (!text)
-            return;
-        if (!text)
-            return;
-        ctx.session.workflowState = 'generating_prompt';
-        ctx.session.lastActivityAt = Date.now();
-        const waitMsg = await ctx.reply('⏳ جاري بناء المستند الاحترافي...');
-        try {
-            // Step 1: Structure the Text
-            const textPrompt = `You are a text structurer. Convert the provided user text into a structured JSON representation WITHOUT modifying the original content. Keep the exact text, words, and language.
-Schema:
-{
-  "rawText": "original string",
-  "detectedLanguage": "ar|en|mixed",
-  "headings": [],
-  "paragraphs": [],
-  "bulletPoints": [],
-  "tables": [],
-  "emphasis": [],
-  "metadata": { "wordCount": number, "estimatedPages": number, "receivedAt": number }
+    throw new Error('Max retries reached');
 }
-User Text:
-${text}`;
-            const textResponse = await Promise.race([
-                aiClient.chat.completions.create({
-                    model: "gpt-4o-mini",
-                    messages: [{ role: 'system', content: textPrompt }],
-                    response_format: { type: 'json_object' }
-                }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Text Structuring Timeout')), 20000))
-            ]);
-            const structuredContent = JSON.parse(textResponse.choices[0]?.message?.content ?? '{}');
-            ctx.session.structuredContent = structuredContent;
-            // Step 2: Master Prompt Generation
-            const masterPrompt = `You are a master document generator. Your task is to generate ONLY valid Markdown (with semantic HTML/CSS if needed for layout).
-DO NOT return any binary data, Base64, or conversational filler.
-DO NOT summarize or change the user content.
-
-Design Principles to STRICTLY follow:
-${JSON.stringify(ctx.session.designAnalysis, null, 2)}
-
-User Content to strictly place in the document:
-${JSON.stringify(structuredContent, null, 2)}
-
-Output EXACTLY Markdown/HTML that a Puppeteer renderer can parse.`;
-            const finalResponse = await Promise.race([
-                aiClient.chat.completions.create({
-                    model: "gpt-4o-mini",
-                    messages: [{ role: 'system', content: masterPrompt }],
-                    temperature: 0.2
-                }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Master Prompt Timeout')), 45000))
-            ]);
-            const finalMarkdown = finalResponse.choices[0]?.message?.content ?? '';
-            // Step 3: Handoff to Puppeteer Pipeline
-            const pdfPath = await (0, aiPdfService_1.generateAiPDF)(finalMarkdown);
-            await ctx.api.deleteMessage(ctx.chat.id, waitMsg.message_id).catch(() => { });
-            await ctx.replyWithDocument(new grammy_1.InputFile(pdfPath, `Styled_Doc_${Date.now()}.pdf`), { caption: '✅ <b>تم تصميم مستندك بنجاح!</b>', parse_mode: 'HTML' });
-            // Cleanup
-            ctx.session.workflowState = undefined;
-            ctx.session.designAnalysis = null;
-            ctx.session.structuredContent = null;
+registerDocCallback('start_template_pdf', 'start_template_pdf', async (ctx) => {
+    await ctx.reply(`📑 <b>اختر قالب التصميم:</b>\n\n` +
+        `1️⃣ <b>TABLES</b> - تصميم جدولي دقيق للبيانات\n` +
+        `2️⃣ <b>REPORT</b> - تقرير شركات أنيق\n` +
+        `3️⃣ <b>FORMAL</b> - أسلوب رسمي واعتمادي\n` +
+        `4️⃣ <b>CREATIVE</b> - أسلوب عصري وجذاب\n` +
+        `5️⃣ <b>MINIMAL</b> - نظيف، بسيط، يركز على المساحات`, {
+        parse_mode: 'HTML',
+        reply_markup: new grammy_1.InlineKeyboard()
+            .text('1️⃣ TABLES', 'tpl_select_tables').row()
+            .text('2️⃣ REPORT', 'tpl_select_report').row()
+            .text('3️⃣ FORMAL', 'tpl_select_formal').row()
+            .text('4️⃣ CREATIVE', 'tpl_select_creative').row()
+            .text('5️⃣ MINIMAL', 'tpl_select_minimal')
+    });
+});
+const TPL_STYLES = ['tables', 'report', 'formal', 'creative', 'minimal'];
+TPL_STYLES.forEach(style => {
+    registerDocCallback(`tpl_select_${style}`, `tpl_select_${style}`, async (ctx) => {
+        ctx.session.templateWorkflowState = 'collecting_text';
+        ctx.session.selectedStyle = style;
+        ctx.session.textBuffer = [];
+        ctx.session.combinedText = '';
+        ctx.session.isGenerating = false;
+        ctx.session.startedAt = Date.now();
+        ctx.session.lastActivityAt = Date.now();
+        await ctx.editMessageText(`✅ تم اختيار القالب: <b>${style.toUpperCase()}</b>\n\n` +
+            `📝 الآن، قم بإرسال المحتوى النصي الخاص بك (يمكنك إرساله على شكل رسائل متعددة).\n\n` +
+            `⚠️ <b>ملاحظات هامة:</b>\n` +
+            `- أقصى عدد للرسائل: 50\n` +
+            `- أقصى عدد للأحرف: 120,000\n` +
+            `- سيتم رفض أي صور أو ملصقات أو وسائط أخرى.\n\n` +
+            `عندما تنتهي من إرسال النص، اضغط على زر "✅ Done" بالأسفل.`, { parse_mode: 'HTML' });
+    });
+});
+docBot.on('message', withDocBotHandler('template_workflow_collection', async (ctx, next) => {
+    if (ctx.session.templateWorkflowState === 'collecting_text') {
+        ctx.session.lastActivityAt = Date.now();
+        // Non-text media protection
+        if (!ctx.message?.text) {
+            await ctx.reply('⚠️ عذراً، لا يمكن استقبال الصور أو الملصقات أو الوسائط في هذه المرحلة. أرسل نصوصاً فقط.');
+            return;
         }
-        catch (error) {
-            console.error('[Image-to-PDF Final Error]', error);
-            ctx.session.workflowState = undefined;
-            await ctx.api.deleteMessage(ctx.chat.id, waitMsg.message_id).catch(() => { });
-            await ctx.reply(`❌ فشل إنشاء المستند: ${error.message || 'خطأ غير معروف'}`);
+        const text = ctx.message.text.trim();
+        if (!text)
+            return;
+        // Buffer limit checks
+        const buffer = ctx.session.textBuffer || [];
+        const startedAt = ctx.session.startedAt || Date.now();
+        const timeElapsedMins = (Date.now() - startedAt) / (1000 * 60);
+        const totalChars = buffer.reduce((acc, str) => acc + str.length, 0) + text.length;
+        if (buffer.length >= 50 || totalChars >= 120000 || timeElapsedMins >= 20) {
+            ctx.session.templateWorkflowState = 'idle';
+            ctx.session.textBuffer = [];
+            await ctx.reply('❌ تم تجاوز الحد المسموح به (50 رسالة أو 120,000 حرف أو 20 دقيقة). تم إلغاء العملية لحماية النظام.');
+            return;
         }
+        buffer.push(text);
+        ctx.session.textBuffer = buffer;
+        await ctx.reply(`✅ تم حفظ الرسالة (${buffer.length}/50)\n` +
+            `أرسل المزيد أو اضغط Done للإنهاء.`, {
+            reply_markup: new grammy_1.InlineKeyboard()
+                .text('✅ Done — Finish & Generate', 'tpl_finish_collection')
+        });
         return;
     }
     return next();
 }));
+registerDocCallback('tpl_finish_collection', 'tpl_finish_collection', async (ctx) => {
+    if (ctx.session.templateWorkflowState !== 'collecting_text') {
+        await ctx.answerCallbackQuery({ text: '⚠️ الجلسة منتهية أو غير صالحة.' });
+        return;
+    }
+    if (ctx.session.isGenerating) {
+        await ctx.answerCallbackQuery({ text: '⏳ يرجى الانتظار، جاري المعالجة بالفعل...' });
+        return;
+    }
+    ctx.session.isGenerating = true;
+    ctx.session.combinedText = (ctx.session.textBuffer || []).join('\n\n');
+    if (!ctx.session.combinedText.trim()) {
+        ctx.session.isGenerating = false;
+        await ctx.answerCallbackQuery({ text: '⚠️ لم تقم بإرسال أي نص!', show_alert: true });
+        return;
+    }
+    await ctx.answerCallbackQuery();
+    ctx.session.templateWorkflowState = 'waiting_for_pages';
+    // Using the same layout estimation from the previous logic to ask for pages
+    const totalWords = ctx.session.combinedText.split(/\s+/).length;
+    const estimatedPages = Math.ceil(totalWords / 250);
+    await ctx.editMessageText(`✅ تم استلام جميع النصوص بنجاح.\n\n` +
+        `📝 عدد الكلمات: ${totalWords}\n` +
+        `📄 عدد الصفحات المتوقع: ${estimatedPages}\n\n` +
+        `اختر عدد الصفحات المستهدف:`, {
+        parse_mode: 'HTML',
+        reply_markup: new grammy_1.InlineKeyboard()
+            .text('📄 صفحة 1', 'tpl_pages_1').row()
+            .text('📄 صفحتين', 'tpl_pages_2').row()
+            .text('📄 3 صفحات', 'tpl_pages_3').row()
+            .text('📄 4 صفحات', 'tpl_pages_4').row()
+            .text('🤖 تحديد تلقائي', 'tpl_pages_auto')
+    });
+});
+registerDocCallback(/^tpl_pages_(.*)$/, 'tpl_pages_select', async (ctx) => {
+    const data = ctx.callbackQuery?.data || '';
+    if (ctx.session.templateWorkflowState !== 'waiting_for_pages')
+        return;
+    const pageChoice = data.replace('tpl_pages_', '');
+    await ctx.editMessageText('⏳ جاري بناء المستند الاحترافي باستخدام الذكاء الاصطناعي (قد يستغرق بعض الوقت)...');
+    ctx.session.templateWorkflowState = 'generating';
+    try {
+        const stylePrompts = {
+            tables: "STYLE: TABLES - highly structured layout, dark table headers, alternating row colors, black body text, strict grid alignment, professional data-report appearance.",
+            report: "STYLE: REPORT - clean corporate report, strong heading hierarchy, subtle quote blocks, elegant spacing, modern sans-serif typography.",
+            formal: "STYLE: FORMAL - monochrome official style, serif typography, strict margins, signature section, formal government/business appearance.",
+            creative: "STYLE: CREATIVE - modern visual accents, section dividers, dynamic typography, elegant color highlights, stylish layouts.",
+            minimal: "STYLE: MINIMAL - whitespace-focused, ultra-clean typography, minimal decoration, elegant readability, simplified visual flow."
+        };
+        const targetPagesMsg = pageChoice === 'auto'
+            ? "Determine the best layout density automatically."
+            : `Optimize layout density and formatting to APPROXIMATELY target ${pageChoice} pages under the current PDF rendering engine.`;
+        const masterPrompt = `You are a master document generator. Your task is to generate ONLY valid Markdown (with semantic HTML/CSS if needed for layout).
+OUTPUT CONTRACT: Return ONLY the final formatted Markdown document.
+NEVER explain anything, NO code fences, NO backticks, NO commentary, NO fake PDFs, NO base64.
+NEUTRALIZE unsafe HTML, avoid script tags, avoid external assets.
+
+${stylePrompts[ctx.session.selectedStyle || 'minimal']}
+PAGE CONTROL: ${targetPagesMsg}
+
+USER CONTENT:
+${ctx.session.combinedText}`;
+        // Async lock & Retry logic
+        const finalResponse = await Promise.race([
+            withRetry(() => aiClient.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [{ role: 'system', content: masterPrompt }],
+                temperature: 0.2
+            })),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Master Prompt Timeout')), 60000))
+        ]);
+        const finalMarkdown = finalResponse.choices[0]?.message?.content ?? '';
+        if (!finalMarkdown.trim())
+            throw new Error('AI returned empty content.');
+        // Remove markdown code fences if AI disobeyed
+        const cleanMarkdown = finalMarkdown.replace(/^```[a-z]*\n?/gm, '').replace(/```$/gm, '');
+        const pdfPath = await (0, aiPdfService_1.generateAiPDF)(cleanMarkdown);
+        if (ctx.callbackQuery?.message?.message_id) {
+            await ctx.api.deleteMessage(ctx.chat.id, ctx.callbackQuery.message.message_id).catch(() => { });
+        }
+        await ctx.replyWithDocument(new grammy_1.InputFile(pdfPath, `Template_Doc_${Date.now()}.pdf`), { caption: `✅ <b>تم تصميم مستندك بنجاح!</b>\n\nالقالب: ${ctx.session.selectedStyle?.toUpperCase()}`, parse_mode: 'HTML' });
+    }
+    catch (err) {
+        console.error('[Template-Style PDF Error]', err);
+        if (ctx.callbackQuery?.message?.message_id) {
+            await ctx.api.deleteMessage(ctx.chat.id, ctx.callbackQuery.message.message_id).catch(() => { });
+        }
+        await ctx.reply(`❌ فشل إنشاء المستند: ${err.message || 'خطأ غير معروف'}\nيرجى المحاولة مرة أخرى.`);
+    }
+    finally {
+        // Cleanup rules
+        ctx.session.textBuffer = [];
+        ctx.session.combinedText = '';
+        ctx.session.selectedStyle = null;
+        ctx.session.templateWorkflowState = 'idle';
+        ctx.session.isGenerating = false;
+    }
+});
 // ─── docBot: Premium AI Flow — Stage 1 (entry) ──────────────────────────────
 registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
     ctx.session.awaitingPremiumImage = true;

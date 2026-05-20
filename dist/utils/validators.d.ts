@@ -104,11 +104,13 @@ export interface SessionData {
     docAwaitingReport?: boolean;
     freeAiUsageCount?: number;
     freeAiUsageDate?: string;
-    workflowState?: 'idle' | 'waiting_for_text' | 'generating_prompt' | 'completed';
-    designAnalysis?: any | null;
-    structuredContent?: any | null;
+    templateWorkflowState?: "idle" | "collecting_text" | "waiting_for_pages" | "generating";
+    selectedStyle?: "tables" | "report" | "formal" | "creative" | "minimal" | null;
+    textBuffer?: string[];
+    combinedText?: string;
+    isGenerating?: boolean;
+    startedAt?: number;
     lastActivityAt?: number;
-    tempFiles?: string[];
     referenceImageBuffer?: string;
     collectedText?: string;
     awaitingMoreText?: boolean;
