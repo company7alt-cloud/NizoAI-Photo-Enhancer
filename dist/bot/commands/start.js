@@ -254,7 +254,7 @@ async function startCommand(ctx) {
         // ── 9. Send welcome message with image (bulletproof path) ─────────────────
         // NOTE: This file must be committed to GitHub.
         // Files only on the server will be wiped by git reset --hard.
-        const welcomeImagePath = path_1.default.join(process.cwd(), 'dist', 'assets', 'welcome_image.jpg');
+        const welcomeImagePath = path_1.default.join(process.cwd(), 'assets', 'welcome_image.jpg');
         await (0, assetGuard_1.safeReplyWithPhoto)(ctx, welcomeImagePath, {
             caption: greeting,
             parse_mode: 'HTML',

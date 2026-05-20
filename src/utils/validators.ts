@@ -115,7 +115,14 @@ export interface SessionData {
   freeAiUsageCount?: number;
   freeAiUsageDate?: string; // format: 'YYYY-MM-DD'
   
-  // New Paid PDF Flow fields
+  // Image-to-Styled-PDF Workflow
+  workflowState?: 'idle' | 'waiting_for_text' | 'generating_prompt' | 'completed';
+  designAnalysis?: any | null;
+  structuredContent?: any | null;
+  lastActivityAt?: number;
+  tempFiles?: string[];
+
+  // Existing Paid PDF Flow fields
   referenceImageBuffer?: string;
   collectedText?: string;
   awaitingMoreText?: boolean;
