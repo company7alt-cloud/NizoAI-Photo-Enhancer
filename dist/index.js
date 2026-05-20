@@ -108,6 +108,7 @@ async function getUserPageLimit(userId) {
 // ─── AI Hallucination Guard ────────────────────────────────────────────────────
 // ─── docBot Maintenance Flag ───────────────────────────────────────────────────
 let docBotLocked = false;
+let docWelcomeLocked = false;
 const DOC_TRANSIENT_STATE_TTL_MS = 15 * 60 * 1000;
 const DOC_CALLBACK_LOCK_MS = 200;
 const docAdminState = new Map();
@@ -217,13 +218,16 @@ function registerDocCallback(trigger, label, handler) {
     });
 }
 // ─── docBot Admin Panel Keyboard ──────────────────────────────────────────────
-const docAdminKeyboard = new grammy_1.InlineKeyboard()
-    .text('👤 التحكم بالعميل', 'doc_admin_users')
-    .text('🔒 قفل/فتح البوت', 'doc_admin_lock').row()
-    .text('📊 الإحصائيات', 'doc_admin_stats')
-    .text('💰 إدارة النقاط', 'doc_admin_points').row()
-    .text('🔓 فتح صلاحية المستندات', 'doc_admin_unlock_documents').row()
-    .text('📢 إشعار جماعي', 'doc_admin_broadcast');
+function getDocAdminKeyboard() {
+    return new grammy_1.InlineKeyboard()
+        .text(docWelcomeLocked ? '🔓 فتح أزرار الترحيب' : '🔒 قفل أزرار الترحيب', 'doc_admin_toggle_welcome').row()
+        .text('👤 التحكم بالعميل', 'doc_admin_users')
+        .text('🔒 قفل/فتح البوت', 'doc_admin_lock').row()
+        .text('📊 الإحصائيات', 'doc_admin_stats')
+        .text('💰 إدارة النقاط', 'doc_admin_points').row()
+        .text('🔓 فتح صلاحية المستندات', 'doc_admin_unlock_documents').row()
+        .text('📢 إشعار جماعي', 'doc_admin_broadcast');
+}
 // ══════════════════════════════════════════════════════════════════════════════
 // IMAGE BOT — MIDDLEWARE STACK
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1207,15 +1211,22 @@ docBot.command('admin', withDocBotHandler('admin_command', async (ctx) => {
         return;
     await ctx.reply(`🔧 <b>لوحة تحكم المشرف</b>\n\nحالة البوت: ${docBotLocked ? '🔒 مقفول' : '🔓 مفتوح'}`, {
         parse_mode: 'HTML',
-        reply_markup: docAdminKeyboard
+        reply_markup: getDocAdminKeyboard()
     });
 }));
 // ─── docBot: Admin panel callbacks ────────────────────────────────────────────
+registerDocCallback('doc_admin_toggle_welcome', 'doc_admin_toggle_welcome', async (ctx) => {
+    if (ctx.from?.id !== Number(process.env.ADMIN_ID))
+        return;
+    docWelcomeLocked = !docWelcomeLocked;
+    await ctx.answerCallbackQuery(docWelcomeLocked ? '🔒 تم قفل الأزرار' : '🔓 تم فتح الأزرار');
+    await ctx.editMessageText(`🔧 <b>لوحة تحكم المشرف</b>\n\nحالة البوت: ${docBotLocked ? '🔒 مقفول' : '🔓 مفتوح'}`, { parse_mode: 'HTML', reply_markup: getDocAdminKeyboard() }).catch((error) => logDocBotError('[DocBot:doc_admin_toggle_welcome] editMessageText failed:', error));
+});
 registerDocCallback('doc_admin_lock', 'doc_admin_lock', async (ctx) => {
     if (!ctx.from || !(0, validators_1.isAdmin)(ctx.from.id))
         return;
     docBotLocked = !docBotLocked;
-    await ctx.editMessageText(`🔧 <b>لوحة تحكم المشرف</b>\n\nحالة البوت: ${docBotLocked ? '🔒 مقفول' : '🔓 مفتوح'}`, { parse_mode: 'HTML', reply_markup: docAdminKeyboard }).catch((error) => logDocBotError('[DocBot:doc_admin_lock] editMessageText failed:', error));
+    await ctx.editMessageText(`🔧 <b>لوحة تحكم المشرف</b>\n\nحالة البوت: ${docBotLocked ? '🔒 مقفول' : '🔓 مفتوح'}`, { parse_mode: 'HTML', reply_markup: getDocAdminKeyboard() }).catch((error) => logDocBotError('[DocBot:doc_admin_lock] editMessageText failed:', error));
 });
 registerDocCallback('doc_admin_stats', 'doc_admin_stats', async (ctx) => {
     if (!ctx.from || !(0, validators_1.isAdmin)(ctx.from.id))
@@ -1254,8 +1265,22 @@ registerDocCallback('doc_admin_broadcast', 'doc_admin_broadcast', async (ctx) =>
     setDocAdminState(ctx.from.id, 'awaiting_broadcast');
     await ctx.reply('📢 أرسل نص الإشعار الجماعي:');
 });
+// ─── docBot: Welcome Buttons Interceptor ─────────────────────────────────────────
+docBot.callbackQuery('start_doc_maker', async (ctx, next) => {
+    const adminId = Number(process.env.ADMIN_ID);
+    if (docWelcomeLocked && ctx.from?.id !== adminId) {
+        await ctx.answerCallbackQuery({ text: '🛠️ هذه الخدمة مغلقة مؤقتاً للصيانة', show_alert: true });
+        return;
+    }
+    return next();
+});
 // ─── docBot: Free AI Flow ──────────────────────────────────────────────────────
 registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {
+    const adminId = Number(process.env.ADMIN_ID);
+    if (docWelcomeLocked && ctx.from?.id !== adminId) {
+        await ctx.answerCallbackQuery({ text: '🛠️ هذه الخدمة مغلقة مؤقتاً للصيانة', show_alert: true });
+        return;
+    }
     ctx.session.awaitingFreeAiTopic = true;
     await ctx.reply('🆓 أرسل لي الموضوع الذي تريد كتابته وسأنشئ لك مستنداً مجاناً:');
 });
@@ -1279,19 +1304,45 @@ async function withRetry(fn, maxRetries = 3) {
 }
 // FIX 4: PRO 👑 — Admin-only gate for the template workflow
 registerDocCallback('start_template_pdf', 'start_template_pdf', async (ctx) => {
-    const adminId = process.env.ADMIN_TELEGRAM_ID || process.env.ADMIN_IDS?.split(',')[0]?.trim();
-    if (String(ctx.from?.id) !== String(adminId)) {
+    const adminId = Number(process.env.ADMIN_ID);
+    if (docWelcomeLocked && ctx.from?.id !== adminId) {
+        await ctx.answerCallbackQuery({ text: '🛠️ هذه الخدمة مغلقة مؤقتاً للصيانة', show_alert: true });
+        return;
+    }
+    const adminEnvId = process.env.ADMIN_TELEGRAM_ID || process.env.ADMIN_IDS?.split(',')[0]?.trim();
+    if (String(ctx.from?.id) !== String(adminEnvId)) {
         await ctx.reply('🔒 عذراً، هذا القسم مخصص للإدارة فقط.');
         return;
     }
     // Admin-only: show PRO style picker
     await ctx.reply(`👑 <b>PRO — اختر قالب التصميم:</b>`, {
         parse_mode: 'HTML',
-        reply_markup: new grammy_1.InlineKeyboard()
-            .text('🟦 جداول وبيانات', 'tpl_select_tables').text('🟦 تقرير احترافي', 'tpl_select_report').row()
-            .text('🟦 خطاب رسمي', 'tpl_select_formal').text('🟦 تصميم إبداعي', 'tpl_select_creative').row()
-            .text('🟦 بسيط وأنيق', 'tpl_select_minimal').text('🟦 قالب أكاديمي', 'tpl_select_academic').row()
-            .text('🟥 ❌ إلغاء العملية', 'tpl_cancel')
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    // @ts-ignore
+                    { text: 'جداول وبيانات', callback_data: 'tpl_select_tables', style: 'primary' },
+                    // @ts-ignore
+                    { text: 'تقرير احترافي', callback_data: 'tpl_select_report', style: 'primary' }
+                ],
+                [
+                    // @ts-ignore
+                    { text: 'خطاب رسمي', callback_data: 'tpl_select_formal', style: 'primary' },
+                    // @ts-ignore
+                    { text: 'تصميم إبداعي', callback_data: 'tpl_select_creative', style: 'primary' }
+                ],
+                [
+                    // @ts-ignore
+                    { text: 'بسيط وأنيق', callback_data: 'tpl_select_minimal', style: 'primary' },
+                    // @ts-ignore
+                    { text: 'قالب أكاديمي', callback_data: 'tpl_select_academic', style: 'primary' }
+                ],
+                [
+                    // @ts-ignore
+                    { text: 'إلغاء ❌', callback_data: 'tpl_cancel', style: 'danger' }
+                ]
+            ]
+        }
     });
 });
 // FIX 3: NizoAI PDF → shows style selection first, THEN feeds into existing pages_ + points system
@@ -1461,6 +1512,11 @@ ${ctx.session.combinedText}`;
 });
 // ─── docBot: Premium AI Flow — Stage 1 (entry) ──────────────────────────────
 registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
+    const adminId = Number(process.env.ADMIN_ID);
+    if (docWelcomeLocked && ctx.from?.id !== adminId) {
+        await ctx.answerCallbackQuery({ text: '🛠️ هذه الخدمة مغلقة مؤقتاً للصيانة', show_alert: true });
+        return;
+    }
     // Reset all related state
     ctx.session.awaitingPremiumImage = false;
     ctx.session.awaitingMoreText = false;
@@ -1478,11 +1534,32 @@ registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
     // FIX 3: Show style selection FIRST (6 styles in 3 rows, then cancel)
     await ctx.reply(`🤖 <b>NizoAI PDF</b> — اختر طراز المستند:`, {
         parse_mode: 'HTML',
-        reply_markup: new grammy_1.InlineKeyboard()
-            .text('🟦 جداول وبيانات', 'nizopdf_style_tables').text('🟦 تقرير احترافي', 'nizopdf_style_report').row()
-            .text('🟦 خطاب رسمي', 'nizopdf_style_formal').text('🟦 تصميم إبداعي', 'nizopdf_style_creative').row()
-            .text('🟦 بسيط وأنيق', 'nizopdf_style_minimal').text('🟦 قالب أكاديمي', 'nizopdf_style_academic').row()
-            .text('🟥 ❌ إلغاء العملية', 'premium_cancel_flow')
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    // @ts-ignore
+                    { text: 'جداول وبيانات', callback_data: 'nizopdf_style_tables', style: 'primary' },
+                    // @ts-ignore
+                    { text: 'تقرير احترافي', callback_data: 'nizopdf_style_report', style: 'primary' }
+                ],
+                [
+                    // @ts-ignore
+                    { text: 'خطاب رسمي', callback_data: 'nizopdf_style_formal', style: 'primary' },
+                    // @ts-ignore
+                    { text: 'تصميم إبداعي', callback_data: 'nizopdf_style_creative', style: 'primary' }
+                ],
+                [
+                    // @ts-ignore
+                    { text: 'بسيط وأنيق', callback_data: 'nizopdf_style_minimal', style: 'primary' },
+                    // @ts-ignore
+                    { text: 'قالب أكاديمي', callback_data: 'nizopdf_style_academic', style: 'primary' }
+                ],
+                [
+                    // @ts-ignore
+                    { text: 'إلغاء ❌', callback_data: 'premium_cancel_flow', style: 'danger' }
+                ]
+            ]
+        }
     });
 });
 // Cancel handler for NizoAI PDF flow
@@ -1681,18 +1758,31 @@ registerDocCallback('nizopdf_done', 'nizopdf_done', async (ctx) => {
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: '1 صفحة', callback_data: 'pages_1' },
-                        { text: '2 صفحة', callback_data: 'pages_2' },
-                        { text: '3 صفحات', callback_data: 'pages_3' },
-                        { text: '5 صفحات', callback_data: 'pages_5' },
+                        // @ts-ignore
+                        { text: '1 صفحة', callback_data: 'pages_1', style: 'primary' },
+                        // @ts-ignore
+                        { text: '2 صفحة', callback_data: 'pages_2', style: 'primary' },
+                        // @ts-ignore
+                        { text: '3 صفحات', callback_data: 'pages_3', style: 'primary' },
+                        // @ts-ignore
+                        { text: '5 صفحات', callback_data: 'pages_5', style: 'primary' },
                     ],
                     [
-                        { text: '10 صفحات', callback_data: 'pages_10' },
-                        { text: '15 صفحة', callback_data: 'pages_15' },
-                        { text: '20 صفحة', callback_data: 'pages_20' },
+                        // @ts-ignore
+                        { text: '10 صفحات', callback_data: 'pages_10', style: 'primary' },
+                        // @ts-ignore
+                        { text: '15 صفحة', callback_data: 'pages_15', style: 'primary' },
+                        // @ts-ignore
+                        { text: '20 صفحة', callback_data: 'pages_20', style: 'primary' },
                     ],
-                    [{ text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto' }],
-                    [{ text: '🟥 ❌ إلغاء العملية', callback_data: 'premium_cancel_flow' }],
+                    [
+                        // @ts-ignore
+                        { text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto', style: 'success' }
+                    ],
+                    [
+                        // @ts-ignore
+                        { text: 'إلغاء ❌', callback_data: 'premium_cancel_flow', style: 'danger' }
+                    ],
                 ],
             },
         });
@@ -1721,18 +1811,31 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '1 صفحة', callback_data: 'pages_1' },
-                            { text: '2 صفحة', callback_data: 'pages_2' },
-                            { text: '3 صفحات', callback_data: 'pages_3' },
-                            { text: '5 صفحات', callback_data: 'pages_5' },
+                            // @ts-ignore
+                            { text: '1 صفحة', callback_data: 'pages_1', style: 'primary' },
+                            // @ts-ignore
+                            { text: '2 صفحة', callback_data: 'pages_2', style: 'primary' },
+                            // @ts-ignore
+                            { text: '3 صفحات', callback_data: 'pages_3', style: 'primary' },
+                            // @ts-ignore
+                            { text: '5 صفحات', callback_data: 'pages_5', style: 'primary' },
                         ],
                         [
-                            { text: '10 صفحات', callback_data: 'pages_10' },
-                            { text: '15 صفحة', callback_data: 'pages_15' },
-                            { text: '20 صفحة', callback_data: 'pages_20' },
+                            // @ts-ignore
+                            { text: '10 صفحات', callback_data: 'pages_10', style: 'primary' },
+                            // @ts-ignore
+                            { text: '15 صفحة', callback_data: 'pages_15', style: 'primary' },
+                            // @ts-ignore
+                            { text: '20 صفحة', callback_data: 'pages_20', style: 'primary' },
                         ],
-                        [{ text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto' }],
-                        [{ text: '🟥 ❌ إلغاء العملية', callback_data: 'premium_cancel_flow' }],
+                        [
+                            // @ts-ignore
+                            { text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto', style: 'success' }
+                        ],
+                        [
+                            // @ts-ignore
+                            { text: 'إلغاء ❌', callback_data: 'premium_cancel_flow', style: 'danger' }
+                        ],
                     ],
                 },
             });
@@ -1747,9 +1850,18 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
             `📄 <b>الصفحات المتوقعة:</b> ~${estimatedPages}\n\n` +
             `أرسل المزيد أو اضغط للإنهاء:`, {
             parse_mode: 'HTML',
-            reply_markup: new grammy_1.InlineKeyboard()
-                .text('🟢 ✅ تم — إنهاء وإرسال', 'nizopdf_done').row()
-                .text('🟥 ❌ إلغاء العملية', 'premium_cancel_flow')
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        // @ts-ignore
+                        { text: 'تم — إنهاء وإرسال', callback_data: 'nizopdf_done', style: 'success' }
+                    ],
+                    [
+                        // @ts-ignore
+                        { text: 'إلغاء ❌', callback_data: 'premium_cancel_flow', style: 'danger' }
+                    ]
+                ]
+            }
         });
         return; // CRITICAL: must return to prevent other handlers
     }
