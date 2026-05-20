@@ -279,7 +279,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     // ── 9. Send welcome message with image (bulletproof path) ─────────────────
     // NOTE: This file must be committed to GitHub.
     // Files only on the server will be wiped by git reset --hard.
-    const welcomeImagePath = path.join(process.cwd(), 'dist', 'assets', 'welcome_image.jpg');
+    const welcomeImagePath = path.join(process.cwd(), 'assets', 'welcome_image.jpg');
 
     await safeReplyWithPhoto(ctx, welcomeImagePath, {
       caption: greeting,

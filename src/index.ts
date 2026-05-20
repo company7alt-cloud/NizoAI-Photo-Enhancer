@@ -9,11 +9,13 @@ if (!process.env.CHANNEL_ID) throw new Error('❌ CHANNEL_ID is missing');
 if (!process.env.MONGODB_URI) throw new Error('❌ MONGODB_URI is missing');
 
 import http from 'http';
+import path from 'path';
 import OpenAI from 'openai';
 import { Bot, session, NextFunction, InlineKeyboard, InputFile } from 'grammy';
 import { run } from '@grammyjs/runner';
 
 import { BotContext, isAdmin, SessionData } from './utils/validators';
+import { safeReplyWithPhoto } from './utils/assetGuard';
 import { connectDatabase, closeDatabaseConnection } from './database/connection';
 import { Settings } from './database/models/Settings';
 import { User } from './database/models/User';
@@ -1412,7 +1414,12 @@ docBot.command('start', withDocBotHandler('start_command', async (ctx) => {
     ]
   } as any;
 
-  await ctx.reply(welcomeCaption, { parse_mode: 'HTML', reply_markup: welcomeReplyMarkup });
+  const welcomeImagePath = path.join(process.cwd(), 'assets', 'welcome.jpg');
+  await safeReplyWithPhoto(ctx, welcomeImagePath, {
+    caption: welcomeCaption,
+    parse_mode: 'HTML',
+    reply_markup: welcomeReplyMarkup as any
+  });
 }));
 
 const handleDocReportDev = async (ctx: BotContext): Promise<void> => {
