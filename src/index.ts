@@ -1,4 +1,4 @@
-// src/index.ts
+﻿// src/index.ts
 import 'dotenv/config';
 
 // ─── Environment Guards ────────────────────────────────────────────────────────
@@ -295,6 +295,7 @@ imageBot.command('reset', async (ctx) => {
       parse_mode: 'HTML',
       reply_markup: {
         inline_keyboard: [
+          // @ts-ignore
           [{ text: '✅ نعم، أعد التشغيل', callback_data: 'action_confirm_reset' }],
           [{ text: '❌ تراجع', callback_data: 'action_cancel_reset' }],
         ],
@@ -361,7 +362,7 @@ imageBot.hears('🎨 فلاتر الصور', async (ctx) => {
   const isAdmin = adminIds.includes(ctx.from!.id.toString());
 
   if (settings.locks.btn_filters && !isAdmin) {
-    await ctx.reply('🔒 قسم الفلاتر مغلق مؤقتاً. تابعنا للتحديثات ✨');
+    await ctx.reply('🔒 قسم الفلاتر مغلق مؤقتاً. تابعنا للتحديثات ');
     return;
   }
 
@@ -371,12 +372,12 @@ imageBot.hears('🎨 فلاتر الصور', async (ctx) => {
     '👤 <b>تصفية الوجه</b> — يحسن الملامح ويزيل التشويش\n' +
     '🎨 <b>تلوين الصور القديمة</b> — يلون الأبيض والأسود\n' +
     '🌸 <b>تحويل إلى أنمي</b> — يحول صورتك لأنمي احترافي\n' +
-    '✨ <b>تأثير جيبلي فني</b> — فن رقمي ساحر',
+    ' <b>تأثير جيبلي فني</b> — فن رقمي ساحر',
     {
       parse_mode: 'HTML',
       reply_markup: new InlineKeyboard()
         .text('👤 تصفية الوجه', 'filter_face').text('🎨 تلوين الصور', 'filter_color').row()
-        .text('🌸 تحويل أنمي', 'filter_anime').text('✨ تأثير جيبلي', 'filter_ghibli').row()
+        .text('🌸 تحويل أنمي', 'filter_anime').text(' تأثير جيبلي', 'filter_ghibli').row()
         .text('❌ إلغاء', 'cancel_filter')
     }
   );
@@ -499,7 +500,7 @@ imageBot.on('message:text', async (ctx, next) => {
       try {
         await ctx.api.sendMessage(
           u.telegramId,
-          `🎁 <b>هدية من المطور!</b>\n\nتم إضافة <b>${amount}</b> محاولات مجانية لرصيدك 🚀\nنتمنى لك تجربة ممتعة ومميزة 💎✨`,
+          `🎁 <b>هدية من المطور!</b>\n\nتم إضافة <b>${amount}</b> محاولات مجانية لرصيدك 🚀\nنتمنى لك تجربة ممتعة ومميزة 💎`,
           { parse_mode: 'HTML' }
         );
         notified++;
@@ -759,7 +760,7 @@ imageBot.on('message:text', async (ctx, next) => {
           `✅ <b>تم التحديث بنجاح!</b>\n\n` +
           `🔑 المفتاح: <code>${key}</code>\n\n` +
           `📝 <b>النص القديم:</b>\n<code>${oldValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>\n\n` +
-          `✨ <b>النص الجديد:</b>\n<code>${newValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`,
+          ` <b>النص الجديد:</b>\n<code>${newValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`,
           { parse_mode: 'HTML' }
         );
       } else {
@@ -826,8 +827,10 @@ imageBot.on('message:text', async (ctx, next) => {
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
+              // @ts-ignore
               [{ text: '🚫 حظر', callback_data: `admin_ban_${foundUser.telegramId}` }],
               [{ text: '🔓 رفع الحظر', callback_data: `admin_unban_${foundUser.telegramId}` }],
+              // @ts-ignore
               [{ text: '➕ إضافة محاولات', callback_data: `admin_addattempts_${foundUser.telegramId}` }],
             ],
           },
@@ -960,6 +963,7 @@ imageBot.on('message:text', async (ctx, next) => {
             parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [[
+                // @ts-ignore
                 { text: '🍀 جرب حظك الآن 🟢', callback_data: 'gw_roll_init' } as any
               ]]
             }
@@ -1011,6 +1015,7 @@ imageBot.on('message:text', async (ctx, next) => {
   if (isAdm && isFundCampaignPending(ctx.from!.id)) {
     const result = await handleFundCampaignInput(ctx.from!.id, ctx.message!.text || '', ctx.api);
     if (result.status === 'ask_target') {
+      // @ts-ignore
       await ctx.reply(`✅ تم التحقق من صلاحيات البوت.\n\nكم عدد الأعضاء المطلوب؟`, { reply_markup: { inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]] } });
     } else if (result.status === 'not_admin_in_channel') {
       await ctx.reply('❌ البوت ليس مشرفاً في هذه القناة. أضفه كمشرف أولاً ثم أعد المحاولة.');
@@ -1100,8 +1105,9 @@ imageBot.on('message:text', async (ctx, next) => {
           reply_parameters: { message_id: ctx.message!.message_id },
           reply_markup: {
             inline_keyboard: [[
-              { text: '✅ نعم، أرسل للعميل', callback_data: `confirm_support_send_${activeUser.telegramId}` },
-              { text: '❌ لا، إلغاء الإرسال', callback_data: 'cancel_support_send' }
+              // @ts-ignore
+              { text: '✅ نعم، أرسل للعميل', callback_data: `confirm_support_send_${activeUser.telegramId}`, style: 'success' as const },
+              { text: '❌ لا، إلغاء الإرسال', callback_data: 'cancel_support_send', style: 'danger' as const }
             ]]
           }
         }
@@ -1136,8 +1142,9 @@ imageBot.on('message:text', async (ctx, next) => {
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}` },
-                { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm' },
+                // @ts-ignore
+                { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}`, style: 'success' as const },
+                { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm', style: 'danger' as const },
               ],
             ],
           },
@@ -1179,8 +1186,9 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
           reply_parameters: { message_id: ctx.message!.message_id },
           reply_markup: {
             inline_keyboard: [[
-              { text: '✅ نعم، أرسل الملف', callback_data: `confirm_support_send_${activeUser.telegramId}` },
-              { text: '❌ لا، إلغاء', callback_data: 'cancel_support_send' }
+              // @ts-ignore
+              { text: '✅ نعم، أرسل الملف', callback_data: `confirm_support_send_${activeUser.telegramId}`, style: 'success' as const },
+              { text: '❌ لا، إلغاء', callback_data: 'cancel_support_send', style: 'danger' as const }
             ]]
           }
         }
@@ -1205,8 +1213,9 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}` },
-                { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm' },
+                // @ts-ignore
+                { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}`, style: 'success' as const },
+                { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm', style: 'danger' as const },
               ],
             ],
           },
@@ -1410,7 +1419,7 @@ docBot.command('start', withDocBotHandler('start_command', async (ctx) => {
           text: '📝 الدخول لصانع المستندات',
           callback_data: 'start_doc_maker',
           // @ts-ignore
-          style: 'primary'
+          style: 'primary' as const
         }
       ],
       [
@@ -1418,13 +1427,13 @@ docBot.command('start', withDocBotHandler('start_command', async (ctx) => {
           text: '🤖 NizoAI PDF',
           callback_data: 'start_premium_ai',
           // @ts-ignore
-          style: 'primary'
+          style: 'primary' as const
         },
         {
           text: '🆓 Ai Free PDF',
           callback_data: 'start_free_ai',
           // @ts-ignore
-          style: 'primary'
+          style: 'primary' as const
         }
       ],
       [
@@ -1432,7 +1441,7 @@ docBot.command('start', withDocBotHandler('start_command', async (ctx) => {
           text: '📑 PRO 👑',
           callback_data: 'start_template_pdf',
           // @ts-ignore
-          style: 'primary'
+          style: 'primary' as const
         }
       ],
       [
@@ -1440,7 +1449,7 @@ docBot.command('start', withDocBotHandler('start_command', async (ctx) => {
           text: '🚨 إبلاغ المطور',
           callback_data: 'doc_report_dev',
           // @ts-ignore
-          style: 'danger'
+          style: 'danger' as const
         }
       ]
     ]
@@ -1618,25 +1627,25 @@ registerDocCallback('start_template_pdf', 'start_template_pdf', async (ctx) => {
         inline_keyboard: [
           [
             // @ts-ignore
-            { text: 'جداول وبيانات', callback_data: 'tpl_select_tables', style: 'primary' },
+            { text: 'جداول وبيانات', callback_data: 'tpl_select_tables', style: 'primary' as const },
             // @ts-ignore
-            { text: 'تقرير احترافي', callback_data: 'tpl_select_report', style: 'primary' }
+            { text: 'تقرير احترافي', callback_data: 'tpl_select_report', style: 'primary' as const }
           ],
           [
             // @ts-ignore
-            { text: 'خطاب رسمي', callback_data: 'tpl_select_formal', style: 'primary' },
+            { text: 'خطاب رسمي', callback_data: 'tpl_select_formal', style: 'primary' as const },
             // @ts-ignore
-            { text: 'تصميم إبداعي', callback_data: 'tpl_select_creative', style: 'primary' }
+            { text: 'تصميم إبداعي', callback_data: 'tpl_select_creative', style: 'primary' as const }
           ],
           [
             // @ts-ignore
-            { text: 'بسيط وأنيق', callback_data: 'tpl_select_minimal', style: 'primary' },
+            { text: 'بسيط وأنيق', callback_data: 'tpl_select_minimal', style: 'primary' as const },
             // @ts-ignore
-            { text: 'قالب أكاديمي', callback_data: 'tpl_select_academic', style: 'primary' }
+            { text: 'قالب أكاديمي', callback_data: 'tpl_select_academic', style: 'primary' as const }
           ],
           [
             // @ts-ignore
-            { text: 'إلغاء ❌', callback_data: 'tpl_cancel', style: 'danger' }
+            { text: 'إلغاء ❌', callback_data: 'tpl_cancel', style: 'danger' as const }
           ]
         ]
       }
@@ -1880,25 +1889,25 @@ registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
         inline_keyboard: [
           [
             // @ts-ignore
-            { text: 'جداول وبيانات', callback_data: 'nizopdf_style_tables', style: 'primary' },
+            { text: 'جداول وبيانات', callback_data: 'nizopdf_style_tables', style: 'primary' as const },
             // @ts-ignore
-            { text: 'تقرير احترافي', callback_data: 'nizopdf_style_report', style: 'primary' }
+            { text: 'تقرير احترافي', callback_data: 'nizopdf_style_report', style: 'primary' as const }
           ],
           [
             // @ts-ignore
-            { text: 'خطاب رسمي', callback_data: 'nizopdf_style_formal', style: 'primary' },
+            { text: 'خطاب رسمي', callback_data: 'nizopdf_style_formal', style: 'primary' as const },
             // @ts-ignore
-            { text: 'تصميم إبداعي', callback_data: 'nizopdf_style_creative', style: 'primary' }
+            { text: 'تصميم إبداعي', callback_data: 'nizopdf_style_creative', style: 'primary' as const }
           ],
           [
             // @ts-ignore
-            { text: 'بسيط وأنيق', callback_data: 'nizopdf_style_minimal', style: 'primary' },
+            { text: 'بسيط وأنيق', callback_data: 'nizopdf_style_minimal', style: 'primary' as const },
             // @ts-ignore
-            { text: 'قالب أكاديمي', callback_data: 'nizopdf_style_academic', style: 'primary' }
+            { text: 'قالب أكاديمي', callback_data: 'nizopdf_style_academic', style: 'primary' as const }
           ],
           [
             // @ts-ignore
-            { text: 'إلغاء ❌', callback_data: 'premium_cancel_flow', style: 'danger' }
+            { text: 'إلغاء ❌', callback_data: 'premium_cancel_flow', style: 'danger' as const }
           ]
         ]
       }
@@ -2192,29 +2201,29 @@ registerDocCallback('nizopdf_done', 'nizopdf_done', async (ctx) => {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: '1 صفحة',  callback_data: 'pages_1', style: 'primary' },
+              { text: '1 صفحة',  callback_data: 'pages_1', style: 'primary' as const },
               // @ts-ignore
-              { text: '2 صفحة',  callback_data: 'pages_2', style: 'primary' },
+              { text: '2 صفحة',  callback_data: 'pages_2', style: 'primary' as const },
               // @ts-ignore
-              { text: '3 صفحات', callback_data: 'pages_3', style: 'primary' },
+              { text: '3 صفحات', callback_data: 'pages_3', style: 'primary' as const },
               // @ts-ignore
-              { text: '5 صفحات', callback_data: 'pages_5', style: 'primary' },
+              { text: '5 صفحات', callback_data: 'pages_5', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '10 صفحات', callback_data: 'pages_10', style: 'primary' },
+              { text: '10 صفحات', callback_data: 'pages_10', style: 'primary' as const },
               // @ts-ignore
-              { text: '15 صفحة',  callback_data: 'pages_15', style: 'primary' },
+              { text: '15 صفحة',  callback_data: 'pages_15', style: 'primary' as const },
               // @ts-ignore
-              { text: '20 صفحة',  callback_data: 'pages_20', style: 'primary' },
+              { text: '20 صفحة',  callback_data: 'pages_20', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto', style: 'success' }
+              { text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto', style: 'success' as const }
             ],
             [
               // @ts-ignore
-              { text: 'إلغاء ❌',  callback_data: 'premium_cancel_flow', style: 'danger' }
+              { text: 'إلغاء ❌',  callback_data: 'premium_cancel_flow', style: 'danger' as const }
             ],
           ],
         },
@@ -2251,29 +2260,29 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
             inline_keyboard: [
             [
               // @ts-ignore
-              { text: '1 صفحة',  callback_data: 'pages_1', style: 'primary' },
+              { text: '1 صفحة',  callback_data: 'pages_1', style: 'primary' as const },
               // @ts-ignore
-              { text: '2 صفحة',  callback_data: 'pages_2', style: 'primary' },
+              { text: '2 صفحة',  callback_data: 'pages_2', style: 'primary' as const },
               // @ts-ignore
-              { text: '3 صفحات', callback_data: 'pages_3', style: 'primary' },
+              { text: '3 صفحات', callback_data: 'pages_3', style: 'primary' as const },
               // @ts-ignore
-              { text: '5 صفحات', callback_data: 'pages_5', style: 'primary' },
+              { text: '5 صفحات', callback_data: 'pages_5', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '10 صفحات', callback_data: 'pages_10', style: 'primary' },
+              { text: '10 صفحات', callback_data: 'pages_10', style: 'primary' as const },
               // @ts-ignore
-              { text: '15 صفحة',  callback_data: 'pages_15', style: 'primary' },
+              { text: '15 صفحة',  callback_data: 'pages_15', style: 'primary' as const },
               // @ts-ignore
-              { text: '20 صفحة',  callback_data: 'pages_20', style: 'primary' },
+              { text: '20 صفحة',  callback_data: 'pages_20', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto', style: 'success' }
+              { text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto', style: 'success' as const }
             ],
             [
               // @ts-ignore
-              { text: 'إلغاء ❌',  callback_data: 'premium_cancel_flow', style: 'danger' }
+              { text: 'إلغاء ❌',  callback_data: 'premium_cancel_flow', style: 'danger' as const }
             ],
             ],
           },
@@ -2298,11 +2307,11 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: 'تم — إنهاء وإرسال', callback_data: 'nizopdf_done', style: 'success' }
+              { text: 'تم — إنهاء وإرسال', callback_data: 'nizopdf_done', style: 'success' as const }
             ],
             [
               // @ts-ignore
-              { text: 'إلغاء ❌', callback_data: 'premium_cancel_flow', style: 'danger' }
+              { text: 'إلغاء ❌', callback_data: 'premium_cancel_flow', style: 'danger' as const }
             ]
           ]
         }
@@ -2577,6 +2586,7 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
             parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
+                // @ts-ignore
                 [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }]
               ]
             }
@@ -2597,10 +2607,13 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
+              // @ts-ignore
               [{ text: '📄 ملء الصفحة كاملة (غلاف)', callback_data: 'doc_img_full_cover' }],
               [{ text: '📏 افتراضي — 5 أسطر', callback_data: 'doc_img_space_5' }],
+              // @ts-ignore
               [{ text: '📐 كبير — 10 أسطر', callback_data: 'doc_img_space_10' }],
               [{ text: '✍️ تخصيص العدد...', callback_data: 'doc_img_space_custom' }],
+              // @ts-ignore
               [{ text: '🔙 إلغاء', callback_data: 'doc_back_to_session' }]
             ]
           }
@@ -2638,6 +2651,7 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
+              // @ts-ignore
               [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }]
             ]
           }

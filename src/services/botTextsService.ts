@@ -1,4 +1,4 @@
-// src/services/botTextsService.ts
+﻿// src/services/botTextsService.ts
 import { BotText, IBotText } from '../database/models/BotTexts'
 
 export const DEFAULT_TEXTS: Record<string, {
@@ -14,7 +14,7 @@ export const DEFAULT_TEXTS: Record<string, {
   },
   msg_eraser_ask: {
     category: 'message',
-    value: '📸 أرسل الصورة التي تريد إزالة العلامة المائية من أسفلها اليمين.\n\n✨ سيتم المعالجة تلقائياً بالذكاء الاصطناعي.\n💎 السعر: نقطة واحدة (1)',
+    value: '📸 أرسل الصورة التي تريد إزالة العلامة المائية من أسفلها اليمين.\n\n سيتم المعالجة تلقائياً بالذكاء الاصطناعي.\n💎 السعر: نقطة واحدة (1)',
     description: 'رسالة طلب الصورة — مُزيل العلامة التلقائي'
   },
   msg_eraser_processing: {
@@ -29,7 +29,7 @@ export const DEFAULT_TEXTS: Record<string, {
   },
   msg_eraser_error: {
     category: 'notification',
-    value: '❌ عذراً، حدث خطأ. تم إعادة نقطتيك تلقائياً ✨',
+    value: '❌ عذراً، حدث خطأ. تم إعادة نقطتيك تلقائياً ',
     description: 'رسالة خطأ مُزيل العلامة'
   },
   msg_pro_ask: {
@@ -39,12 +39,12 @@ export const DEFAULT_TEXTS: Record<string, {
   },
   msg_nano_ask: {
     category: 'message',
-    value: '⏳ جاري تحسين صورتك بالذكاء الاصطناعي... ✨\nالرجاء الانتظار 🌟',
+    value: '⏳ جاري تحسين صورتك بالذكاء الاصطناعي... \nالرجاء الانتظار 🌟',
     description: 'رسالة معالجة Nano AI'
   },
   msg_nano_success: {
     category: 'message',
-    value: '✨ تم تحسين صورتك بنجاح! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة',
+    value: ' تم تحسين صورتك بنجاح! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة',
     description: 'رسالة نجاح Nano AI'
   },
   msg_format_ask: {
@@ -65,17 +65,17 @@ export const DEFAULT_TEXTS: Record<string, {
   // ── NOTIFICATIONS ─────────────────────────────────
   notif_daily_reward: {
     category: 'notification',
-    value: '🎁 تم منحك 5 محاولات مجانية! استمتع بتحسين صورك ✨',
+    value: '🎁 تم منحك 5 محاولات مجانية! استمتع بتحسين صورك ',
     description: 'إشعار الهدية اليومية'
   },
   notif_quota_empty: {
     category: 'notification',
-    value: '🌙 عذراً، انتهت محاولاتك اليومية 🥺\n⏳ الوقت المتبقي للتجديد: {timeLeft}\n🎁 ستحصل على 5 محاولات جديدة تلقائياً ✨',
+    value: '🌙 عذراً، انتهت محاولاتك اليومية 🥺\n⏳ الوقت المتبقي للتجديد: {timeLeft}\n🎁 ستحصل على 5 محاولات جديدة تلقائياً ',
     description: 'إشعار انتهاء المحاولات — {timeLeft} متغير'
   },
   notif_referral_reward: {
     category: 'notification',
-    value: '🎉 يا هلا! دخل صديق جديد عن طريق رابطك!\n✨ 💎 تمت إضافة 5 محاولات مجانية لرصيدك\nاستمر في مشاركة رابطك واكسب أكثر!',
+    value: '🎉 يا هلا! دخل صديق جديد عن طريق رابطك!\n 💎 تمت إضافة 5 محاولات مجانية لرصيدك\nاستمر في مشاركة رابطك واكسب أكثر!',
     description: 'إشعار مكافأة الإحالة'
   },
   notif_channel_reward: {
@@ -121,7 +121,7 @@ export const DEFAULT_TEXTS: Record<string, {
   },
   btn_nano_ai: {
     category: 'button',
-    value: '✨ تحسين الصورة بالذكاء',
+    value: ' تحسين الصورة بالذكاء',
     description: 'نص زر Nano AI'
   },
   btn_report: {

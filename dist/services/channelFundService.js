@@ -122,7 +122,7 @@ async function broadcastFundCampaign(api, campaign) {
     const message = `🎁 *عرض حصري من NizoAI Bot!*\n\n` +
         `انضم إلى القناة التالية واحصل على *5 محاولات مجانية* لتحسين الصور:\n\n` +
         `📢 ${campaign.channelLink}\n\n` +
-        `بعد الانضمام اضغط الزر أدناه للحصول على مكافأتك ✨`;
+        `بعد الانضمام اضغط الزر أدناه للحصول على مكافأتك `;
     const { InlineKeyboard } = await Promise.resolve().then(() => __importStar(require('grammy')));
     const keyboard = new InlineKeyboard()
         .url('📢 انضم للقناة الآن', campaign.channelLink)

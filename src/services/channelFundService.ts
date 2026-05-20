@@ -1,4 +1,4 @@
-// src/services/channelFundService.ts
+﻿// src/services/channelFundService.ts
 import { Api } from 'grammy';
 import { User } from '../database/models/User';
 import { FundCampaign } from '../database/models/FundCampaign';
@@ -123,7 +123,7 @@ export async function broadcastFundCampaign(
     `🎁 *عرض حصري من NizoAI Bot!*\n\n` +
     `انضم إلى القناة التالية واحصل على *5 محاولات مجانية* لتحسين الصور:\n\n` +
     `📢 ${campaign.channelLink}\n\n` +
-    `بعد الانضمام اضغط الزر أدناه للحصول على مكافأتك ✨`;
+    `بعد الانضمام اضغط الزر أدناه للحصول على مكافأتك `;
 
   const { InlineKeyboard } = await import('grammy');
   const keyboard = new InlineKeyboard()

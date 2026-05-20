@@ -1,4 +1,4 @@
-// src/bot/handlers/callbackHandler.ts
+﻿// src/bot/handlers/callbackHandler.ts
 import { InputFile, InlineKeyboard } from 'grammy';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
@@ -39,24 +39,29 @@ async function showFormatSelection(ctx: any, count: number, _upscale: boolean): 
   const isSingle = count === 1;
   const keyboard: any[] = [
     [
-      { text: '🖼 PNG', callback_data: 'fconv_png' },
-      { text: '🖼 JPG', callback_data: 'fconv_jpg' },
-      { text: '🖼 WEBP', callback_data: 'fconv_webp' },
+      // @ts-ignore
+      { text: '🖼 PNG', callback_data: 'fconv_png', style: 'primary' as const },
+      { text: '🖼 JPG', callback_data: 'fconv_jpg', style: 'primary' as const },
+      // @ts-ignore
+      { text: '🖼 WEBP', callback_data: 'fconv_webp', style: 'primary' as const },
     ],
     [
-      { text: '🖼 AVIF', callback_data: 'fconv_avif' },
-      { text: '🖼 TIFF', callback_data: 'fconv_tiff' },
+      // @ts-ignore
+      { text: '🖼 AVIF', callback_data: 'fconv_avif', style: 'primary' as const },
+      { text: '🖼 TIFF', callback_data: 'fconv_tiff', style: 'primary' as const },
     ],
   ];
 
   // Add PDF and SVG only for single image
   if (isSingle) {
     keyboard.push([
-      { text: '📄 PDF', callback_data: 'fconv_pdf' },
-      { text: '🎨 SVG', callback_data: 'fconv_svg' },
+      // @ts-ignore
+      { text: '📄 PDF', callback_data: 'fconv_pdf', style: 'primary' as const },
+      { text: '🎨 SVG', callback_data: 'fconv_svg', style: 'primary' as const },
     ]);
   }
 
+  // @ts-ignore
   keyboard.push([{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }]);
 
   await ctx.reply(
@@ -204,12 +209,12 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       '👤 <b>تصفية الوجه</b> — يحسن الملامح ويزيل التشويش\n' +
       '🎨 <b>تلوين الصور القديمة</b> — يلون الأبيض والأسود\n' +
       '🌸 <b>تحويل إلى أنمي</b> — يحول صورتك لأنمي احترافي\n' +
-      '✨ <b>تأثير جيبلي فني</b> — فن رقمي ساحر',
+      ' <b>تأثير جيبلي فني</b> — فن رقمي ساحر',
       {
         parse_mode: 'HTML',
         reply_markup: new InlineKeyboard()
           .text('👤 تصفية الوجه', 'filter_face').text('🎨 تلوين الصور', 'filter_color').row()
-          .text('🌸 تحويل أنمي', 'filter_anime').text('✨ تأثير جيبلي', 'filter_ghibli').row()
+          .text('🌸 تحويل أنمي', 'filter_anime').text(' تأثير جيبلي', 'filter_ghibli').row()
           .text('🪄 ترميم الصور القديمة', 'filter_restore').row()
           .text('❌ إلغاء', 'cancel_filter')
       }
@@ -226,7 +231,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       'filter_face': '👤 تصفية الوجه',
       'filter_color': '🎨 تلوين الصور',
       'filter_anime': '🌸 تحويل أنمي',
-      'filter_ghibli': '✨ تأثير جيبلي',
+      'filter_ghibli': ' تأثير جيبلي',
     };
     const fName = filterNames[data] || 'هذا الفلتر';
 
@@ -279,7 +284,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     await ctx.editMessageText(
       `🖼️ <b>أرسل الصورة الآن</b>\n\n` +
-      `سيتم تطبيق الفلتر خلال 30-60 ثانية ✨\n` +
+      `سيتم تطبيق الفلتر خلال 30-60 ثانية \n` +
       `⚡ <b>التكلفة: ${cost} محاولات</b>\n` +
       `💡 <i>تُخصم عند النجاح فقط</i>`,
       {
@@ -500,7 +505,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ── STEP 5: Locked 8K ─────────────────────────────────────────────────────────
   if (data === 'locked_8k') {
     void ctx.answerCallbackQuery({
-      text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح ميزة الـ 8K ✨',
+      text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح ميزة الـ 8K ',
       show_alert: true,
     }).catch(() => { });
     return;
@@ -508,7 +513,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   if (data === 'locked_4k') {
     void ctx.answerCallbackQuery({
-      text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح الميزة ✨',
+      text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح الميزة ',
       show_alert: true,
     }).catch(() => { });
     return;
@@ -570,7 +575,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     if (resolution !== '2K') {
       if (!admin && user.dailyQuota < 1) {
         await ctx.reply(
-          '🌙 أوه! انتهت محاولاتك اليومية 🥺\nعد غداً وستجد 5 محاولات جديدة بانتظارك 🎁✨'
+          '🌙 أوه! انتهت محاولاتك اليومية 🥺\nعد غداً وستجد 5 محاولات جديدة بانتظارك 🎁'
         );
         return;
       }
@@ -607,13 +612,16 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '🖼 PNG', callback_data: 'conv_png' },
-              { text: '🖼 JPG', callback_data: 'conv_jpg' },
-              { text: '🖼 WEBP', callback_data: 'conv_webp' },
+              // @ts-ignore
+              { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' as const },
+              { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' as const },
+              // @ts-ignore
+              { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' as const },
             ],
             [
-              { text: '🖼 AVIF', callback_data: 'conv_avif' },
-              { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+              // @ts-ignore
+              { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' as const },
+              { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
             ],
           ],
         },
@@ -631,7 +639,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       }
       await ctx.deleteMessage().catch(() => { });
       await ctx.reply(
-        '😔 عذراً حدث خطأ أثناء معالجة صورتك 🌸\nتم إعادة محاولتك تلقائياً ✨\nجرب مرة أخرى وسنكون معك 💙'
+        '😔 عذراً حدث خطأ أثناء معالجة صورتك 🌸\nتم إعادة محاولتك تلقائياً \nجرب مرة أخرى وسنكون معك 💙'
       );
     }
     return;
@@ -661,7 +669,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     const jobId = uuidv4().substring(0, 8).toUpperCase();
     await ctx.editMessageText(
-      '⚙️ جاري المعالجة بدقة 4K الفائقة ✨\nهذه العملية تستهلك محاولتين من رصيدك 💎\nالرجاء الانتظار، قد تستغرق دقيقة أو أكثر 🌸'
+      '⚙️ جاري المعالجة بدقة 4K الفائقة \nهذه العملية تستهلك محاولتين من رصيدك 💎\nالرجاء الانتظار، قد تستغرق دقيقة أو أكثر 🌸'
     );
     ctx.session && (ctx.session.pendingFile = undefined);
 
@@ -675,17 +683,20 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       const { incrementGlobalCounter } = await import('../../services/statsService');
       await incrementGlobalCounter();
       await ctx.replyWithDocument(new InputFile(resultBuffer, outputFileName), {
-        caption: `💎 صورتك جاهزة بدقة 4K الفائقة! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
+        caption: `💎 صورتك جاهزة بدقة 4K الفائقة! \n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '🖼 PNG', callback_data: 'conv_png' },
-              { text: '🖼 JPG', callback_data: 'conv_jpg' },
-              { text: '🖼 WEBP', callback_data: 'conv_webp' },
+              // @ts-ignore
+              { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' as const },
+              { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' as const },
+              // @ts-ignore
+              { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' as const },
             ],
             [
-              { text: '🖼 AVIF', callback_data: 'conv_avif' },
-              { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+              // @ts-ignore
+              { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' as const },
+              { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
             ],
           ],
         },
@@ -701,7 +712,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       }
       await ctx.deleteMessage().catch(() => { });
       await ctx.reply(
-        '😔 عذراً حدث خطأ أثناء معالجة صورتك بدقة 4K 🌸\nتم إعادة المحاولتين تلقائياً ✨\nجرب مرة أخرى وسنكون معك 💙'
+        '😔 عذراً حدث خطأ أثناء معالجة صورتك بدقة 4K 🌸\nتم إعادة المحاولتين تلقائياً \nجرب مرة أخرى وسنكون معك 💙'
       );
     }
     return;
@@ -817,7 +828,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           .editMessageText(
             processingMsg.chat.id,
             processingMsg.message_id,
-            '✨ *جاري معالجة الصورة بلمسة سحرية...*\n⏳ يتم الآن رفع الدقة وإبراز التفاصيل المخفية، لحظات من فضلك.',
+            ' *جاري معالجة الصورة بلمسة سحرية...*\n⏳ يتم الآن رفع الدقة وإبراز التفاصيل المخفية، لحظات من فضلك.',
             { parse_mode: 'Markdown' }
           )
           .catch(() => { });
@@ -837,7 +848,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.replyWithDocument(
         new InputFile(resultBuffer, fileName),
         {
-          caption: '✨ تم التحسين بنموذج RealESRGAN AI ×4 | NizoAI Bot 🚀',
+          caption: ' تم التحسين بنموذج RealESRGAN AI ×4 | NizoAI Bot 🚀',
           reply_to_message_id: ctx.msg?.message_id,
         }
       );
@@ -866,7 +877,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           await ctx.api.sendDocument(
             CHANNEL_ID,
             new InputFile(resultBuffer, fileName),
-            { caption: '✨ تمت المعالجة بنجاح', disable_notification: true }
+            { caption: ' تمت المعالجة بنجاح', disable_notification: true }
           );
         } catch (e) {
           console.error('[RealESRGAN Channel Forward]', e);
@@ -1043,6 +1054,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       '🌹 فضلاً أرسل لنا بلاغك (رسالة أو صورة)\nوسيتم الرد عليك في أسرع وقت ممكن 💬',
       {
         reply_markup: {
+          // @ts-ignore
           inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_report' }]],
         },
       }
@@ -1095,8 +1107,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
+              // @ts-ignore
               [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` }],
               [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` }],
+              // @ts-ignore
               [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}` }],
             ],
           },
@@ -1280,6 +1294,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         parse_mode: 'HTML',
         reply_markup: {
+          // @ts-ignore
           inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]],
         },
       }
@@ -1368,8 +1383,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
+            // @ts-ignore
             [{ text: '⚡ سريع (جودة عالية)', callback_data: 'pro_q_fast' }],
             [{ text: '💎 احترافي (جودة فائقة)', callback_data: 'pro_q_pro' }],
+            // @ts-ignore
             [{ text: '🏆 ماكس (أعلى جودة)', callback_data: 'pro_q_max' }],
             [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
           ],
@@ -1398,8 +1415,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
+            // @ts-ignore
             [{ text: '2x — تكبير مضاعف', callback_data: 'pro_s_2' }],
             [{ text: '4x — تكبير رباعي (موصى به)', callback_data: 'pro_s_4' }],
+            // @ts-ignore
             [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
           ],
         },
@@ -1422,8 +1441,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
+            // @ts-ignore
             [{ text: '🖼 صورة عادية', callback_data: 'pro_t_photo' }],
             [{ text: '👤 وجه / بورتريه', callback_data: 'pro_t_face' }],
+            // @ts-ignore
             [{ text: '🎨 رسم / أنمي / فن', callback_data: 'pro_t_art' }],
             [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
           ],
@@ -1467,8 +1488,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '✅ نعم، ابدأ التحسين', callback_data: 'pro_confirm_yes' },
-              { text: '❌ لا، إلغاء', callback_data: 'pro_cancel' },
+              // @ts-ignore
+              { text: '✅ نعم، ابدأ التحسين', callback_data: 'pro_confirm_yes', style: 'success' as const },
+              { text: '❌ لا، إلغاء', callback_data: 'pro_cancel', style: 'danger' as const },
             ],
           ],
         },
@@ -1542,18 +1564,25 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     const buildAdminKeyboard = (l: typeof locks) => ({
       inline_keyboard: [
+        // @ts-ignore
         [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k' }],
         [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k' }],
+        // @ts-ignore
         [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k' }],
         [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
+        // @ts-ignore
         [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
-        [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
-        [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+        [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano' }],
+        // @ts-ignore
+        [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
         [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' }],
+        // @ts-ignore
         [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
         [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
+        // @ts-ignore
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
         [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' }],
+        // @ts-ignore
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
     });
@@ -1595,18 +1624,25 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     const buildAdminKeyboard = (l: typeof newLocks) => ({
       inline_keyboard: [
+        // @ts-ignore
         [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k' }],
         [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k' }],
+        // @ts-ignore
         [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k' }],
         [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
+        // @ts-ignore
         [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
-        [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
-        [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+        [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano' }],
+        // @ts-ignore
+        [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
         [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' }],
+        // @ts-ignore
         [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
         [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
+        // @ts-ignore
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
         [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' }],
+        // @ts-ignore
         [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
       ]
     });
@@ -1680,7 +1716,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     if (!isNanoAdmin && nanoUser.dailyQuota < 2) {
       await ctx.reply(
         `⚠️ رصيدك غير كافٍ!\n` +
-        `تحتاج <b>2 محاولات</b> لاستخدام هذه الميزة ✨\n` +
+        `تحتاج <b>2 محاولات</b> لاستخدام هذه الميزة \n` +
         `رصيدك الحالي: <b>${nanoUser.dailyQuota}</b> محاولة`,
         { parse_mode: 'HTML' }
       );
@@ -1693,13 +1729,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
 
     await ctx.reply(
-      '✨ <b>تحسين الصورة بالذكاء الاصطناعي</b>\n\n' +
+      ' <b>تحسين الصورة بالذكاء الاصطناعي</b>\n\n' +
       '📸 أرسل لي الصورة الآن وسأقوم بتحسينها احترافياً مع الحفاظ على هويتها الأصلية 100% 🚀\n\n' +
       '💎 <b>السعر: 2 محاولات</b>\n' +
       '<i>يمكنك إرسالها كصورة عادية أو كملف للحفاظ على الجودة</i>',
       {
         parse_mode: 'HTML',
         reply_markup: {
+          // @ts-ignore
           inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_nano_banana' }]]
         }
       }
@@ -1894,6 +1931,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
+            // @ts-ignore
             [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
           ],
         },
@@ -1934,6 +1972,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
+            // @ts-ignore
             [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
           ],
         },
@@ -1961,8 +2000,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '✨ نعم، ارفع الدقة أيضاً', callback_data: 'conv_quality_upscale' }],
+            // @ts-ignore
+            [{ text: ' نعم، ارفع الدقة أيضاً', callback_data: 'conv_quality_upscale' }],
             [{ text: '🔄 لا، تحويل الصيغة فقط (كما هي)', callback_data: 'conv_quality_original' }],
+            // @ts-ignore
             [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
           ],
         },
@@ -2276,13 +2317,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery().catch(() => { });
 
     await ctx.reply(
-      '✨ <b>مُزيل العلامات المائية</b>\n\nاختر نوع الإزالة الذي تريده:',
+      ' <b>مُزيل العلامات المائية</b>\n\nاختر نوع الإزالة الذي تريده:',
       {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '✨ إزالة نجمة Gemini (تلقائي)', callback_data: 'watermark_auto_gemini' }],
+            // @ts-ignore
+            [{ text: ' إزالة نجمة Gemini (تلقائي)', callback_data: 'watermark_auto_gemini' }],
             [{ text: '🖌️ إزالة عنصر مخصص (يدوي)', callback_data: 'watermark_custom_start' }],
+            // @ts-ignore
             [{ text: '❌ إلغاء', callback_data: 'cancel_eraser' }]
           ]
         }
@@ -2318,6 +2361,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       '📸 أرسل لي الصورة الآن وسأقوم بإزالة نجمة Gemini من الزاوية تلقائياً.',
       {
         reply_markup: {
+          // @ts-ignore
           inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_auto_eraser' }]]
         }
       }
@@ -2660,17 +2704,21 @@ function buildCellKeyboard(
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '30 تقسيم', callback_data: 'cgz_size_30' },
-              { text: '40 تقسيم', callback_data: 'cgz_size_40' },
+              // @ts-ignore
+              { text: '30 تقسيم', callback_data: 'cgz_size_30', style: 'primary' as const },
+              { text: '40 تقسيم', callback_data: 'cgz_size_40', style: 'primary' as const },
             ],
             [
-              { text: '50 تقسيم', callback_data: 'cgz_size_50' },
-              { text: '70 تقسيم', callback_data: 'cgz_size_70' },
+              // @ts-ignore
+              { text: '50 تقسيم', callback_data: 'cgz_size_50', style: 'primary' as const },
+              { text: '70 تقسيم', callback_data: 'cgz_size_70', style: 'primary' as const },
             ],
             [
-              { text: '80 تقسيم', callback_data: 'cgz_size_80' },
-              { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100' },
+              // @ts-ignore
+              { text: '80 تقسيم', callback_data: 'cgz_size_80', style: 'primary' as const },
+              { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100', style: 'primary' as const },
             ],
+            // @ts-ignore
             [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
           ]
         }
@@ -2905,8 +2953,10 @@ function buildCellKeyboard(
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
+            // @ts-ignore
             [{ text: '💬 رسائل البوت', callback_data: 'txtedit_cat_message' }],
             [{ text: '🔘 أسماء الأزرار', callback_data: 'txtedit_cat_button' }],
+            // @ts-ignore
             [{ text: '🔔 الإشعارات', callback_data: 'txtedit_cat_notification' }],
             [{ text: '🔙 رجوع للوحة', callback_data: 'admin_panel' }],
           ]
@@ -2942,6 +2992,7 @@ function buildCellKeyboard(
       text: `✏️ ${item.description}`,
       callback_data: `txtedit_item_${item.key}`.slice(0, 64)
     }]));
+    // @ts-ignore
     keyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_edit_texts' }]);
 
     await ctx.reply(
@@ -2983,6 +3034,7 @@ function buildCellKeyboard(
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
+            // @ts-ignore
             [{ text: '🔄 استعادة الافتراضي', callback_data: `txtedit_reset_${key}`.slice(0, 64) }],
             [{ text: '❌ إلغاء', callback_data: 'txtedit_cancel' }],
           ]
@@ -3039,10 +3091,13 @@ function buildCellKeyboard(
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
+            // @ts-ignore
             [{ text: '➕ إضافة للجميع', callback_data: 'attempts_add_all' }],
             [{ text: '👤 إضافة لشخص محدد', callback_data: 'attempts_add_one' }],
+            // @ts-ignore
             [{ text: '➖ خصم من شخص محدد', callback_data: 'attempts_remove_one' }],
             [{ text: '🔄 تصفير شخص محدد', callback_data: 'attempts_reset_one' }],
+            // @ts-ignore
             [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
           ]
         }
@@ -3123,6 +3178,7 @@ function buildCellKeyboard(
         callback_data: 'add_fsub',
       }]);
     }
+    // @ts-ignore
     fsubKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' }]);
 
     await ctx.reply(
@@ -3191,6 +3247,7 @@ function buildCellKeyboard(
         callback_data: 'add_fsub',
       }]);
     }
+    // @ts-ignore
     updatedKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' }]);
 
     await ctx.editMessageText(

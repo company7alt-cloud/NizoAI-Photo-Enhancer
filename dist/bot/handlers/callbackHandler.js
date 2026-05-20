@@ -68,22 +68,27 @@ async function showFormatSelection(ctx, count, _upscale) {
     const isSingle = count === 1;
     const keyboard = [
         [
-            { text: '🖼 PNG', callback_data: 'fconv_png' },
-            { text: '🖼 JPG', callback_data: 'fconv_jpg' },
-            { text: '🖼 WEBP', callback_data: 'fconv_webp' },
+            // @ts-ignore
+            { text: '🖼 PNG', callback_data: 'fconv_png', style: 'primary' },
+            { text: '🖼 JPG', callback_data: 'fconv_jpg', style: 'primary' },
+            // @ts-ignore
+            { text: '🖼 WEBP', callback_data: 'fconv_webp', style: 'primary' },
         ],
         [
-            { text: '🖼 AVIF', callback_data: 'fconv_avif' },
-            { text: '🖼 TIFF', callback_data: 'fconv_tiff' },
+            // @ts-ignore
+            { text: '🖼 AVIF', callback_data: 'fconv_avif', style: 'primary' },
+            { text: '🖼 TIFF', callback_data: 'fconv_tiff', style: 'primary' },
         ],
     ];
     // Add PDF and SVG only for single image
     if (isSingle) {
         keyboard.push([
-            { text: '📄 PDF', callback_data: 'fconv_pdf' },
-            { text: '🎨 SVG', callback_data: 'fconv_svg' },
+            // @ts-ignore
+            { text: '📄 PDF', callback_data: 'fconv_pdf', style: 'primary' },
+            { text: '🎨 SVG', callback_data: 'fconv_svg', style: 'primary' },
         ]);
     }
+    // @ts-ignore
     keyboard.push([{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }]);
     await ctx.reply(`🔄 <b>اختر الصيغة التي تريد التحويل إليها:</b>\n` +
         (isSingle ? '📄 PDF و SVG متاحان للصورة الواحدة فقط' : ''), {
@@ -193,11 +198,11 @@ async function callbackHandler(ctx) {
             '👤 <b>تصفية الوجه</b> — يحسن الملامح ويزيل التشويش\n' +
             '🎨 <b>تلوين الصور القديمة</b> — يلون الأبيض والأسود\n' +
             '🌸 <b>تحويل إلى أنمي</b> — يحول صورتك لأنمي احترافي\n' +
-            '✨ <b>تأثير جيبلي فني</b> — فن رقمي ساحر', {
+            ' <b>تأثير جيبلي فني</b> — فن رقمي ساحر', {
             parse_mode: 'HTML',
             reply_markup: new grammy_1.InlineKeyboard()
                 .text('👤 تصفية الوجه', 'filter_face').text('🎨 تلوين الصور', 'filter_color').row()
-                .text('🌸 تحويل أنمي', 'filter_anime').text('✨ تأثير جيبلي', 'filter_ghibli').row()
+                .text('🌸 تحويل أنمي', 'filter_anime').text(' تأثير جيبلي', 'filter_ghibli').row()
                 .text('🪄 ترميم الصور القديمة', 'filter_restore').row()
                 .text('❌ إلغاء', 'cancel_filter')
         });
@@ -211,7 +216,7 @@ async function callbackHandler(ctx) {
             'filter_face': '👤 تصفية الوجه',
             'filter_color': '🎨 تلوين الصور',
             'filter_anime': '🌸 تحويل أنمي',
-            'filter_ghibli': '✨ تأثير جيبلي',
+            'filter_ghibli': ' تأثير جيبلي',
         };
         const fName = filterNames[data] || 'هذا الفلتر';
         // Set unified awaiting state — imageHandler interceptor handles processing
@@ -246,7 +251,7 @@ async function callbackHandler(ctx) {
                 awaitingAutoEraserImage: false
             } });
         await ctx.editMessageText(`🖼️ <b>أرسل الصورة الآن</b>\n\n` +
-            `سيتم تطبيق الفلتر خلال 30-60 ثانية ✨\n` +
+            `سيتم تطبيق الفلتر خلال 30-60 ثانية \n` +
             `⚡ <b>التكلفة: ${cost} محاولات</b>\n` +
             `💡 <i>تُخصم عند النجاح فقط</i>`, {
             parse_mode: 'HTML',
@@ -428,14 +433,14 @@ async function callbackHandler(ctx) {
     // ── STEP 5: Locked 8K ─────────────────────────────────────────────────────────
     if (data === 'locked_8k') {
         void ctx.answerCallbackQuery({
-            text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح ميزة الـ 8K ✨',
+            text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح ميزة الـ 8K ',
             show_alert: true,
         }).catch(() => { });
         return;
     }
     if (data === 'locked_4k') {
         void ctx.answerCallbackQuery({
-            text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح الميزة ✨',
+            text: '🔒 هذه الميزة مقفلة حالياً 💫\nتواصل مع المطور لفتح الميزة ',
             show_alert: true,
         }).catch(() => { });
         return;
@@ -483,7 +488,7 @@ async function callbackHandler(ctx) {
         await ctx.answerCallbackQuery().catch(() => { });
         if (resolution !== '2K') {
             if (!admin && user.dailyQuota < 1) {
-                await ctx.reply('🌙 أوه! انتهت محاولاتك اليومية 🥺\nعد غداً وستجد 5 محاولات جديدة بانتظارك 🎁✨');
+                await ctx.reply('🌙 أوه! انتهت محاولاتك اليومية 🥺\nعد غداً وستجد 5 محاولات جديدة بانتظارك 🎁');
                 return;
             }
         }
@@ -514,13 +519,16 @@ async function callbackHandler(ctx) {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '🖼 PNG', callback_data: 'conv_png' },
-                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
-                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                            // @ts-ignore
+                            { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' },
+                            { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' },
+                            // @ts-ignore
+                            { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' },
                         ],
                         [
-                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
-                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                            // @ts-ignore
+                            { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' },
+                            { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' },
                         ],
                     ],
                 },
@@ -537,7 +545,7 @@ async function callbackHandler(ctx) {
                 }
             }
             await ctx.deleteMessage().catch(() => { });
-            await ctx.reply('😔 عذراً حدث خطأ أثناء معالجة صورتك 🌸\nتم إعادة محاولتك تلقائياً ✨\nجرب مرة أخرى وسنكون معك 💙');
+            await ctx.reply('😔 عذراً حدث خطأ أثناء معالجة صورتك 🌸\nتم إعادة محاولتك تلقائياً \nجرب مرة أخرى وسنكون معك 💙');
         }
         return;
     }
@@ -558,7 +566,7 @@ async function callbackHandler(ctx) {
             await user.save();
         }
         const jobId = (0, uuid_1.v4)().substring(0, 8).toUpperCase();
-        await ctx.editMessageText('⚙️ جاري المعالجة بدقة 4K الفائقة ✨\nهذه العملية تستهلك محاولتين من رصيدك 💎\nالرجاء الانتظار، قد تستغرق دقيقة أو أكثر 🌸');
+        await ctx.editMessageText('⚙️ جاري المعالجة بدقة 4K الفائقة \nهذه العملية تستهلك محاولتين من رصيدك 💎\nالرجاء الانتظار، قد تستغرق دقيقة أو أكثر 🌸');
         ctx.session && (ctx.session.pendingFile = undefined);
         try {
             const resultBuffer = await imageService.enhance(telegramFileUrl, '4K');
@@ -568,17 +576,20 @@ async function callbackHandler(ctx) {
             const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
             await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, outputFileName), {
-                caption: `💎 صورتك جاهزة بدقة 4K الفائقة! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
+                caption: `💎 صورتك جاهزة بدقة 4K الفائقة! \n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${user.dailyQuota}`,
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '🖼 PNG', callback_data: 'conv_png' },
-                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
-                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                            // @ts-ignore
+                            { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' },
+                            { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' },
+                            // @ts-ignore
+                            { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' },
                         ],
                         [
-                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
-                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                            // @ts-ignore
+                            { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' },
+                            { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' },
                         ],
                     ],
                 },
@@ -593,7 +604,7 @@ async function callbackHandler(ctx) {
                 await user.save();
             }
             await ctx.deleteMessage().catch(() => { });
-            await ctx.reply('😔 عذراً حدث خطأ أثناء معالجة صورتك بدقة 4K 🌸\nتم إعادة المحاولتين تلقائياً ✨\nجرب مرة أخرى وسنكون معك 💙');
+            await ctx.reply('😔 عذراً حدث خطأ أثناء معالجة صورتك بدقة 4K 🌸\nتم إعادة المحاولتين تلقائياً \nجرب مرة أخرى وسنكون معك 💙');
         }
         return;
     }
@@ -688,7 +699,7 @@ async function callbackHandler(ctx) {
             // STEP 5 — Run RealESRGAN ───────────────────────────────────────────────
             if (processingMsg) {
                 await ctx.api
-                    .editMessageText(processingMsg.chat.id, processingMsg.message_id, '✨ *جاري معالجة الصورة بلمسة سحرية...*\n⏳ يتم الآن رفع الدقة وإبراز التفاصيل المخفية، لحظات من فضلك.', { parse_mode: 'Markdown' })
+                    .editMessageText(processingMsg.chat.id, processingMsg.message_id, ' *جاري معالجة الصورة بلمسة سحرية...*\n⏳ يتم الآن رفع الدقة وإبراز التفاصيل المخفية، لحظات من فضلك.', { parse_mode: 'Markdown' })
                     .catch(() => { });
             }
             const resultBuffer = await (0, onnxEnhanceService_1.enhanceWithONNX)(inputBuffer);
@@ -704,7 +715,7 @@ async function callbackHandler(ctx) {
             const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
             await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_1.InputFile(resultBuffer, fileName), {
-                caption: '✨ تم التحسين بنموذج RealESRGAN AI ×4 | NizoAI Bot 🚀',
+                caption: ' تم التحسين بنموذج RealESRGAN AI ×4 | NizoAI Bot 🚀',
                 reply_to_message_id: ctx.msg?.message_id,
             });
             // STEP 7 — Channel backup (untouched original logic) ───────────────────
@@ -720,7 +731,7 @@ async function callbackHandler(ctx) {
             await ctx.api.sendDocument(BACKUP_CHANNEL_ID, new grammy_1.InputFile(resultBuffer, fileName), { caption: archiveCaption, parse_mode: 'HTML' });
             if (CHANNEL_ID && CHANNEL_ID !== BACKUP_CHANNEL_ID) {
                 try {
-                    await ctx.api.sendDocument(CHANNEL_ID, new grammy_1.InputFile(resultBuffer, fileName), { caption: '✨ تمت المعالجة بنجاح', disable_notification: true });
+                    await ctx.api.sendDocument(CHANNEL_ID, new grammy_1.InputFile(resultBuffer, fileName), { caption: ' تمت المعالجة بنجاح', disable_notification: true });
                 }
                 catch (e) {
                     console.error('[RealESRGAN Channel Forward]', e);
@@ -864,6 +875,7 @@ async function callbackHandler(ctx) {
         await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: true } });
         await ctx.reply('🌹 فضلاً أرسل لنا بلاغك (رسالة أو صورة)\nوسيتم الرد عليك في أسرع وقت ممكن 💬', {
             reply_markup: {
+                // @ts-ignore
                 inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_report' }]],
             },
         });
@@ -905,8 +917,10 @@ async function callbackHandler(ctx) {
                     parse_mode: 'HTML',
                     reply_markup: {
                         inline_keyboard: [
+                            // @ts-ignore
                             [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` }],
                             [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` }],
+                            // @ts-ignore
                             [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}` }],
                         ],
                     },
@@ -1034,6 +1048,7 @@ async function callbackHandler(ctx) {
         await ctx.reply('📢 <b>إنشاء حملة تمويل أعضاء</b>\n\nأرسل رابط القناة أو المجموعة المراد تمويلها:', {
             parse_mode: 'HTML',
             reply_markup: {
+                // @ts-ignore
                 inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]],
             },
         });
@@ -1115,8 +1130,10 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
+                    // @ts-ignore
                     [{ text: '⚡ سريع (جودة عالية)', callback_data: 'pro_q_fast' }],
                     [{ text: '💎 احترافي (جودة فائقة)', callback_data: 'pro_q_pro' }],
+                    // @ts-ignore
                     [{ text: '🏆 ماكس (أعلى جودة)', callback_data: 'pro_q_max' }],
                     [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
                 ],
@@ -1138,8 +1155,10 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
+                    // @ts-ignore
                     [{ text: '2x — تكبير مضاعف', callback_data: 'pro_s_2' }],
                     [{ text: '4x — تكبير رباعي (موصى به)', callback_data: 'pro_s_4' }],
+                    // @ts-ignore
                     [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
                 ],
             },
@@ -1155,8 +1174,10 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
+                    // @ts-ignore
                     [{ text: '🖼 صورة عادية', callback_data: 'pro_t_photo' }],
                     [{ text: '👤 وجه / بورتريه', callback_data: 'pro_t_face' }],
+                    // @ts-ignore
                     [{ text: '🎨 رسم / أنمي / فن', callback_data: 'pro_t_art' }],
                     [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
                 ],
@@ -1187,8 +1208,9 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: '✅ نعم، ابدأ التحسين', callback_data: 'pro_confirm_yes' },
-                        { text: '❌ لا، إلغاء', callback_data: 'pro_cancel' },
+                        // @ts-ignore
+                        { text: '✅ نعم، ابدأ التحسين', callback_data: 'pro_confirm_yes', style: 'success' },
+                        { text: '❌ لا، إلغاء', callback_data: 'pro_cancel', style: 'danger' },
                     ],
                 ],
             },
@@ -1243,18 +1265,25 @@ async function callbackHandler(ctx) {
         await ctx.answerCallbackQuery().catch(() => { });
         const buildAdminKeyboard = (l) => ({
             inline_keyboard: [
+                // @ts-ignore
                 [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k' }],
                 [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k' }],
+                // @ts-ignore
                 [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k' }],
                 [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
+                // @ts-ignore
                 [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
-                [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
-                [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+                [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano' }],
+                // @ts-ignore
+                [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
                 [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' }],
+                // @ts-ignore
                 [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
                 [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
+                // @ts-ignore
                 [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
                 [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' }],
+                // @ts-ignore
                 [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
             ]
         });
@@ -1280,18 +1309,25 @@ async function callbackHandler(ctx) {
         const newLocks = newSettings.locks;
         const buildAdminKeyboard = (l) => ({
             inline_keyboard: [
+                // @ts-ignore
                 [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k' }],
                 [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k' }],
+                // @ts-ignore
                 [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k' }],
                 [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
+                // @ts-ignore
                 [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
-                [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ Nano AI`, callback_data: 'atoggle_btn_nano' }],
-                [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — ✨ مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
+                [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano' }],
+                // @ts-ignore
+                [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
                 [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' }],
+                // @ts-ignore
                 [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
                 [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
+                // @ts-ignore
                 [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
                 [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' }],
+                // @ts-ignore
                 [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
             ]
         });
@@ -1345,17 +1381,18 @@ async function callbackHandler(ctx) {
         const isNanoAdmin = nanoAdminIds.includes(ctx.from.id.toString());
         if (!isNanoAdmin && nanoUser.dailyQuota < 2) {
             await ctx.reply(`⚠️ رصيدك غير كافٍ!\n` +
-                `تحتاج <b>2 محاولات</b> لاستخدام هذه الميزة ✨\n` +
+                `تحتاج <b>2 محاولات</b> لاستخدام هذه الميزة \n` +
                 `رصيدك الحالي: <b>${nanoUser.dailyQuota}</b> محاولة`, { parse_mode: 'HTML' });
             return;
         }
         await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingNanoBananaImage: true } });
-        await ctx.reply('✨ <b>تحسين الصورة بالذكاء الاصطناعي</b>\n\n' +
+        await ctx.reply(' <b>تحسين الصورة بالذكاء الاصطناعي</b>\n\n' +
             '📸 أرسل لي الصورة الآن وسأقوم بتحسينها احترافياً مع الحفاظ على هويتها الأصلية 100% 🚀\n\n' +
             '💎 <b>السعر: 2 محاولات</b>\n' +
             '<i>يمكنك إرسالها كصورة عادية أو كملف للحفاظ على الجودة</i>', {
             parse_mode: 'HTML',
             reply_markup: {
+                // @ts-ignore
                 inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_nano_banana' }]]
             }
         });
@@ -1503,6 +1540,7 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
+                    // @ts-ignore
                     [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
                 ],
             },
@@ -1530,6 +1568,7 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
+                    // @ts-ignore
                     [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
                 ],
             },
@@ -1548,8 +1587,10 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '✨ نعم، ارفع الدقة أيضاً', callback_data: 'conv_quality_upscale' }],
+                    // @ts-ignore
+                    [{ text: ' نعم، ارفع الدقة أيضاً', callback_data: 'conv_quality_upscale' }],
                     [{ text: '🔄 لا، تحويل الصيغة فقط (كما هي)', callback_data: 'conv_quality_original' }],
+                    // @ts-ignore
                     [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
                 ],
             },
@@ -1800,12 +1841,14 @@ async function callbackHandler(ctx) {
     // ══════════════════════════════════════
     if (data === 'remove_watermark_auto' || data === 'eraser_start') {
         await ctx.answerCallbackQuery().catch(() => { });
-        await ctx.reply('✨ <b>مُزيل العلامات المائية</b>\n\nاختر نوع الإزالة الذي تريده:', {
+        await ctx.reply(' <b>مُزيل العلامات المائية</b>\n\nاختر نوع الإزالة الذي تريده:', {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '✨ إزالة نجمة Gemini (تلقائي)', callback_data: 'watermark_auto_gemini' }],
+                    // @ts-ignore
+                    [{ text: ' إزالة نجمة Gemini (تلقائي)', callback_data: 'watermark_auto_gemini' }],
                     [{ text: '🖌️ إزالة عنصر مخصص (يدوي)', callback_data: 'watermark_custom_start' }],
+                    // @ts-ignore
                     [{ text: '❌ إلغاء', callback_data: 'cancel_eraser' }]
                 ]
             }
@@ -1827,6 +1870,7 @@ async function callbackHandler(ctx) {
         await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { awaitingAutoEraserImage: true } });
         await ctx.reply('📸 أرسل لي الصورة الآن وسأقوم بإزالة نجمة Gemini من الزاوية تلقائياً.', {
             reply_markup: {
+                // @ts-ignore
                 inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_auto_eraser' }]]
             }
         });
@@ -2067,17 +2111,21 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: '30 تقسيم', callback_data: 'cgz_size_30' },
-                        { text: '40 تقسيم', callback_data: 'cgz_size_40' },
+                        // @ts-ignore
+                        { text: '30 تقسيم', callback_data: 'cgz_size_30', style: 'primary' },
+                        { text: '40 تقسيم', callback_data: 'cgz_size_40', style: 'primary' },
                     ],
                     [
-                        { text: '50 تقسيم', callback_data: 'cgz_size_50' },
-                        { text: '70 تقسيم', callback_data: 'cgz_size_70' },
+                        // @ts-ignore
+                        { text: '50 تقسيم', callback_data: 'cgz_size_50', style: 'primary' },
+                        { text: '70 تقسيم', callback_data: 'cgz_size_70', style: 'primary' },
                     ],
                     [
-                        { text: '80 تقسيم', callback_data: 'cgz_size_80' },
-                        { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100' },
+                        // @ts-ignore
+                        { text: '80 تقسيم', callback_data: 'cgz_size_80', style: 'primary' },
+                        { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100', style: 'primary' },
                     ],
+                    // @ts-ignore
                     [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
                 ]
             }
@@ -2252,8 +2300,10 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
+                    // @ts-ignore
                     [{ text: '💬 رسائل البوت', callback_data: 'txtedit_cat_message' }],
                     [{ text: '🔘 أسماء الأزرار', callback_data: 'txtedit_cat_button' }],
+                    // @ts-ignore
                     [{ text: '🔔 الإشعارات', callback_data: 'txtedit_cat_notification' }],
                     [{ text: '🔙 رجوع للوحة', callback_data: 'admin_panel' }],
                 ]
@@ -2285,6 +2335,7 @@ async function callbackHandler(ctx) {
                 text: `✏️ ${item.description}`,
                 callback_data: `txtedit_item_${item.key}`.slice(0, 64)
             }]));
+        // @ts-ignore
         keyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_edit_texts' }]);
         await ctx.reply(`📋 <b>${labelMap[category]}</b>\n\nاختر العنصر:`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } });
         return;
@@ -2314,6 +2365,7 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
+                    // @ts-ignore
                     [{ text: '🔄 استعادة الافتراضي', callback_data: `txtedit_reset_${key}`.slice(0, 64) }],
                     [{ text: '❌ إلغاء', callback_data: 'txtedit_cancel' }],
                 ]
@@ -2353,10 +2405,13 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
+                    // @ts-ignore
                     [{ text: '➕ إضافة للجميع', callback_data: 'attempts_add_all' }],
                     [{ text: '👤 إضافة لشخص محدد', callback_data: 'attempts_add_one' }],
+                    // @ts-ignore
                     [{ text: '➖ خصم من شخص محدد', callback_data: 'attempts_remove_one' }],
                     [{ text: '🔄 تصفير شخص محدد', callback_data: 'attempts_reset_one' }],
+                    // @ts-ignore
                     [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
                 ]
             }
@@ -2409,6 +2464,7 @@ async function callbackHandler(ctx) {
                     callback_data: 'add_fsub',
                 }]);
         }
+        // @ts-ignore
         fsubKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' }]);
         await ctx.reply(`📢 <b>قنوات الاشتراك الإجباري</b>\n\n` +
             `عدد القنوات: ${channels.length}/10\n\n` +
@@ -2457,6 +2513,7 @@ async function callbackHandler(ctx) {
                     callback_data: 'add_fsub',
                 }]);
         }
+        // @ts-ignore
         updatedKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' }]);
         await ctx.editMessageText(`📢 <b>قنوات الاشتراك الإجباري</b>\n\nعدد القنوات: ${updatedChannels.length}/10`, {
             parse_mode: 'HTML',

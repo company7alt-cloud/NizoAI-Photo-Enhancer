@@ -300,6 +300,7 @@ imageBot.command('reset', async (ctx) => {
         parse_mode: 'HTML',
         reply_markup: {
             inline_keyboard: [
+                // @ts-ignore
                 [{ text: '✅ نعم، أعد التشغيل', callback_data: 'action_confirm_reset' }],
                 [{ text: '❌ تراجع', callback_data: 'action_cancel_reset' }],
             ],
@@ -358,7 +359,7 @@ imageBot.hears('🎨 فلاتر الصور', async (ctx) => {
     const adminIds = (process.env.ADMIN_IDS || '').split(',');
     const isAdmin = adminIds.includes(ctx.from.id.toString());
     if (settings.locks.btn_filters && !isAdmin) {
-        await ctx.reply('🔒 قسم الفلاتر مغلق مؤقتاً. تابعنا للتحديثات ✨');
+        await ctx.reply('🔒 قسم الفلاتر مغلق مؤقتاً. تابعنا للتحديثات ');
         return;
     }
     await ctx.reply('🎨 <b>فلاتر ومعالجة الصور الاحترافية</b>\n\n' +
@@ -366,11 +367,11 @@ imageBot.hears('🎨 فلاتر الصور', async (ctx) => {
         '👤 <b>تصفية الوجه</b> — يحسن الملامح ويزيل التشويش\n' +
         '🎨 <b>تلوين الصور القديمة</b> — يلون الأبيض والأسود\n' +
         '🌸 <b>تحويل إلى أنمي</b> — يحول صورتك لأنمي احترافي\n' +
-        '✨ <b>تأثير جيبلي فني</b> — فن رقمي ساحر', {
+        ' <b>تأثير جيبلي فني</b> — فن رقمي ساحر', {
         parse_mode: 'HTML',
         reply_markup: new grammy_1.InlineKeyboard()
             .text('👤 تصفية الوجه', 'filter_face').text('🎨 تلوين الصور', 'filter_color').row()
-            .text('🌸 تحويل أنمي', 'filter_anime').text('✨ تأثير جيبلي', 'filter_ghibli').row()
+            .text('🌸 تحويل أنمي', 'filter_anime').text(' تأثير جيبلي', 'filter_ghibli').row()
             .text('❌ إلغاء', 'cancel_filter')
     });
 });
@@ -459,7 +460,7 @@ imageBot.on('message:text', async (ctx, next) => {
         let notified = 0;
         for (const u of allUsers) {
             try {
-                await ctx.api.sendMessage(u.telegramId, `🎁 <b>هدية من المطور!</b>\n\nتم إضافة <b>${amount}</b> محاولات مجانية لرصيدك 🚀\nنتمنى لك تجربة ممتعة ومميزة 💎✨`, { parse_mode: 'HTML' });
+                await ctx.api.sendMessage(u.telegramId, `🎁 <b>هدية من المطور!</b>\n\nتم إضافة <b>${amount}</b> محاولات مجانية لرصيدك 🚀\nنتمنى لك تجربة ممتعة ومميزة 💎`, { parse_mode: 'HTML' });
                 notified++;
             }
             catch (e) { }
@@ -641,7 +642,7 @@ imageBot.on('message:text', async (ctx, next) => {
                 await ctx.reply(`✅ <b>تم التحديث بنجاح!</b>\n\n` +
                     `🔑 المفتاح: <code>${key}</code>\n\n` +
                     `📝 <b>النص القديم:</b>\n<code>${oldValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>\n\n` +
-                    `✨ <b>النص الجديد:</b>\n<code>${newValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`, { parse_mode: 'HTML' });
+                    ` <b>النص الجديد:</b>\n<code>${newValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`, { parse_mode: 'HTML' });
             }
             else {
                 await ctx.reply('❌ فشل التحديث.\n' +
@@ -705,8 +706,10 @@ imageBot.on('message:text', async (ctx, next) => {
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [
+                        // @ts-ignore
                         [{ text: '🚫 حظر', callback_data: `admin_ban_${foundUser.telegramId}` }],
                         [{ text: '🔓 رفع الحظر', callback_data: `admin_unban_${foundUser.telegramId}` }],
+                        // @ts-ignore
                         [{ text: '➕ إضافة محاولات', callback_data: `admin_addattempts_${foundUser.telegramId}` }],
                     ],
                 },
@@ -811,6 +814,7 @@ imageBot.on('message:text', async (ctx, next) => {
                     parse_mode: 'HTML',
                     reply_markup: {
                         inline_keyboard: [[
+                                // @ts-ignore
                                 { text: '🍀 جرب حظك الآن 🟢', callback_data: 'gw_roll_init' }
                             ]]
                     }
@@ -851,6 +855,7 @@ imageBot.on('message:text', async (ctx, next) => {
     if (isAdm && isFundCampaignPending(ctx.from.id)) {
         const result = await handleFundCampaignInput(ctx.from.id, ctx.message.text || '', ctx.api);
         if (result.status === 'ask_target') {
+            // @ts-ignore
             await ctx.reply(`✅ تم التحقق من صلاحيات البوت.\n\nكم عدد الأعضاء المطلوب؟`, { reply_markup: { inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]] } });
         }
         else if (result.status === 'not_admin_in_channel') {
@@ -927,8 +932,9 @@ imageBot.on('message:text', async (ctx, next) => {
                 reply_parameters: { message_id: ctx.message.message_id },
                 reply_markup: {
                     inline_keyboard: [[
-                            { text: '✅ نعم، أرسل للعميل', callback_data: `confirm_support_send_${activeUser.telegramId}` },
-                            { text: '❌ لا، إلغاء الإرسال', callback_data: 'cancel_support_send' }
+                            // @ts-ignore
+                            { text: '✅ نعم، أرسل للعميل', callback_data: `confirm_support_send_${activeUser.telegramId}`, style: 'success' },
+                            { text: '❌ لا، إلغاء الإرسال', callback_data: 'cancel_support_send', style: 'danger' }
                         ]]
                 }
             });
@@ -952,8 +958,9 @@ imageBot.on('message:text', async (ctx, next) => {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}` },
-                            { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm' },
+                            // @ts-ignore
+                            { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}`, style: 'success' },
+                            { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm', style: 'danger' },
                         ],
                     ],
                 },
@@ -985,8 +992,9 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
                 reply_parameters: { message_id: ctx.message.message_id },
                 reply_markup: {
                     inline_keyboard: [[
-                            { text: '✅ نعم، أرسل الملف', callback_data: `confirm_support_send_${activeUser.telegramId}` },
-                            { text: '❌ لا، إلغاء', callback_data: 'cancel_support_send' }
+                            // @ts-ignore
+                            { text: '✅ نعم، أرسل الملف', callback_data: `confirm_support_send_${activeUser.telegramId}`, style: 'success' },
+                            { text: '❌ لا، إلغاء', callback_data: 'cancel_support_send', style: 'danger' }
                         ]]
                 }
             });
@@ -1005,8 +1013,9 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}` },
-                            { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm' },
+                            // @ts-ignore
+                            { text: '✅ نعم، أرسل البلاغ', callback_data: `confirm_report_${chatId}_${messageId}`, style: 'success' },
+                            { text: '❌ لا، إلغاء', callback_data: 'cancel_report_confirm', style: 'danger' },
                         ],
                     ],
                 },
@@ -2168,6 +2177,7 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
                     parse_mode: 'HTML',
                     reply_markup: {
                         inline_keyboard: [
+                            // @ts-ignore
                             [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }]
                         ]
                     }
@@ -2182,10 +2192,13 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [
+                        // @ts-ignore
                         [{ text: '📄 ملء الصفحة كاملة (غلاف)', callback_data: 'doc_img_full_cover' }],
                         [{ text: '📏 افتراضي — 5 أسطر', callback_data: 'doc_img_space_5' }],
+                        // @ts-ignore
                         [{ text: '📐 كبير — 10 أسطر', callback_data: 'doc_img_space_10' }],
                         [{ text: '✍️ تخصيص العدد...', callback_data: 'doc_img_space_custom' }],
+                        // @ts-ignore
                         [{ text: '🔙 إلغاء', callback_data: 'doc_back_to_session' }]
                     ]
                 }
@@ -2217,6 +2230,7 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [
+                        // @ts-ignore
                         [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }]
                     ]
                 }

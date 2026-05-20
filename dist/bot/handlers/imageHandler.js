@@ -92,8 +92,10 @@ async function imageHandler(ctx) {
                     parse_mode: 'HTML',
                     reply_markup: {
                         inline_keyboard: [
+                            // @ts-ignore
                             [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish' }],
                             [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}` }],
+                            // @ts-ignore
                             [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
                         ],
                     },
@@ -109,9 +111,11 @@ async function imageHandler(ctx) {
                     reply_markup: {
                         inline_keyboard: [
                             [
-                                { text: `✅ نعم (${5 - count} متبقي)`, callback_data: 'conv_batch_add' },
-                                { text: '❌ لا، اختر الصيغة', callback_data: 'conv_batch_finish' },
+                                // @ts-ignore
+                                { text: `✅ نعم (${5 - count} متبقي)`, callback_data: 'conv_batch_add', style: 'success' },
+                                { text: '❌ لا، اختر الصيغة', callback_data: 'conv_batch_finish', style: 'primary' },
                             ],
+                            // @ts-ignore
                             [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' }],
                         ],
                     },
@@ -162,7 +166,7 @@ async function imageHandler(ctx) {
                 face: '👤 تصفية الوجه',
                 color: '🎨 تلوين الصور',
                 anime: '🌸 أنمي',
-                ghibli: '✨ جيبلي فني',
+                ghibli: ' جيبلي فني',
                 restore: '🪄 ترميم الصورة',
             };
             // STRICT: Check quota BEFORE calling API
@@ -197,14 +201,18 @@ async function imageHandler(ctx) {
                     reply_markup: {
                         inline_keyboard: [
                             [
-                                { text: '🖼 PNG', callback_data: 'conv_png' },
-                                { text: '🖼 JPG', callback_data: 'conv_jpg' },
-                                { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                                // @ts-ignore
+                                { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' },
+                                { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' },
+                                // @ts-ignore
+                                { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' },
                             ],
                             [
-                                { text: '🖼 GIF', callback_data: 'conv_gif' },
-                                { text: '🖼 TIFF', callback_data: 'conv_tiff' },
-                                { text: '🖼 AVIF', callback_data: 'conv_avif' },
+                                // @ts-ignore
+                                { text: '🖼 GIF', callback_data: 'conv_gif', style: 'primary' },
+                                { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' },
+                                // @ts-ignore
+                                { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' },
                             ],
                         ]
                     }
@@ -246,17 +254,21 @@ async function imageHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: '30 تقسيم', callback_data: 'cgz_size_30' },
-                        { text: '40 تقسيم', callback_data: 'cgz_size_40' },
+                        // @ts-ignore
+                        { text: '30 تقسيم', callback_data: 'cgz_size_30', style: 'primary' },
+                        { text: '40 تقسيم', callback_data: 'cgz_size_40', style: 'primary' },
                     ],
                     [
-                        { text: '50 تقسيم', callback_data: 'cgz_size_50' },
-                        { text: '70 تقسيم', callback_data: 'cgz_size_70' },
+                        // @ts-ignore
+                        { text: '50 تقسيم', callback_data: 'cgz_size_50', style: 'primary' },
+                        { text: '70 تقسيم', callback_data: 'cgz_size_70', style: 'primary' },
                     ],
                     [
-                        { text: '80 تقسيم', callback_data: 'cgz_size_80' },
-                        { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100' },
+                        // @ts-ignore
+                        { text: '80 تقسيم', callback_data: 'cgz_size_80', style: 'primary' },
+                        { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100', style: 'primary' },
                     ],
+                    // @ts-ignore
                     [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
                 ]
             }
@@ -376,7 +388,7 @@ async function imageHandler(ctx) {
             }
             await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
             console.error('[AutoEraser] Error:', error?.message);
-            await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة نقطتيك تلقائياً ✨');
+            await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة نقطتيك تلقائياً ');
         }
         return;
     }
@@ -455,10 +467,10 @@ async function imageHandler(ctx) {
         let processingMsg;
         if (queuePos > 0) {
             processingMsg = await ctx.reply(`⏳ تم وضعك في طابور الانتظار لضمان أعلى جودة...\n` +
-                `(${queuePos} طلب قبلك) سيتم معالجة صورتك قريباً ✨`);
+                `(${queuePos} طلب قبلك) سيتم معالجة صورتك قريباً `);
         }
         else {
-            processingMsg = await ctx.reply('✨ جاري تحسين صورتك بتقنية NizoAI الخاصة...\nقد يستغرق 30-60 ثانية 🌟');
+            processingMsg = await ctx.reply(' جاري تحسين صورتك بتقنية NizoAI الخاصة...\nقد يستغرق 30-60 ثانية 🌟');
         }
         try {
             // ── STEP: Download image as Buffer (no temp files) ────────────────────
@@ -470,7 +482,7 @@ async function imageHandler(ctx) {
             const inputBuffer = Buffer.from(await fetchRes.arrayBuffer());
             // ── Update processing message ─────────────────────────────────────────
             await ctx.api
-                .editMessageText(processingMsg.chat.id, processingMsg.message_id, '⚡ الذكاء الاصطناعي يعمل الآن...\nجاري رفع الدقة وتحسين التفاصيل ✨')
+                .editMessageText(processingMsg.chat.id, processingMsg.message_id, '⚡ الذكاء الاصطناعي يعمل الآن...\nجاري رفع الدقة وتحسين التفاصيل ')
                 .catch(() => { });
             // ── STEP: Run local AI enhancement ───────────────────────────────────
             const resultBuffer = await (0, onnxEnhanceService_1.enhanceWithONNX)(inputBuffer);
@@ -481,17 +493,20 @@ async function imageHandler(ctx) {
             const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
             await incrementGlobalCounter();
             await ctx.replyWithDocument(new grammy_2.InputFile(resultBuffer, fileName), {
-                caption: '✨ تم تحسين صورتك بتقنية NizoAI الخاصة! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة',
+                caption: ' تم تحسين صورتك بتقنية NizoAI الخاصة! 🚀\n📁 تم الإرسال كملف للحفاظ على أعلى دقة',
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '🖼 PNG', callback_data: 'conv_png' },
-                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
-                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                            // @ts-ignore
+                            { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' },
+                            { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' },
+                            // @ts-ignore
+                            { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' },
                         ],
                         [
-                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
-                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                            // @ts-ignore
+                            { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' },
+                            { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' },
                         ],
                     ],
                 },
@@ -523,7 +538,7 @@ async function imageHandler(ctx) {
             }
             await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
             console.error('[NanoAI] Error:', error instanceof Error ? error.message : error);
-            await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 2 من محاولات  تلقائياً ✨');
+            await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 2 من محاولات  تلقائياً ');
         }
         finally {
             // ── Release processing lock — ALWAYS, no exceptions ──────────────────
@@ -576,17 +591,20 @@ async function imageHandler(ctx) {
             const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('../../services/statsService')));
             await incrementGlobalCounter();
             await ctx.replyWithDocument(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
-                caption: `💎 صورتك جاهزة بتقنية Pro Enhance! ✨\n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${freshUser?.dailyQuota}`,
+                caption: `💎 صورتك جاهزة بتقنية Pro Enhance! \n🏷 Job ID: ${jobId}\n⚡ محاولاتك المتبقية: ${freshUser?.dailyQuota}`,
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '🖼 PNG', callback_data: 'conv_png' },
-                            { text: '🖼 JPG', callback_data: 'conv_jpg' },
-                            { text: '🖼 WEBP', callback_data: 'conv_webp' },
+                            // @ts-ignore
+                            { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' },
+                            { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' },
+                            // @ts-ignore
+                            { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' },
                         ],
                         [
-                            { text: '🖼 AVIF', callback_data: 'conv_avif' },
-                            { text: '🖼 TIFF', callback_data: 'conv_tiff' },
+                            // @ts-ignore
+                            { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' },
+                            { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' },
                         ],
                     ],
                 },
@@ -632,7 +650,7 @@ async function imageHandler(ctx) {
                 : '';
             await ctx.reply(`🌙 عذراً، انتهت محاولاتك اليومية 🥺\n` +
                 `⏳ الوقت المتبقي للتجديد: ${timeLeftMsg}\n` +
-                `🎁 ستحصل على 5 محاولات جديدة تلقائياً بعد انتهاء الوقت ✨` +
+                `🎁 ستحصل على 5 محاولات جديدة تلقائياً بعد انتهاء الوقت ` +
                 debtNote);
             return;
         }
@@ -676,11 +694,11 @@ async function imageHandler(ctx) {
             .row()
             .text(locks.btn_2k ? '🔒 دقة 2K — مقفلة' : '🚀 دقة 2K — محاولة واحدة', 'enhance_2k')
             .row()
-            .text(locks.btn_4k ? '🔒 دقة 4K — مقفلة' : '✨ دقة 4K — محاولتان (جودة فائقة)', 'enhance_4k')
+            .text(locks.btn_4k ? '🔒 دقة 4K — مقفلة' : ' دقة 4K — محاولتان (جودة فائقة)', 'enhance_4k')
             .row()
             .text(locks.btn_8k ? '🔒 دقة 8K — مقفلة' : '💎 دقة 8K', 'locked_8k')
             .row()
-            .text(locks.btn_4kai ? '🔒 4K-Ai — مقفل' : '✨ 4K - Ai', 'process_4k_ai')
+            .text(locks.btn_4kai ? '🔒 4K-Ai — مقفل' : ' 4K - Ai', 'process_4k_ai')
             .text(locks.btn_8kai ? '🔒 8K-Ai — مقفل' : '🔒 8K - Ai', 'locked_8k_ai');
         if (isAdminUser) {
             keyboard.row().text('⚙️ لوحة تحكم الأدمن', 'admin_panel');
