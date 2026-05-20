@@ -220,6 +220,8 @@ const UserSchema = new mongoose_1.Schema({
         },
         default: () => ({ step: null, maxWinners: 0, minReward: 0, maxReward: 0, channelId: '' }),
     },
+    freePdfsGeneratedToday: { type: Number, default: 0 },
+    freePdfsLastResetDate: { type: String, default: '' },
 }, {
     timestamps: false,
     versionKey: false,

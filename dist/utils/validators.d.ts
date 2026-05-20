@@ -118,6 +118,12 @@ export interface SessionData {
     totalWords?: number;
     aiDocStyle?: string;
     awaitingStyleSelect?: boolean;
+    workflowState?: 'waiting_for_doc_edit' | null;
+    lastGeneratedDoc?: {
+        text: string;
+        pageCount: number;
+        originalCost: number;
+    } | null;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

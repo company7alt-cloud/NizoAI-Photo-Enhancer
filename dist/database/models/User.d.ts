@@ -121,6 +121,8 @@ export interface IUser extends Document {
         maxReward: number;
         channelId: string;
     };
+    freePdfsGeneratedToday: number;
+    freePdfsLastResetDate: string;
 }
 export interface IUserModel extends Model<IUser> {
     findByTelegramId(telegramId: number): Promise<IUser | null>;

@@ -197,18 +197,15 @@ export function buildEnterprisePrompt(
 ): { systemPrompt: string; userContent: any } {
   const styleDesc = TEMPLATE_STYLES[template] || TEMPLATE_STYLES['default'];
   const pageInstruction = [
-    `CRITICAL SYSTEM CONSTRAINT:`,
-    `The user has paid for EXACTLY ${pages} A4 page(s).`,
-    `You MUST compress or expand your content to fill EXACTLY ${pages} page(s).`,
-    `- For 1 page:  write ~400-500 words maximum.`,
-    `- For 2 pages: write ~800-1000 words maximum.`,
-    `- For 3 pages: write ~1200-1500 words maximum.`,
-    `- For 4 pages: write ~1600-2000 words maximum.`,
-    `- For 5 pages: write ~2000-2500 words maximum.`,
-    `- For 10 pages: write ~4000-5000 words maximum.`,
-    `NEVER generate content that spills into page ${pages + 1}.`,
-    `Adjust table rows and paragraph length to perfectly match the limit.`,
-    `Current target: ${pages} page(s).`,
+    `CRITICAL CONTENT REQUIREMENT:`,
+    `The user has paid for EXACTLY ${pages} pages.`,
+    `You MUST generate enough professional content to fill EXACTLY ${pages} full A4 pages.`,
+    `If the user's input is short or vague, you are REQUIRED to:`,
+    `- Elaborate every point with supporting data, examples, and analysis.`,
+    `- Add relevant sub-sections, professional context, and detailed explanations.`,
+    `- Invent credible, realistic professional details that fit the topic.`,
+    `NEVER generate fewer pages than requested. Always reach the full page count.`,
+    `ABSOLUTE PROHIBITION: No religious symbols, Quranic verses, or Islamic phrases (e.g. بسم الله, الحمد لله) anywhere in the document.`,
   ].join('\n');
 
   const systemPrompt = [

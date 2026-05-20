@@ -119,6 +119,8 @@ export interface IUser extends Document {
     maxReward: number;
     channelId: string;
   };
+  freePdfsGeneratedToday: number;
+  freePdfsLastResetDate: string;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -344,6 +346,8 @@ const UserSchema = new Schema<IUser>(
       },
       default: () => ({ step: null, maxWinners: 0, minReward: 0, maxReward: 0, channelId: '' }),
     },
+    freePdfsGeneratedToday: { type: Number, default: 0 },
+    freePdfsLastResetDate: { type: String, default: '' },
   },
   {
     timestamps: false,

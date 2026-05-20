@@ -134,6 +134,14 @@ export interface SessionData {
   // V4 — Enterprise style selection
   aiDocStyle?: string;
   awaitingStyleSelect?: boolean;
+
+  // Edit Workflow
+  workflowState?: 'waiting_for_doc_edit' | null;
+  lastGeneratedDoc?: {
+    text: string;
+    pageCount: number;
+    originalCost: number;
+  } | null;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

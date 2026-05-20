@@ -13,6 +13,7 @@ import path from 'path';
 import OpenAI from 'openai';
 import { Bot, session, NextFunction, InlineKeyboard, InputFile } from 'grammy';
 import { run } from '@grammyjs/runner';
+import cron from 'node-cron';
 
 import { BotContext, isAdmin, SessionData } from './utils/validators';
 import { safeReplyWithPhoto } from './utils/assetGuard';
@@ -35,6 +36,14 @@ import {
   buildEnterprisePrompt,
 } from './services/promptAnalyzerService';
 
+// DocMaker modules
+import { checkAndResetDailyFree } from './handlers/docmaker/freeLimit';
+import { getPdfCost } from './handlers/docmaker/pricing';
+import { sendTextChunksWithEditButton } from './handlers/docmaker/textOutput';
+import { handleEditPdfDocCallback, handleEditPdfDocMessage } from './handlers/docmaker/editWorkflow';
+import { showDynamicLoading } from './utils/loading';
+
+
 // ─── Bot Instances ─────────────────────────────────────────────────────────────
 const imageBot = new Bot<BotContext>(process.env.BOT_TOKEN!);
 const docBot = new Bot<BotContext>(process.env.DOC_BOT_TOKEN!);
@@ -42,6 +51,16 @@ const docBot = new Bot<BotContext>(process.env.DOC_BOT_TOKEN!);
 // ─── Rate Limiting ─────────────────────────────────────────────────────────────
 const imageBotRateMap = new Map<number, number>();
 const docBotRateMap = new Map<number, number>();
+
+// ─── Daily Cron Jobs ──────────────────────────────────────────────────────────
+cron.schedule('0 0 * * *', async () => {
+  const today = new Date().toISOString().split('T')[0];
+  await User.updateMany(
+    { freePdfsLastResetDate: { $ne: today } },
+    { $set: { freePdfsGeneratedToday: 0, freePdfsLastResetDate: today } }
+  );
+  console.log('[CRON] Daily free PDF counters reset.');
+}, { timezone: 'Asia/Riyadh' });
 
 function rateLimitMiddleware(limitMs: number, map: Map<number, number>) {
   return async (ctx: BotContext, next: NextFunction): Promise<void> => {
@@ -1527,6 +1546,9 @@ docBot.callbackQuery('start_doc_maker', async (ctx, next) => {
   return next();
 });
 
+// ─── docBot: Edit Workflow ───────────────────────────────────────────────────────
+registerDocCallback('edit_pdf_doc', 'edit_pdf_doc', handleEditPdfDocCallback);
+
 // ─── docBot: Free AI Flow ──────────────────────────────────────────────────────
 
 registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {
@@ -1535,6 +1557,21 @@ registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {
     await ctx.answerCallbackQuery({ text: '🛠️ هذه الخدمة مغلقة مؤقتاً للصيانة', show_alert: true });
     return;
   }
+  
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  const user = await User.findOne({ telegramId: userId });
+  if (!user) return;
+
+  await checkAndResetDailyFree(user);
+  if (user.freePdfsGeneratedToday >= 2) {
+    await ctx.answerCallbackQuery({
+      text: "استنفدت محاولاتك المجانية (2) اليوم! 🚫\nاستخدم زر [ NizoAI PDF ] المجاور بأسعار رمزية 🚀",
+      show_alert: true
+    });
+    return;
+  }
+
   ctx.session.awaitingFreeAiTopic = true;
   await ctx.reply('🆓 أرسل لي الموضوع الذي تريد كتابته وسأنشئ لك مستنداً مجاناً:');
 });
@@ -1903,23 +1940,49 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
     const pageChoice = data.replace('pages_', '');
     const totalWords = ctx.session.totalWords || 0;
     const estimatedPages = Math.ceil(totalWords / 250);
-    const selectedPages = pageChoice === 'auto' ? estimatedPages || 2 : parseInt(pageChoice, 10);
-    const pages = Number.isFinite(selectedPages) ? Math.max(1, selectedPages) : 2;
-    const pageLimit = await getUserPageLimit(ctx.from!.id);
+    
+    const user = await User.findOne({ telegramId: ctx.from!.id });
+    if (!user) return;
 
-    if (pages > pageLimit) {
+    const template = ctx.session.aiDocStyle || 'default';
+    const collectedText = ctx.session.collectedText || '';
+    const imageBase64 = ctx.session.referenceImageBuffer;
+
+    let targetPages = 2;
+    let manualCost = 0;
+    const isAuto = pageChoice === 'auto';
+
+    if (isAuto) {
+      if (user.dailyQuota < 2) {
+        await ctx.answerCallbackQuery({ text: "رصيدك لا يكفي حتى للحد الأدنى (2 نقاط).", show_alert: true });
+        return;
+      }
+      targetPages = Math.max(1, estimatedPages);
+    } else {
+      targetPages = parseInt(pageChoice, 10);
+      manualCost = getPdfCost(targetPages);
+      if (user.dailyQuota < manualCost) {
+        await ctx.answerCallbackQuery({
+          text: `رصيدك (${user.dailyQuota}) غير كافٍ. تحتاج ${manualCost} نقاط لـ ${targetPages} صفحات.`,
+          show_alert: true
+        });
+        return;
+      }
+      await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -manualCost } });
+    }
+
+    const pageLimit = await getUserPageLimit(ctx.from!.id);
+    if (targetPages > pageLimit) {
+      if (!isAuto) await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: manualCost } }); // refund
       await ctx.reply(buildPageLimitGuardMessage(pageLimit), { parse_mode: 'Markdown' });
       return;
     }
-    
-    const waitMsg = await ctx.reply('⏳ جاري إنشاء مستندك بالذكاء الاصطناعي...');
+
+    await ctx.answerCallbackQuery();
+    const loadingState = await showDynamicLoading(ctx, '⏳ جاري إنشاء مستندك بالذكاء الاصطناعي');
     
     try {
-      // V4: Use enterprise prompt builder with selected template
-      const template = ctx.session.aiDocStyle || 'default';
-      const collectedText = ctx.session.collectedText || '';
-      const imageBase64 = ctx.session.referenceImageBuffer;
-      const { systemPrompt, userContent } = buildEnterprisePrompt(collectedText, pages, template, imageBase64);
+      const { systemPrompt, userContent } = buildEnterprisePrompt(collectedText, targetPages, template, imageBase64);
 
       const response = await withRetry(() => aiClient.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -1934,39 +1997,62 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
       const aiResponse = response.choices[0]?.message?.content ?? '';
       if (!aiResponse.trim()) throw new Error('AI returned empty content');
 
-      // Strip any code fences the AI might have disobeyed with
       const cleanMarkdown = aiResponse.replace(/^```[a-z]*\n?/gm, '').replace(/^```$/gm, '');
 
-      const pdfPath = await generateAiPDF(cleanMarkdown, template);
+      let finalCost = manualCost;
+      let finalPages = targetPages;
 
-      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
-        .catch((error: unknown) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
+      if (isAuto) {
+        const actualWords = cleanMarkdown.split(/\s+/).filter(Boolean).length;
+        finalPages = Math.max(1, Math.round(actualWords / 250));
+        finalCost = getPdfCost(finalPages);
+
+        if (user.dailyQuota < finalCost) {
+          await ctx.reply(`رصيدك غير كافٍ للصفحات المولودة. يرجى إضافة رصيد.`);
+          throw new Error('Insufficient balance for auto mode'); // discard
+        }
+        await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -finalCost } });
+      }
+
+      const pdfPath = await generateAiPDF(cleanMarkdown, template);
+      await loadingState.stop();
 
       await ctx.replyWithDocument(
         new InputFile(pdfPath, `NizoAI_Doc_${Date.now()}.pdf`),
         {
           caption:
             `✅ <b>تم إنشاء مستندك الاحترافي!</b>\n` +
-            `🎨 القالب: ${(ctx.session.aiDocStyle || 'default').toUpperCase()}\n` +
-            `📝 الكلمات: ${totalWords}`,
+            `🎨 القالب: ${template.toUpperCase()}\n` +
+            `💳 التكلفة: ${finalCost} نقاط\n` +
+            `📄 الصفحات الفعّالة: ${finalPages}`,
           parse_mode: 'HTML'
         }
       );
 
-      // Full V4 session reset
+      ctx.session.lastGeneratedDoc = {
+        text: cleanMarkdown,
+        pageCount: finalPages,
+        originalCost: finalCost
+      };
+      await sendTextChunksWithEditButton(ctx, cleanMarkdown);
+
       ctx.session.collectedText = '';
       ctx.session.referenceImageBuffer = '';
       ctx.session.totalWords = 0;
       ctx.session.awaitingMoreText = false;
       ctx.session.awaitingStyleSelect = false;
       ctx.session.aiDocStyle = undefined;
+      ctx.session.isGenerating = false;
 
     } catch (err: any) {
-      await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
-        .catch((error: unknown) => logDocBotError('[DocBot:pages] delete wait message after failure failed:', error));
+      await loadingState.stop();
+      if (!isAuto && err.message !== 'Insufficient balance for auto mode') {
+        await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: manualCost } }); // refund
+      }
       console.error('[Paid PDF] Error:', err);
-      await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message}</code>`, { parse_mode: 'HTML' });
-      // Reset on failure too
+      if (err.message !== 'Insufficient balance for auto mode') {
+        await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message}</code>`, { parse_mode: 'HTML' });
+      }
       ctx.session.awaitingStyleSelect = false;
       ctx.session.isGenerating = false;
     }
@@ -2328,12 +2414,32 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
 
   // Paid PDF Text Loop moved to the top of the message interceptor.
 
+  // ── Edit Workflow Interceptor ───────────────────────────────────────────────
+  if (ctx.session.workflowState === 'waiting_for_doc_edit') {
+    await handleEditPdfDocMessage(ctx);
+    return;
+  }
+
   // ── Free AI Topic Interceptor ───────────────────────────────────────────────
   if (ctx.session.awaitingFreeAiTopic) {
     ctx.session.awaitingFreeAiTopic = false;
 
+    const user = await User.findOne({ telegramId: userId });
+    if (!user) return;
+
+    await checkAndResetDailyFree(user);
     const adminIds = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim());
-    const isAdminUser = adminIds.includes(ctx.from!.id.toString());
+    const isAdminUser = adminIds.includes(userId.toString());
+
+    if (!isAdminUser && user.freePdfsGeneratedToday >= 2) {
+      await ctx.reply(
+        '⚠️ <b>استنفدت محاولاتك المجانية (2) اليوم!</b> 🚫\n' +
+        'استخدم زر [ NizoAI PDF ] المجاور بأسعار رمزية 🚀',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
     const promptAnalysis = analyzeAndEnhancePrompt(text);
     const detectedPages = promptAnalysis.detectedPages;
     const pageLimit = await getUserPageLimit(userId);
@@ -2343,51 +2449,50 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
       return;
     }
 
-    if (!isAdminUser) {
-      const today = new Date().toISOString().slice(0, 10);
-      if (ctx.session.freeAiUsageDate !== today) {
-        ctx.session.freeAiUsageCount = 0;
-        ctx.session.freeAiUsageDate = today;
-      }
-      const usageCount = ctx.session.freeAiUsageCount ?? 0;
-      if (usageCount >= 7) {
-        ctx.session.awaitingFreeAiTopic = false;
-        await ctx.reply(
-          '⚠️ <b>لقد استنفدت حد الاستخدام اليومي المجاني</b>\n\n' +
-          '🆓 الحد اليومي: 7 مرات\n' +
-          '🔄 يتجدد الحد كل يوم عند منتصف الليل\n\n' +
-          '💡 للاستخدام غير المحدود جرب <b>NizoAI PDF</b> 🤖',
-          { parse_mode: 'HTML' }
-        );
-        return;
-      }
-      ctx.session.freeAiUsageCount = usageCount + 1;
-    }
-
-    const waitMsg = await ctx.reply('⏳ جاري الكتابة بالذكاء الاصطناعي...');
+    const loadingState = await showDynamicLoading(ctx, '⏳ جاري الكتابة بالذكاء الاصطناعي');
+    
     try {
       const response = await aiClient.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
-          { role: 'user', content: promptAnalysis.enhancedPrompt },
+          { role: 'system', content: promptAnalysis.enhancedPrompt },
+          { role: 'user', content: text } // Sending raw text separately as good practice
         ],
         max_tokens: 4000,
         temperature: 0.4,
       });
       const aiResponse = response.choices[0]?.message?.content ?? '';
       if (!aiResponse.trim()) throw new Error('AI returned empty content');
-      const pdfBuffer = await generateAiPDF(aiResponse);
+      
+      const cleanMarkdown = aiResponse.replace(/^```[a-z]*\n?/gm, '').replace(/```$/gm, '');
+      const pdfBuffer = await generateAiPDF(cleanMarkdown);
       const fileName = `nizoai_free_${Date.now()}.pdf`;
+      
+      await loadingState.stop();
+      
       await ctx.replyWithDocument(
         new InputFile(pdfBuffer, fileName),
         { caption: '✅ مستندك المجاني جاهز! 📄\n\nمدعوم بـ AI Free PDF ⚡' }
       );
+
+      // Increment only on successful delivery
+      if (!isAdminUser) {
+        await User.updateOne({ _id: user._id }, { $inc: { freePdfsGeneratedToday: 1 } });
+      }
+
+      // Send the text chunks + Edit button
+      ctx.session.lastGeneratedDoc = {
+        text: cleanMarkdown,
+        pageCount: detectedPages,
+        originalCost: 2 // Assuming base cost for edit calculation
+      };
+      await sendTextChunksWithEditButton(ctx, cleanMarkdown);
+
     } catch (err: any) {
+      await loadingState.stop();
       console.error('[DocBot Free AI] Error:', err);
       await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message ?? 'unknown error'}</code>`, { parse_mode: 'HTML' });
     }
-    await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
-      .catch((error: unknown) => logDocBotError('[DocBot:free_ai] delete wait message failed:', error));
     return;
   }
 
@@ -2416,7 +2521,8 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
         !(ctx.session as any)?.awaitingFreeAiTopic &&
         !(ctx.session as any)?.awaitingPremiumImage &&
         !(ctx.session as any)?.awaitingPremiumText &&
-        !(ctx.session as any)?.awaitingCustomPages) {
+        !(ctx.session as any)?.awaitingCustomPages &&
+        !(ctx.session as any)?.workflowState) {
       const txt = ctx.message.text || ctx.message.caption || '';
       if (txt.startsWith('/')) return next();
 
