@@ -53,7 +53,6 @@ const http_1 = __importDefault(require("http"));
 const openai_1 = __importDefault(require("openai"));
 const grammy_1 = require("grammy");
 const runner_1 = require("@grammyjs/runner");
-const path_1 = __importDefault(require("path"));
 const validators_1 = require("./utils/validators");
 const connection_1 = require("./database/connection");
 const Settings_1 = require("./database/models/Settings");
@@ -1176,21 +1175,7 @@ docBot.command('start', withDocBotHandler('start_command', async (ctx) => {
             ]
         ]
     };
-    // NOTE: This file must be committed to GitHub.
-    // Files only on the server will be wiped by git reset --hard.
-    const welcomeImagePath = path_1.default.join(__dirname, '../assets/welcome.jpg');
-    try {
-        // Attempt to send welcome image
-        await ctx.replyWithPhoto(new grammy_1.InputFile(welcomeImagePath), { caption: welcomeCaption, parse_mode: 'HTML', reply_markup: welcomeReplyMarkup });
-    }
-    catch (imgError) {
-        // Image missing — fallback to text silently
-        console.warn('[DocBot:start] welcome.jpg missing, using text fallback:', imgError);
-        await ctx.reply(welcomeCaption, {
-            parse_mode: 'HTML',
-            reply_markup: welcomeReplyMarkup
-        });
-    }
+    await ctx.reply(welcomeCaption, { parse_mode: 'HTML', reply_markup: welcomeReplyMarkup });
 }));
 const handleDocReportDev = async (ctx) => {
     if (ctx.session)

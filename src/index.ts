@@ -12,7 +12,6 @@ import http from 'http';
 import OpenAI from 'openai';
 import { Bot, session, NextFunction, InlineKeyboard, InputFile } from 'grammy';
 import { run } from '@grammyjs/runner';
-import path from 'path';
 
 import { BotContext, isAdmin, SessionData } from './utils/validators';
 import { connectDatabase, closeDatabaseConnection } from './database/connection';
@@ -1413,24 +1412,7 @@ docBot.command('start', withDocBotHandler('start_command', async (ctx) => {
     ]
   } as any;
 
-  // NOTE: This file must be committed to GitHub.
-  // Files only on the server will be wiped by git reset --hard.
-  const welcomeImagePath = path.join(__dirname, '../assets/welcome.jpg');
-
-  try {
-    // Attempt to send welcome image
-    await ctx.replyWithPhoto(
-      new InputFile(welcomeImagePath),
-      { caption: welcomeCaption, parse_mode: 'HTML', reply_markup: welcomeReplyMarkup }
-    );
-  } catch (imgError: unknown) {
-    // Image missing — fallback to text silently
-    console.warn('[DocBot:start] welcome.jpg missing, using text fallback:', imgError);
-    await ctx.reply(welcomeCaption, {
-      parse_mode: 'HTML',
-      reply_markup: welcomeReplyMarkup
-    });
-  }
+  await ctx.reply(welcomeCaption, { parse_mode: 'HTML', reply_markup: welcomeReplyMarkup });
 }));
 
 const handleDocReportDev = async (ctx: BotContext): Promise<void> => {
