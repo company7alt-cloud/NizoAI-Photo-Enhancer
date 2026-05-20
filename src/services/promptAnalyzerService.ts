@@ -168,27 +168,78 @@ function normalizeArabic(text: string): string {
 
 function normalizeDigits(text: string): string {
   const digitMap: Record<string, string> = {
-    '٠': '0',
-    '١': '1',
-    '٢': '2',
-    '٣': '3',
-    '٤': '4',
-    '٥': '5',
-    '٦': '6',
-    '٧': '7',
-    '٨': '8',
-    '٩': '9',
-    '۰': '0',
-    '۱': '1',
-    '۲': '2',
-    '۳': '3',
-    '۴': '4',
-    '۵': '5',
-    '۶': '6',
-    '۷': '7',
-    '۸': '8',
-    '۹': '9',
+    '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+    '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+    '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+    '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
   };
 
   return text.replace(/[٠-٩۰-۹]/g, (digit) => digitMap[digit] ?? digit);
+}
+
+// ─── Enterprise Master Prompt Builder (V4) ────────────────────────────────
+
+const TEMPLATE_STYLES: Record<string, string> = {
+  tables: 'STYLE: PROFESSIONAL TABLES — Highly structured grid layout. Rich dark table headers (#1a2744). Alternating row colors. Clean black body text. Strict column alignment. Data-report appearance. Use tables extensively for structured data.',
+  report: 'STYLE: CORPORATE REPORT — Clean executive report layout. Deep navy headings (#003366). Strong heading hierarchy with section dividers. Subtle pull-quote blocks. Elegant line spacing. Modern sans-serif feel.',
+  formal: 'STYLE: FORMAL OFFICIAL DOCUMENT — Strict monochrome style. Centered bold title. Serif-influenced typography. Double-spaced lines. Strict left/right balanced margins. Government/legal appearance.',
+  creative: 'STYLE: CREATIVE MODERN — Bold visual accents. Gradient-inspired headings (#6c2eb9 → #e040fb). Strong section dividers. Dynamic heading sizes. Elegant color highlights. Stylish, premium layout.',
+  minimal: 'STYLE: MINIMAL ELEGANT — Maximum whitespace. Ultra-clean typography. Minimal borders. Light gray dividers. No decorative elements. Pure readability focus. Premium newspaper aesthetic.',
+  academic: 'STYLE: ACADEMIC RESEARCH — IEEE/APA-inspired. Centered title page. Deep teal/green accents (#1b3a4b). Justified body text. Table of contents style. Numbered sections. Reference section at end.',
+  default: 'STYLE: PROFESSIONAL DEFAULT — Clean Arabic business document. Standard heading hierarchy. Professional table styling. Balanced layout.',
+};
+
+export function buildEnterprisePrompt(
+  collectedText: string,
+  pages: number,
+  template: string = 'default',
+  imageBase64?: string,
+): { systemPrompt: string; userContent: any } {
+  const styleDesc = TEMPLATE_STYLES[template] || TEMPLATE_STYLES['default'];
+  const pageInstruction = `Optimize layout density, font size, spacing, heading sizes, and paragraph density to TARGET approximately ${pages} A4 page(s) under the current Puppeteer PDF renderer. If content is too long, compress intelligently while preserving meaning. If content is too short, improve spacing and visual density. NEVER hallucinate fake content.`;
+
+  const systemPrompt = [
+    '=== ENTERPRISE DOCUMENT GENERATOR ===',
+    '',
+    'You are a professional typography and layout engine. You are NOT a chatbot.',
+    'Your ONLY output is the final formatted document. Nothing else.',
+    '',
+    '=== ABSOLUTE OUTPUT CONTRACT ===',
+    'Return ONLY the final Markdown document.',
+    'NEVER output: explanations, notes, apologies, commentary, code fences, backticks, fake PDFs, Base64.',
+    'NEVER wrap output in ```markdown``` or any code block.',
+    'NEVER start with phrases like "Here is", "Sure!", "Certainly".',
+    '',
+    '=== STYLE DIRECTIVE ===',
+    styleDesc,
+    '',
+    '=== PAGE CONTROL DIRECTIVE ===',
+    pageInstruction,
+    '',
+    '=== ARABIC TYPOGRAPHY RULES ===',
+    'Document must be in Arabic (RTL). Use Markdown headings (#, ##, ###).',
+    'Tables must use Markdown pipe format: | col | col |',
+    'Do NOT use LaTeX, math, or code blocks.',
+    '',
+    '=== AUTO DETECTION ===',
+    'Intelligently detect and apply proper formatting for: titles, subtitles, chapters, sections, quotes, lists, timelines, tables, statistics, warnings, notices, references, academic sections, formal letter structures.',
+    '',
+    '=== HTML SAFETY ===',
+    'If you use any inline HTML, neutralize all <script>, <link>, <iframe> tags. No external URLs in src/href.',
+    '',
+    '=== USER CONTENT ===',
+    'Use ONLY the content provided below. Do NOT invent information.',
+  ].join('\n');
+
+  let userContent: any;
+  if (imageBase64) {
+    userContent = [
+      { type: 'text', text: collectedText },
+      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
+    ];
+  } else {
+    userContent = collectedText;
+  }
+
+  return { systemPrompt, userContent };
 }

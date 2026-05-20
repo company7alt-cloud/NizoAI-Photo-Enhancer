@@ -130,6 +130,10 @@ export interface SessionData {
   awaitingMoreText?: boolean;
   estimatedPages?: number;
   totalWords?: number;
+
+  // V4 — Enterprise style selection
+  aiDocStyle?: string;
+  awaitingStyleSelect?: boolean;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

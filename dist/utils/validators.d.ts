@@ -116,6 +116,8 @@ export interface SessionData {
     awaitingMoreText?: boolean;
     estimatedPages?: number;
     totalWords?: number;
+    aiDocStyle?: string;
+    awaitingStyleSelect?: boolean;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

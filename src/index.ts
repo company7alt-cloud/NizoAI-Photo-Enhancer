@@ -32,6 +32,7 @@ import { generateAiPDF } from './services/aiPdfService';
 import {
   analyzeAndEnhancePrompt,
   buildPageLimitGuardMessage,
+  buildEnterprisePrompt,
 } from './services/promptAnalyzerService';
 
 // ─── Bot Instances ─────────────────────────────────────────────────────────────
@@ -1796,60 +1797,63 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
       return;
     }
     
-    const waitMsg = await ctx.reply('⏳ جاري إنشاء المستند الاحترافي...');
+    const waitMsg = await ctx.reply('⏳ جاري إنشاء مستندك بالذكاء الاصطناعي...');
     
     try {
-      const rawPremiumPrompt =
-        `اكتب وثيقة من ${pages} صفحات.\n\n` +
-        'حافظ على روح النموذج المرجعي إذا كان مرفقاً، واستخدم المحتوى التالي فقط دون اختراع معلومات:\n\n' +
-        `${ctx.session.collectedText || ''}`;
-      const promptAnalysis = analyzeAndEnhancePrompt(rawPremiumPrompt);
+      // V4: Use enterprise prompt builder with selected template
+      const template = ctx.session.aiDocStyle || 'default';
+      const collectedText = ctx.session.collectedText || '';
       const imageBase64 = ctx.session.referenceImageBuffer;
+      const { systemPrompt, userContent } = buildEnterprisePrompt(collectedText, pages, template, imageBase64);
 
-      const userContent: any = imageBase64 ? [
-        { type: 'text', text: promptAnalysis.enhancedPrompt },
-        {
-          type: 'image_url',
-          image_url: { url: `data:image/jpeg;base64,${imageBase64}` },
-        },
-      ] : promptAnalysis.enhancedPrompt;
-
-      const response = await aiClient.chat.completions.create({
-        model: "gpt-4o-mini",
+      const response = await withRetry(() => aiClient.chat.completions.create({
+        model: 'gpt-4o-mini',
         messages: [
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
         ],
         max_tokens: 4000,
-        temperature: 0.4,
-      });
+        temperature: 0.2,
+      }));
 
       const aiResponse = response.choices[0]?.message?.content ?? '';
       if (!aiResponse.trim()) throw new Error('AI returned empty content');
-      const pdfBuffer = await generateAiPDF(aiResponse);
+
+      // Strip any code fences the AI might have disobeyed with
+      const cleanMarkdown = aiResponse.replace(/^```[a-z]*\n?/gm, '').replace(/^```$/gm, '');
+
+      const pdfPath = await generateAiPDF(cleanMarkdown, template);
 
       await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
         .catch((error: unknown) => logDocBotError('[DocBot:pages] delete wait message failed:', error));
 
       await ctx.replyWithDocument(
-        new InputFile(pdfBuffer, `NizoAI_Doc_${Date.now()}.pdf`),
+        new InputFile(pdfPath, `NizoAI_Doc_${Date.now()}.pdf`),
         {
           caption:
             `✅ <b>تم إنشاء مستندك الاحترافي!</b>\n` +
+            `🎨 القالب: ${(ctx.session.aiDocStyle || 'default').toUpperCase()}\n` +
             `📝 الكلمات: ${totalWords}`,
           parse_mode: 'HTML'
         }
       );
-      // Reset session
+
+      // Full V4 session reset
       ctx.session.collectedText = '';
       ctx.session.referenceImageBuffer = '';
       ctx.session.totalWords = 0;
       ctx.session.awaitingMoreText = false;
+      ctx.session.awaitingStyleSelect = false;
+      ctx.session.aiDocStyle = undefined;
 
     } catch (err: any) {
       await ctx.api.deleteMessage(ctx.chat!.id, waitMsg.message_id)
         .catch((error: unknown) => logDocBotError('[DocBot:pages] delete wait message after failure failed:', error));
       console.error('[Paid PDF] Error:', err);
       await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message}</code>`, { parse_mode: 'HTML' });
+      // Reset on failure too
+      ctx.session.awaitingStyleSelect = false;
+      ctx.session.isGenerating = false;
     }
     return;
   }
@@ -1862,6 +1866,8 @@ registerDocCallback('cancel_premium_ai', 'cancel_premium_ai', async (ctx) => {
   ctx.session.awaitingMoreText      = false;
   ctx.session.awaitingPremiumText   = false;
   ctx.session.awaitingCustomPages   = false;
+  ctx.session.awaitingStyleSelect   = false;   // V4
+  ctx.session.aiDocStyle            = undefined; // V4
   ctx.session.pendingPremiumImage   = undefined;
   ctx.session.pendingPremiumPrompt  = undefined;
   ctx.session.pendingPremiumPages   = undefined;
@@ -1870,7 +1876,47 @@ registerDocCallback('cancel_premium_ai', 'cancel_premium_ai', async (ctx) => {
   ctx.session.collectedText         = '';
   ctx.session.totalWords            = 0;
   ctx.session.estimatedPages        = 0;
+  ctx.session.isGenerating          = false;
 });
+
+// ─── V4: Style selection callbacks for NizoAI PDF ─────────────────────────────
+
+const NIZOPDF_STYLES = ['tables', 'report', 'formal', 'creative', 'minimal', 'academic'];
+NIZOPDF_STYLES.forEach(style => {
+  registerDocCallback(`nizopdf_style_${style}`, `nizopdf_style_${style}`, async (ctx) => {
+    ctx.session.aiDocStyle = style;
+    ctx.session.awaitingStyleSelect = false;
+    const totalWords = ctx.session.totalWords || 0;
+    const estimatedPages = Math.ceil(totalWords / 250);
+
+    await ctx.reply(
+      `✅ <b>القالب: ${style.toUpperCase()}</b> — متاز!\n\n` +
+      `📄 الصفحات الموصى بها: ~${estimatedPages}\n\n` +
+      `<b>اختر عدد الصفحات النهائي:</b>`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '1 صفحة',  callback_data: 'pages_1' },
+              { text: '2 صفحة',  callback_data: 'pages_2' },
+              { text: '3 صفحات', callback_data: 'pages_3' },
+              { text: '5 صفحات', callback_data: 'pages_5' },
+            ],
+            [
+              { text: '10 صفحات', callback_data: 'pages_10' },
+              { text: '15 صفحة',  callback_data: 'pages_15' },
+              { text: '20 صفحة',  callback_data: 'pages_20' },
+            ],
+            [{ text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto' }],
+          ],
+        },
+      }
+    );
+  });
+});
+
+
 
 // ─── docBot: Premium Image Upload Handler ───────────────────────────────────────
 
@@ -1934,41 +1980,35 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
     const incoming = ctx.message.text.trim();
     
     if (incoming === 'تم' || incoming === 'تم.' || incoming === 'انتهيت') {
-      // Move to page selection
+      // Move to STYLE SELECTION first (V4 enterprise upgrade)
       ctx.session.awaitingMoreText = false;
+      ctx.session.awaitingStyleSelect = true;
       const totalWords = (ctx.session.collectedText || '').split(/\s+/).filter(Boolean).length;
       const estimatedPages = Math.ceil(totalWords / 250);
-      
+      ctx.session.totalWords = totalWords;
+
       await ctx.reply(
-        `📊 <b>ملخص المحتوى:</b>\n` +
-        `─────────────────\n` +
-        `📝 إجمالي الكلمات: ${totalWords}\n` +
-        `📄 الصفحات المقترحة: ~${estimatedPages}\n\n` +
-        `<b>اختر عدد الصفحات:</b>`,
+        `✅ <b>تم تلقي المحتوى</b>\n` +
+        `📝 إجمالي الكلمات: ${totalWords} — الصفحات المتوقعة: ~${estimatedPages}\n\n` +
+        `🎨 <b>اختر قالب التصميم:</b>`,
         {
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
-              [
-                { text: '1 صفحة', callback_data: 'pages_1' },
-                { text: '2 صفحة', callback_data: 'pages_2' },
-                { text: '3 صفحات', callback_data: 'pages_3' },
-                { text: '5 صفحات', callback_data: 'pages_5' },
-              ],
-              [
-                { text: '10 صفحات', callback_data: 'pages_10' },
-                { text: '15 صفحة', callback_data: 'pages_15' },
-                { text: '20 صفحة', callback_data: 'pages_20' },
-              ],
-              [{ text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto' }],
-            ]
-          }
+              [{ text: '📊 جداول احترافية',      callback_data: 'nizopdf_style_tables'   }],
+              [{ text: '📈 تقرير شركات',          callback_data: 'nizopdf_style_report'   }],
+              [{ text: '🏙️ وثيقة رسمية (حكومي)',   callback_data: 'nizopdf_style_formal'   }],
+              [{ text: '✨ إبداعي عصري',          callback_data: 'nizopdf_style_creative' }],
+              [{ text: '🌿 بسيط أنيق',             callback_data: 'nizopdf_style_minimal'  }],
+              [{ text: '🔬 بحث أكاديمي',          callback_data: 'nizopdf_style_academic' }],
+            ],
+          },
         }
       );
       return;
     }
     
-    // Accumulate text
+    // After accumulating enough text, send confirmation with "Done" button
     ctx.session.collectedText = (ctx.session.collectedText || '') + '\n' + incoming;
     const totalWords = ctx.session.collectedText.split(/\s+/).filter(Boolean).length;
     const estimatedPages = Math.ceil(totalWords / 250);
