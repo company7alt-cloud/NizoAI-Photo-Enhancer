@@ -1406,7 +1406,7 @@ docBot.command('start', withDocBotHandler('start_command', async (ctx) => {
       ],
       [
         {
-          text: '📑 القوالب الجاهزة (Template-Style)',
+          text: '📑 PRO 👑',
           callback_data: 'start_template_pdf',
           // @ts-ignore
           style: 'primary'
@@ -1529,25 +1529,28 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
   throw new Error('Max retries reached');
 }
 
+// FIX 4: PRO 👑 — Admin-only gate for the template workflow
 registerDocCallback('start_template_pdf', 'start_template_pdf', async (ctx) => {
+  const adminId = process.env.ADMIN_TELEGRAM_ID || process.env.ADMIN_IDS?.split(',')[0]?.trim();
+  if (String(ctx.from?.id) !== String(adminId)) {
+    await ctx.reply('🔒 عذراً، هذا القسم مخصص للإدارة فقط.');
+    return;
+  }
+  // Admin-only: show PRO style picker
   await ctx.reply(
-    `📑 <b>اختر قالب التصميم:</b>\n\n` +
-    `1️⃣ <b>TABLES</b> - تصميم جدولي دقيق للبيانات\n` +
-    `2️⃣ <b>REPORT</b> - تقرير شركات أنيق\n` +
-    `3️⃣ <b>FORMAL</b> - أسلوب رسمي واعتمادي\n` +
-    `4️⃣ <b>CREATIVE</b> - أسلوب عصري وجذاب\n` +
-    `5️⃣ <b>MINIMAL</b> - نظيف، بسيط، يركز على المساحات`,
+    `👑 <b>PRO — اختر قالب التصميم:</b>`,
     {
       parse_mode: 'HTML',
       reply_markup: new InlineKeyboard()
-        .text('1️⃣ TABLES', 'tpl_select_tables').row()
-        .text('2️⃣ REPORT', 'tpl_select_report').row()
-        .text('3️⃣ FORMAL', 'tpl_select_formal').row()
-        .text('4️⃣ CREATIVE', 'tpl_select_creative').row()
-        .text('5️⃣ MINIMAL', 'tpl_select_minimal')
+        .text('🟦 جداول وبيانات', 'tpl_select_tables').text('🟦 تقرير احترافي', 'tpl_select_report').row()
+        .text('🟦 خطاب رسمي',    'tpl_select_formal').text('🟦 تصميم إبداعي', 'tpl_select_creative').row()
+        .text('🟦 بسيط وأنيق',   'tpl_select_minimal').text('🟦 قالب أكاديمي', 'tpl_select_academic').row()
+        .text('🟥 ❌ إلغاء العملية', 'tpl_cancel')
     }
   );
 });
+
+// FIX 3: NizoAI PDF → shows style selection first, THEN feeds into existing pages_ + points system
 
 const TPL_STYLES = ['tables', 'report', 'formal', 'creative', 'minimal'];
 
@@ -1678,17 +1681,32 @@ registerDocCallback(/^tpl_pages_(.*)$/, 'tpl_pages_select', async (ctx) => {
       minimal: "STYLE: MINIMAL - whitespace-focused, ultra-clean typography, minimal decoration, elegant readability, simplified visual flow."
     };
 
-    const targetPagesMsg = pageChoice === 'auto' 
-      ? "Determine the best layout density automatically."
-      : `Optimize layout density and formatting to APPROXIMATELY target ${pageChoice} pages under the current PDF rendering engine.`;
+    const selectedPages = pageChoice === 'auto'
+      ? Math.ceil((ctx.session.combinedText?.split(/\s+/).length || 500) / 250)
+      : parseInt(pageChoice, 10);
+    const pages = Math.max(1, Number.isFinite(selectedPages) ? selectedPages : 2);
 
-    const masterPrompt = `You are a master document generator. Your task is to generate ONLY valid Markdown (with semantic HTML/CSS if needed for layout).
+    const pageConstraint = [
+      `CRITICAL SYSTEM CONSTRAINT:`,
+      `The user has paid for EXACTLY ${pages} A4 page(s).`,
+      `You MUST compress or expand your content to fill EXACTLY ${pages} page(s).`,
+      `- For 1 page:  write ~400-500 words maximum.`,
+      `- For 2 pages: write ~800-1000 words maximum.`,
+      `- For 3 pages: write ~1200-1500 words maximum.`,
+      `- For 4 pages: write ~1600-2000 words maximum.`,
+      `- For 5 pages: write ~2000-2500 words maximum.`,
+      `NEVER generate content that spills into page ${pages + 1}.`,
+      `Adjust table rows and paragraph length to perfectly match the limit.`,
+    ].join('\n');
+
+    const masterPrompt = `${pageConstraint}
+
+You are a master document generator. Your task is to generate ONLY valid Markdown (with semantic HTML/CSS if needed for layout).
 OUTPUT CONTRACT: Return ONLY the final formatted Markdown document.
 NEVER explain anything, NO code fences, NO backticks, NO commentary, NO fake PDFs, NO base64.
 NEUTRALIZE unsafe HTML, avoid script tags, avoid external assets.
 
 ${stylePrompts[ctx.session.selectedStyle || 'minimal']}
-PAGE CONTROL: ${targetPagesMsg}
 
 USER CONTENT:
 ${ctx.session.combinedText}`;
@@ -1738,9 +1756,11 @@ ${ctx.session.combinedText}`;
 // ─── docBot: Premium AI Flow — Stage 1 (entry) ──────────────────────────────
 
 registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
-  ctx.session.awaitingPremiumImage = true;
+  // Reset all related state
+  ctx.session.awaitingPremiumImage = false;
   ctx.session.awaitingMoreText = false;
   ctx.session.awaitingPremiumText = false;
+  ctx.session.awaitingStyleSelect = false;
   ctx.session.pendingPremiumImage = undefined;
   ctx.session.pendingPremiumPrompt = undefined;
   ctx.session.pendingPremiumPages = undefined;
@@ -1749,19 +1769,30 @@ registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
   ctx.session.collectedText = '';
   ctx.session.totalWords = 0;
   ctx.session.estimatedPages = 0;
+  ctx.session.aiDocStyle = undefined;
+
+  // FIX 3: Show style selection FIRST (6 styles in 3 rows, then cancel)
   await ctx.reply(
-    `🤖 <b>NizoAI PDF</b>\n\n` +
-    `🔍 <b>ابحث عن نموذج يعجبك:</b>\n` +
-    `- <code>professional PDF template</code>\n` +
-    `- <code>academic document design</code>\n` +
-    `- <code>business letter template</code>\n\n` +
-    `🖼 أرسل صورة النموذج المرجعي\n` +
-    `أو اضغط للنموذج الافتراضي:`,
-    { 
+    `🤖 <b>NizoAI PDF</b> — اختر طراز المستند:`,
+    {
       parse_mode: 'HTML',
-      reply_markup: new InlineKeyboard().text('📄 النموذج الافتراضي', 'premium_use_default')
+      reply_markup: new InlineKeyboard()
+        .text('🟦 جداول وبيانات', 'nizopdf_style_tables').text('🟦 تقرير احترافي', 'nizopdf_style_report').row()
+        .text('🟦 خطاب رسمي',    'nizopdf_style_formal').text('🟦 تصميم إبداعي', 'nizopdf_style_creative').row()
+        .text('🟦 بسيط وأنيق',   'nizopdf_style_minimal').text('🟦 قالب أكاديمي', 'nizopdf_style_academic').row()
+        .text('🟥 ❌ إلغاء العملية', 'premium_cancel_flow')
     }
   );
+});
+
+// Cancel handler for NizoAI PDF flow
+registerDocCallback('premium_cancel_flow', 'premium_cancel_flow', async (ctx) => {
+  ctx.session.awaitingMoreText = false;
+  ctx.session.awaitingStyleSelect = false;
+  ctx.session.aiDocStyle = undefined;
+  ctx.session.collectedText = '';
+  ctx.session.totalWords = 0;
+  await ctx.editMessageText('✅ تم إلغاء العملية.').catch(() => {});
 });
 
 registerDocCallback('premium_use_default', 'premium_use_default', async (ctx) => {
@@ -1884,36 +1915,41 @@ registerDocCallback('cancel_premium_ai', 'cancel_premium_ai', async (ctx) => {
 const NIZOPDF_STYLES = ['tables', 'report', 'formal', 'creative', 'minimal', 'academic'];
 NIZOPDF_STYLES.forEach(style => {
   registerDocCallback(`nizopdf_style_${style}`, `nizopdf_style_${style}`, async (ctx) => {
+    // Store selected style, then route into the EXISTING awaitingMoreText flow
+    // so points deduction and page selection remain fully intact
     ctx.session.aiDocStyle = style;
     ctx.session.awaitingStyleSelect = false;
-    const totalWords = ctx.session.totalWords || 0;
-    const estimatedPages = Math.ceil(totalWords / 250);
+    ctx.session.awaitingMoreText = true;
+    ctx.session.collectedText = '';
+    ctx.session.totalWords = 0;
+    ctx.session.estimatedPages = 0;
 
-    await ctx.reply(
-      `✅ <b>القالب: ${style.toUpperCase()}</b> — متاز!\n\n` +
-      `📄 الصفحات الموصى بها: ~${estimatedPages}\n\n` +
-      `<b>اختر عدد الصفحات النهائي:</b>`,
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '1 صفحة',  callback_data: 'pages_1' },
-              { text: '2 صفحة',  callback_data: 'pages_2' },
-              { text: '3 صفحات', callback_data: 'pages_3' },
-              { text: '5 صفحات', callback_data: 'pages_5' },
-            ],
-            [
-              { text: '10 صفحات', callback_data: 'pages_10' },
-              { text: '15 صفحة',  callback_data: 'pages_15' },
-              { text: '20 صفحة',  callback_data: 'pages_20' },
-            ],
-            [{ text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto' }],
-          ],
-        },
-      }
-    );
+    await ctx.editMessageText(
+      `✅ <b>الطراز: ${style.toUpperCase()}</b>\n\n` +
+      `📝 أرسل المحتوى رسالة رسالة. عند الانتهاء أرسل \u202a<b>تم</b>\u202c أو اضغط إلغاء.`,
+      { parse_mode: 'HTML' }
+    ).catch(() => {});
   });
+});
+
+// Cancel handler for TPL workflow (PRO 👑)
+registerDocCallback('tpl_cancel', 'tpl_cancel', async (ctx) => {
+  ctx.session.templateWorkflowState = 'idle';
+  ctx.session.textBuffer = [];
+  ctx.session.combinedText = '';
+  ctx.session.selectedStyle = null;
+  ctx.session.isGenerating = false;
+  await ctx.editMessageText('✅ تم إلغاء العملية.').catch(() => {});
+});
+
+// Cancel handler for text-collection phase (PRO 👑)
+registerDocCallback('tpl_cancel_collect', 'tpl_cancel_collect', async (ctx) => {
+  ctx.session.templateWorkflowState = 'idle';
+  ctx.session.textBuffer = [];
+  ctx.session.combinedText = '';
+  ctx.session.selectedStyle = null;
+  ctx.session.isGenerating = false;
+  await ctx.reply('✅ تم إلغاء العملية.').catch(() => {});
 });
 
 
@@ -1968,6 +2004,42 @@ docBot.on(['message:photo', 'message:document'], withDocBotHandler('premium_imag
 
 // ─── docBot: Admin + AI text input handler ────────────────────────────────────
 
+// Handle "Done" button from inline keyboard during text collection
+registerDocCallback('nizopdf_done', 'nizopdf_done', async (ctx) => {
+  if (ctx.session.awaitingMoreText) {
+    ctx.session.awaitingMoreText = false;
+    const totalWords = (ctx.session.collectedText || '').split(/\s+/).filter(Boolean).length;
+    const estimatedPages = Math.ceil(totalWords / 250);
+    ctx.session.totalWords = totalWords;
+
+    await ctx.editMessageText(
+      `✅ <b>تم تلقي المحتوى</b>\n` +
+      `📝 إجمالي الكلمات: ${totalWords} — الصفحات المتوقعة: ~${estimatedPages}\n\n` +
+      `<b>اختر عدد الصفحات:</b>`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '1 صفحة',  callback_data: 'pages_1' },
+              { text: '2 صفحة',  callback_data: 'pages_2' },
+              { text: '3 صفحات', callback_data: 'pages_3' },
+              { text: '5 صفحات', callback_data: 'pages_5' },
+            ],
+            [
+              { text: '10 صفحات', callback_data: 'pages_10' },
+              { text: '15 صفحة',  callback_data: 'pages_15' },
+              { text: '20 صفحة',  callback_data: 'pages_20' },
+            ],
+            [{ text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto' }],
+            [{ text: '🟥 ❌ إلغاء العملية',  callback_data: 'premium_cancel_flow' }],
+          ],
+        },
+      }
+    );
+  }
+});
+
 docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
   const userId = ctx.from?.id;
   if (!userId) return next();
@@ -1980,9 +2052,8 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
     const incoming = ctx.message.text.trim();
     
     if (incoming === 'تم' || incoming === 'تم.' || incoming === 'انتهيت') {
-      // Move to STYLE SELECTION first (V4 enterprise upgrade)
+      // Style already chosen upfront — go DIRECTLY to page selection
       ctx.session.awaitingMoreText = false;
-      ctx.session.awaitingStyleSelect = true;
       const totalWords = (ctx.session.collectedText || '').split(/\s+/).filter(Boolean).length;
       const estimatedPages = Math.ceil(totalWords / 250);
       ctx.session.totalWords = totalWords;
@@ -1990,17 +2061,24 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
       await ctx.reply(
         `✅ <b>تم تلقي المحتوى</b>\n` +
         `📝 إجمالي الكلمات: ${totalWords} — الصفحات المتوقعة: ~${estimatedPages}\n\n` +
-        `🎨 <b>اختر قالب التصميم:</b>`,
+        `<b>اختر عدد الصفحات:</b>`,
         {
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
-              [{ text: '📊 جداول احترافية',      callback_data: 'nizopdf_style_tables'   }],
-              [{ text: '📈 تقرير شركات',          callback_data: 'nizopdf_style_report'   }],
-              [{ text: '🏙️ وثيقة رسمية (حكومي)',   callback_data: 'nizopdf_style_formal'   }],
-              [{ text: '✨ إبداعي عصري',          callback_data: 'nizopdf_style_creative' }],
-              [{ text: '🌿 بسيط أنيق',             callback_data: 'nizopdf_style_minimal'  }],
-              [{ text: '🔬 بحث أكاديمي',          callback_data: 'nizopdf_style_academic' }],
+              [
+                { text: '1 صفحة',  callback_data: 'pages_1' },
+                { text: '2 صفحة',  callback_data: 'pages_2' },
+                { text: '3 صفحات', callback_data: 'pages_3' },
+                { text: '5 صفحات', callback_data: 'pages_5' },
+              ],
+              [
+                { text: '10 صفحات', callback_data: 'pages_10' },
+                { text: '15 صفحة',  callback_data: 'pages_15' },
+                { text: '20 صفحة',  callback_data: 'pages_20' },
+              ],
+              [{ text: '🤖 تلقائي (يحدده البوت)', callback_data: 'pages_auto' }],
+              [{ text: '🟥 ❌ إلغاء العملية',  callback_data: 'premium_cancel_flow' }],
             ],
           },
         }
@@ -2008,7 +2086,7 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
       return;
     }
     
-    // After accumulating enough text, send confirmation with "Done" button
+    // Accumulate — show word count + Done/Cancel keyboard
     ctx.session.collectedText = (ctx.session.collectedText || '') + '\n' + incoming;
     const totalWords = ctx.session.collectedText.split(/\s+/).filter(Boolean).length;
     const estimatedPages = Math.ceil(totalWords / 250);
@@ -2017,8 +2095,13 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
     await ctx.reply(
       `📝 <b>الكلمات حتى الآن:</b> ${totalWords}\n` +
       `📄 <b>الصفحات المتوقعة:</b> ~${estimatedPages}\n\n` +
-      `هل لديك محتوى إضافي؟ أرسله أو أرسل <b>تم</b> للمتابعة`,
-      { parse_mode: 'HTML' }
+      `أرسل المزيد أو اضغط للإنهاء:`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard()
+          .text('🟢 ✅ تم — إنهاء وإرسال', 'nizopdf_done').row()
+          .text('🟥 ❌ إلغاء العملية', 'premium_cancel_flow')
+      }
     );
     return; // CRITICAL: must return to prevent other handlers
   }

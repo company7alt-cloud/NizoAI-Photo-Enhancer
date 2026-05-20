@@ -163,7 +163,20 @@ const TEMPLATE_STYLES = {
 };
 function buildEnterprisePrompt(collectedText, pages, template = 'default', imageBase64) {
     const styleDesc = TEMPLATE_STYLES[template] || TEMPLATE_STYLES['default'];
-    const pageInstruction = `Optimize layout density, font size, spacing, heading sizes, and paragraph density to TARGET approximately ${pages} A4 page(s) under the current Puppeteer PDF renderer. If content is too long, compress intelligently while preserving meaning. If content is too short, improve spacing and visual density. NEVER hallucinate fake content.`;
+    const pageInstruction = [
+        `CRITICAL SYSTEM CONSTRAINT:`,
+        `The user has paid for EXACTLY ${pages} A4 page(s).`,
+        `You MUST compress or expand your content to fill EXACTLY ${pages} page(s).`,
+        `- For 1 page:  write ~400-500 words maximum.`,
+        `- For 2 pages: write ~800-1000 words maximum.`,
+        `- For 3 pages: write ~1200-1500 words maximum.`,
+        `- For 4 pages: write ~1600-2000 words maximum.`,
+        `- For 5 pages: write ~2000-2500 words maximum.`,
+        `- For 10 pages: write ~4000-5000 words maximum.`,
+        `NEVER generate content that spills into page ${pages + 1}.`,
+        `Adjust table rows and paragraph length to perfectly match the limit.`,
+        `Current target: ${pages} page(s).`,
+    ].join('\n');
     const systemPrompt = [
         '=== ENTERPRISE DOCUMENT GENERATOR ===',
         '',
