@@ -194,11 +194,12 @@ async function generateAiPDF(rawMarkdown, template = 'default') {
     // 5. Puppeteer
     const browser = await puppeteer_1.default.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none'],
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none', '--disable-dev-shm-usage'],
+        timeout: 90000,
     });
     try {
         const page = await browser.newPage();
-        await page.setContent(fullHtml, { waitUntil: 'load' });
+        await page.setContent(fullHtml, { waitUntil: 'networkidle2', timeout: 90000 });
         // CRITICAL: wait for Cairo to load (with 5s safety net)
         await page.evaluateHandle('document.fonts.ready');
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -208,6 +209,7 @@ async function generateAiPDF(rawMarkdown, template = 'default') {
             printBackground: true,
             margin: { top: '2.5cm', right: '2cm', bottom: '2.5cm', left: '2cm' },
             displayHeaderFooter: false,
+            timeout: 90000,
         });
     }
     finally {
