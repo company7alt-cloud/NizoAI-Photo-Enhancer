@@ -296,8 +296,8 @@ imageBot.command('reset', async (ctx) => {
       reply_markup: {
         inline_keyboard: [
           // @ts-ignore
-          [{ text: '✅ نعم، أعد التشغيل', callback_data: 'action_confirm_reset' }],
-          [{ text: '❌ تراجع', callback_data: 'action_cancel_reset' }],
+          [{ text: '✅ نعم، أعد التشغيل', callback_data: 'action_confirm_reset' , style: 'success' as const}],
+          [{ text: '❌ تراجع', callback_data: 'action_cancel_reset' , style: 'danger' as const}],
         ],
       },
     }
@@ -844,10 +844,10 @@ imageBot.on('message:text', async (ctx, next) => {
           reply_markup: {
             inline_keyboard: [
               // @ts-ignore
-              [{ text: '🚫 حظر', callback_data: `admin_ban_${foundUser.telegramId}` }],
-              [{ text: '🔓 رفع الحظر', callback_data: `admin_unban_${foundUser.telegramId}` }],
+              [{ text: '🚫 حظر', callback_data: `admin_ban_${foundUser.telegramId}` , style: 'primary' as const}],
+              [{ text: '🔓 رفع الحظر', callback_data: `admin_unban_${foundUser.telegramId}` , style: 'primary' as const}],
               // @ts-ignore
-              [{ text: '➕ إضافة محاولات', callback_data: `admin_addattempts_${foundUser.telegramId}` }],
+              [{ text: '➕ إضافة محاولات', callback_data: `admin_addattempts_${foundUser.telegramId}` , style: 'primary' as const}],
             ],
           },
         }
@@ -980,7 +980,7 @@ imageBot.on('message:text', async (ctx, next) => {
             reply_markup: {
               inline_keyboard: [[
                 // @ts-ignore
-                { text: '🍀 جرب حظك الآن 🟢', callback_data: 'gw_roll_init' } as any
+                { text: '🍀 جرب حظك الآن 🟢', callback_data: 'gw_roll_init' , style: 'primary' as const} as any
               ]]
             }
           }
@@ -1007,7 +1007,7 @@ imageBot.on('message:text', async (ctx, next) => {
             parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [[
-                { text: '📤 عرض رسالة التوزيعة', url: `https://t.me/${safeChannel}/${msg.message_id}` }
+                { text: '📤 عرض رسالة التوزيعة', url: `https://t.me/${safeChannel}/${msg.message_id}` , style: 'primary' as const}
               ]]
             }
           }
@@ -1032,7 +1032,7 @@ imageBot.on('message:text', async (ctx, next) => {
     const result = await handleFundCampaignInput(ctx.from!.id, ctx.message!.text || '', ctx.api);
     if (result.status === 'ask_target') {
       // @ts-ignore
-      await ctx.reply(`✅ تم التحقق من صلاحيات البوت.\n\nكم عدد الأعضاء المطلوب؟`, { reply_markup: { inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]] } });
+      await ctx.reply(`✅ تم التحقق من صلاحيات البوت.\n\nكم عدد الأعضاء المطلوب؟`, { reply_markup: { inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' , style: 'danger' as const}]] } });
     } else if (result.status === 'not_admin_in_channel') {
       await ctx.reply('❌ البوت ليس مشرفاً في هذه القناة. أضفه كمشرف أولاً ثم أعد المحاولة.');
     } else if (result.status === 'done' && 'campaign' in result) {
@@ -2613,7 +2613,7 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
             reply_markup: {
               inline_keyboard: [
                 // @ts-ignore
-                [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }]
+                [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' , style: 'danger' as const}]
               ]
             }
           }
@@ -2634,13 +2634,13 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
           reply_markup: {
             inline_keyboard: [
               // @ts-ignore
-              [{ text: '📄 ملء الصفحة كاملة (غلاف)', callback_data: 'doc_img_full_cover' }],
-              [{ text: '📏 افتراضي — 5 أسطر', callback_data: 'doc_img_space_5' }],
+              [{ text: '📄 ملء الصفحة كاملة (غلاف)', callback_data: 'doc_img_full_cover' , style: 'primary' as const}],
+              [{ text: '📏 افتراضي — 5 أسطر', callback_data: 'doc_img_space_5' , style: 'primary' as const}],
               // @ts-ignore
-              [{ text: '📐 كبير — 10 أسطر', callback_data: 'doc_img_space_10' }],
-              [{ text: '✍️ تخصيص العدد...', callback_data: 'doc_img_space_custom' }],
+              [{ text: '📐 كبير — 10 أسطر', callback_data: 'doc_img_space_10' , style: 'primary' as const}],
+              [{ text: '✍️ تخصيص العدد...', callback_data: 'doc_img_space_custom' , style: 'primary' as const}],
               // @ts-ignore
-              [{ text: '🔙 إلغاء', callback_data: 'doc_back_to_session' }]
+              [{ text: '🔙 إلغاء', callback_data: 'doc_back_to_session' , style: 'danger' as const}]
             ]
           }
         }
@@ -2678,7 +2678,7 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
           reply_markup: {
             inline_keyboard: [
               // @ts-ignore
-              [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' }]
+              [{ text: '🔙 إلغاء الصورة والعودة', callback_data: 'doc_back_to_session' , style: 'danger' as const}]
             ]
           }
         }

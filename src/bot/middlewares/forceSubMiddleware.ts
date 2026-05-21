@@ -58,10 +58,11 @@ export async function forceSubMiddleware(
     const keyboard: InlineKeyboardButton[][] = channels.map((ch) => ([{
       text: `📢 ${ch.channelName}`,
       url:  ch.channelUrl,
+      style: 'primary' as const,
     } as InlineKeyboardButton]));
 
     keyboard.push([
-      { text: '✅ تحققت من الاشتراك', callback_data: 'check_force_sub' },
+      { text: '✅ تحققت من الاشتراك', callback_data: 'check_force_sub' , style: 'success' as const},
     ]);
 
     const text =

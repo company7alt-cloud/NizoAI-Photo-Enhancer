@@ -41,9 +41,9 @@ export async function sendAdminAlert(ctx: Context, errorDetails: string): Promis
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` }],
-            [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` }],
-            [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}` }],
+            [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` , style: 'primary' as const}],
+            [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` , style: 'primary' as const}],
+            [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}` , style: 'primary' as const}],
           ],
         },
       });

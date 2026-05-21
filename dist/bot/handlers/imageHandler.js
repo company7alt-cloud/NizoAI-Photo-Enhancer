@@ -47,7 +47,14 @@ async function imageHandler(ctx) {
     // ── Strict Image Upload Guard ──
     const isAwaitingImage = (ctx.session?.workflowState === 'awaiting_image' ||
         ctx.session?.isAwaitingImage === true ||
-        ctx.session?.currentService != null);
+        ctx.session?.currentService != null ||
+        ctx.session?.awaitingFilterAction != null ||
+        reportUser?.awaitingFilterImage === true ||
+        reportUser?.awaitingFormatConversion === true ||
+        reportUser?.awaitingCustomEraserImage === true ||
+        reportUser?.awaitingAutoEraserImage === true ||
+        reportUser?.awaitingNanoBananaImage === true ||
+        reportUser?.proEnhanceSettings?.isAwaitingImage === true);
     if (!isAwaitingImage) {
         await ctx.reply('⚠️ صديقي، لم تقم باختيار الخدمة أولاً!\n' +
             'يرجى الضغط على الزر المناسب لتحسين صورتك من القائمة الرئيسية 👆');
@@ -92,10 +99,10 @@ async function imageHandler(ctx) {
                     reply_markup: {
                         inline_keyboard: [
                             // @ts-ignore
-                            [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish' }],
-                            [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}` }],
+                            [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish', style: 'success' }],
+                            [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}`, style: 'success' }],
                             // @ts-ignore
-                            [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+                            [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' }],
                         ],
                     },
                 });
@@ -115,7 +122,7 @@ async function imageHandler(ctx) {
                                 { text: '❌ لا، اختر الصيغة', callback_data: 'conv_batch_finish', style: 'primary' },
                             ],
                             // @ts-ignore
-                            [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' }],
+                            [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel', style: 'danger' }],
                         ],
                     },
                 });
@@ -268,7 +275,7 @@ async function imageHandler(ctx) {
                         { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100', style: 'primary' },
                     ],
                     // @ts-ignore
-                    [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
+                    [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser', style: 'danger' }],
                 ]
             }
         });
@@ -712,7 +719,7 @@ async function imageHandler(ctx) {
             ]
         };
         if (isAdminUser) {
-            keyboard.inline_keyboard.push([{ text: '⚙️ لوحة تحكم الأدمن', callback_data: 'admin_panel' }]);
+            keyboard.inline_keyboard.push([{ text: '⚙️ لوحة تحكم الأدمن', callback_data: 'admin_panel', style: 'primary' }]);
         }
         await ctx.reply(text, {
             reply_markup: keyboard,

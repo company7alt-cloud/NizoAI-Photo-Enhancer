@@ -46,9 +46,10 @@ async function forceSubMiddleware(ctx, next) {
         const keyboard = channels.map((ch) => ([{
                 text: `📢 ${ch.channelName}`,
                 url: ch.channelUrl,
+                style: 'primary',
             }]));
         keyboard.push([
-            { text: '✅ تحققت من الاشتراك', callback_data: 'check_force_sub' },
+            { text: '✅ تحققت من الاشتراك', callback_data: 'check_force_sub', style: 'success' },
         ]);
         const text = '🔒 <b>يجب الاشتراك في قنواتنا لاستخدام البوت</b>\n\n' +
             'اشترك في جميع القنوات أدناه ثم اضغط ' +

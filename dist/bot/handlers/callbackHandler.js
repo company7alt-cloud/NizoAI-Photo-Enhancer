@@ -89,7 +89,7 @@ async function showFormatSelection(ctx, count, _upscale) {
         ]);
     }
     // @ts-ignore
-    keyboard.push([{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }]);
+    keyboard.push([{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' }]);
     await ctx.reply(`🔄 <b>اختر الصيغة التي تريد التحويل إليها:</b>\n` +
         (isSingle ? '📄 PDF و SVG متاحان للصورة الواحدة فقط' : ''), {
         parse_mode: 'HTML',
@@ -802,7 +802,7 @@ async function callbackHandler(ctx) {
         await ctx.reply('🌹 فضلاً أرسل لنا بلاغك (رسالة أو صورة)\nوسيتم الرد عليك في أسرع وقت ممكن 💬', {
             reply_markup: {
                 // @ts-ignore
-                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_report' }]],
+                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_report', style: 'danger' }]],
             },
         });
         return;
@@ -844,10 +844,10 @@ async function callbackHandler(ctx) {
                     reply_markup: {
                         inline_keyboard: [
                             // @ts-ignore
-                            [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` }],
-                            [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` }],
+                            [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}`, style: 'primary' }],
+                            [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}`, style: 'primary' }],
                             // @ts-ignore
-                            [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}` }],
+                            [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}`, style: 'primary' }],
                         ],
                     },
                 });
@@ -975,7 +975,7 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 // @ts-ignore
-                inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' }]],
+                inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign', style: 'danger' }]],
             },
         });
         return;
@@ -1057,11 +1057,11 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '⚡ سريع (جودة عالية)', callback_data: 'pro_q_fast' }],
-                    [{ text: '💎 احترافي (جودة فائقة)', callback_data: 'pro_q_pro' }],
+                    [{ text: '⚡ سريع (جودة عالية)', callback_data: 'pro_q_fast', style: 'primary' }],
+                    [{ text: '💎 احترافي (جودة فائقة)', callback_data: 'pro_q_pro', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '🏆 ماكس (أعلى جودة)', callback_data: 'pro_q_max' }],
-                    [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
+                    [{ text: '🏆 ماكس (أعلى جودة)', callback_data: 'pro_q_max', style: 'primary' }],
+                    [{ text: '❌ إلغاء', callback_data: 'pro_cancel', style: 'danger' }],
                 ],
             },
         });
@@ -1082,10 +1082,10 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '2x — تكبير مضاعف', callback_data: 'pro_s_2' }],
-                    [{ text: '4x — تكبير رباعي (موصى به)', callback_data: 'pro_s_4' }],
+                    [{ text: '2x — تكبير مضاعف', callback_data: 'pro_s_2', style: 'primary' }],
+                    [{ text: '4x — تكبير رباعي (موصى به)', callback_data: 'pro_s_4', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
+                    [{ text: '❌ إلغاء', callback_data: 'pro_cancel', style: 'danger' }],
                 ],
             },
         });
@@ -1101,11 +1101,11 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '🖼 صورة عادية', callback_data: 'pro_t_photo' }],
-                    [{ text: '👤 وجه / بورتريه', callback_data: 'pro_t_face' }],
+                    [{ text: '🖼 صورة عادية', callback_data: 'pro_t_photo', style: 'primary' }],
+                    [{ text: '👤 وجه / بورتريه', callback_data: 'pro_t_face', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '🎨 رسم / أنمي / فن', callback_data: 'pro_t_art' }],
-                    [{ text: '❌ إلغاء', callback_data: 'pro_cancel' }],
+                    [{ text: '🎨 رسم / أنمي / فن', callback_data: 'pro_t_art', style: 'primary' }],
+                    [{ text: '❌ إلغاء', callback_data: 'pro_cancel', style: 'danger' }],
                 ],
             },
         });
@@ -1192,25 +1192,25 @@ async function callbackHandler(ctx) {
         const buildAdminKeyboard = (l) => ({
             inline_keyboard: [
                 // @ts-ignore
-                [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k' }],
-                [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k' }],
+                [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k', style: 'primary' }],
+                [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k', style: 'primary' }],
                 // @ts-ignore
-                [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k' }],
-                [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
+                [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k', style: 'primary' }],
+                [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai', style: 'primary' }],
                 // @ts-ignore
-                [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
-                [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano' }],
+                [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai', style: 'primary' }],
+                [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano', style: 'primary' }],
                 // @ts-ignore
-                [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
-                [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' }],
+                [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser', style: 'primary' }],
+                [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters', style: 'primary' }],
                 // @ts-ignore
-                [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
-                [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
+                [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip', style: 'primary' }],
+                [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub', style: 'primary' }],
                 // @ts-ignore
-                [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
-                [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' }],
+                [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size', style: 'primary' }],
+                [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start', style: 'primary' }],
                 // @ts-ignore
-                [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
+                [{ text: '❌ إغلاق', callback_data: 'admin_close', style: 'danger' }],
             ]
         });
         await ctx.reply('<b>⚙️ لوحة تحكم الأدمن</b>\n🟢 = مفتوح للجميع | 🔴 = مقفل', { parse_mode: 'HTML', reply_markup: buildAdminKeyboard(locks) });
@@ -1236,25 +1236,25 @@ async function callbackHandler(ctx) {
         const buildAdminKeyboard = (l) => ({
             inline_keyboard: [
                 // @ts-ignore
-                [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k' }],
-                [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k' }],
+                [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k', style: 'primary' }],
+                [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k', style: 'primary' }],
                 // @ts-ignore
-                [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k' }],
-                [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' }],
+                [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k', style: 'primary' }],
+                [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai', style: 'primary' }],
                 // @ts-ignore
-                [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' }],
-                [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano' }],
+                [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai', style: 'primary' }],
+                [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano', style: 'primary' }],
                 // @ts-ignore
-                [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' }],
-                [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' }],
+                [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser', style: 'primary' }],
+                [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters', style: 'primary' }],
                 // @ts-ignore
-                [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' }],
-                [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' }],
+                [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip', style: 'primary' }],
+                [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub', style: 'primary' }],
                 // @ts-ignore
-                [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' }],
-                [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' }],
+                [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size', style: 'primary' }],
+                [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start', style: 'primary' }],
                 // @ts-ignore
-                [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
+                [{ text: '❌ إغلاق', callback_data: 'admin_close', style: 'danger' }],
             ]
         });
         await ctx.api.editMessageReplyMarkup(ctx.chat.id, ctx.msgId, { reply_markup: buildAdminKeyboard(newLocks) });
@@ -1319,7 +1319,7 @@ async function callbackHandler(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 // @ts-ignore
-                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_nano_banana' }]]
+                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_nano_banana', style: 'danger' }]]
             }
         });
         return;
@@ -1467,7 +1467,7 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+                    [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' }],
                 ],
             },
         });
@@ -1495,7 +1495,7 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+                    [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' }],
                 ],
             },
         });
@@ -1514,10 +1514,10 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: ' نعم، ارفع الدقة أيضاً', callback_data: 'conv_quality_upscale' }],
-                    [{ text: '🔄 لا، تحويل الصيغة فقط (كما هي)', callback_data: 'conv_quality_original' }],
+                    [{ text: ' نعم، ارفع الدقة أيضاً', callback_data: 'conv_quality_upscale', style: 'primary' }],
+                    [{ text: '🔄 لا، تحويل الصيغة فقط (كما هي)', callback_data: 'conv_quality_original', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+                    [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' }],
                 ],
             },
         });
@@ -1772,10 +1772,10 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: ' إزالة نجمة Gemini (تلقائي)', callback_data: 'watermark_auto_gemini' }],
-                    [{ text: '🖌️ إزالة عنصر مخصص (يدوي)', callback_data: 'watermark_custom_start' }],
+                    [{ text: ' إزالة نجمة Gemini (تلقائي)', callback_data: 'watermark_auto_gemini', style: 'primary' }],
+                    [{ text: '🖌️ إزالة عنصر مخصص (يدوي)', callback_data: 'watermark_custom_start', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '❌ إلغاء', callback_data: 'cancel_eraser' }]
+                    [{ text: '❌ إلغاء', callback_data: 'cancel_eraser', style: 'danger' }]
                 ]
             }
         });
@@ -1797,7 +1797,7 @@ async function callbackHandler(ctx) {
         await ctx.reply('📸 أرسل لي الصورة الآن وسأقوم بإزالة نجمة Gemini من الزاوية تلقائياً.', {
             reply_markup: {
                 // @ts-ignore
-                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_auto_eraser' }]]
+                inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_auto_eraser', style: 'danger' }]]
             }
         });
         return;
@@ -2052,7 +2052,7 @@ async function callbackHandler(ctx) {
                         { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100', style: 'primary' },
                     ],
                     // @ts-ignore
-                    [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
+                    [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser', style: 'danger' }],
                 ]
             }
         });
@@ -2227,11 +2227,11 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '💬 رسائل البوت', callback_data: 'txtedit_cat_message' }],
-                    [{ text: '🔘 أسماء الأزرار', callback_data: 'txtedit_cat_button' }],
+                    [{ text: '💬 رسائل البوت', callback_data: 'txtedit_cat_message', style: 'primary' }],
+                    [{ text: '🔘 أسماء الأزرار', callback_data: 'txtedit_cat_button', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '🔔 الإشعارات', callback_data: 'txtedit_cat_notification' }],
-                    [{ text: '🔙 رجوع للوحة', callback_data: 'admin_panel' }],
+                    [{ text: '🔔 الإشعارات', callback_data: 'txtedit_cat_notification', style: 'primary' }],
+                    [{ text: '🔙 رجوع للوحة', callback_data: 'admin_panel', style: 'danger' }],
                 ]
             }
         });
@@ -2259,10 +2259,11 @@ async function callbackHandler(ctx) {
         const keyboard = items.map(item => ([{
                 // callback_data max 64 chars — key prefix "txtedit_item_" = 13 chars
                 text: `✏️ ${item.description}`,
-                callback_data: `txtedit_item_${item.key}`.slice(0, 64)
+                callback_data: `txtedit_item_${item.key}`.slice(0, 64),
+                style: 'primary',
             }]));
         // @ts-ignore
-        keyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_edit_texts' }]);
+        keyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_edit_texts', style: 'danger' }]);
         await ctx.reply(`📋 <b>${labelMap[category]}</b>\n\nاختر العنصر:`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } });
         return;
     }
@@ -2292,8 +2293,8 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '🔄 استعادة الافتراضي', callback_data: `txtedit_reset_${key}`.slice(0, 64) }],
-                    [{ text: '❌ إلغاء', callback_data: 'txtedit_cancel' }],
+                    [{ text: '🔄 استعادة الافتراضي', callback_data: `txtedit_reset_${key}`.slice(0, 64), style: 'primary' }],
+                    [{ text: '❌ إلغاء', callback_data: 'txtedit_cancel', style: 'danger' }],
                 ]
             }
         });
@@ -2332,13 +2333,13 @@ async function callbackHandler(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '➕ إضافة للجميع', callback_data: 'attempts_add_all' }],
-                    [{ text: '👤 إضافة لشخص محدد', callback_data: 'attempts_add_one' }],
+                    [{ text: '➕ إضافة للجميع', callback_data: 'attempts_add_all', style: 'primary' }],
+                    [{ text: '👤 إضافة لشخص محدد', callback_data: 'attempts_add_one', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '➖ خصم من شخص محدد', callback_data: 'attempts_remove_one' }],
-                    [{ text: '🔄 تصفير شخص محدد', callback_data: 'attempts_reset_one' }],
+                    [{ text: '➖ خصم من شخص محدد', callback_data: 'attempts_remove_one', style: 'primary' }],
+                    [{ text: '🔄 تصفير شخص محدد', callback_data: 'attempts_reset_one', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '❌ إغلاق', callback_data: 'admin_close' }],
+                    [{ text: '❌ إغلاق', callback_data: 'admin_close', style: 'danger' }],
                 ]
             }
         });
@@ -2383,15 +2384,17 @@ async function callbackHandler(ctx) {
         const fsubKeyboard = channels.map((ch) => ([{
                 text: `🗑 حذف: ${ch.channelName}`,
                 callback_data: `del_fsub_${String(ch._id)}`,
+                style: 'primary',
             }]));
         if (channels.length < 10) {
             fsubKeyboard.push([{
                     text: '➕ إضافة قناة جديدة',
                     callback_data: 'add_fsub',
+                    style: 'primary',
                 }]);
         }
         // @ts-ignore
-        fsubKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' }]);
+        fsubKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel', style: 'danger' }]);
         await ctx.reply(`📢 <b>قنوات الاشتراك الإجباري</b>\n\n` +
             `عدد القنوات: ${channels.length}/10\n\n` +
             (channels.length === 0
@@ -2432,15 +2435,17 @@ async function callbackHandler(ctx) {
         const updatedKeyboard = updatedChannels.map((ch) => ([{
                 text: `🗑 حذف: ${ch.channelName}`,
                 callback_data: `del_fsub_${String(ch._id)}`,
+                style: 'primary',
             }]));
         if (updatedChannels.length < 10) {
             updatedKeyboard.push([{
                     text: '➕ إضافة قناة جديدة',
                     callback_data: 'add_fsub',
+                    style: 'primary',
                 }]);
         }
         // @ts-ignore
-        updatedKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' }]);
+        updatedKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel', style: 'danger' }]);
         await ctx.editMessageText(`📢 <b>قنوات الاشتراك الإجباري</b>\n\nعدد القنوات: ${updatedChannels.length}/10`, {
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: updatedKeyboard },

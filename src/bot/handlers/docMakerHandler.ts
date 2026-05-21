@@ -202,8 +202,8 @@ function estimatePageCount(
 const COMPILE_KB = {
   inline_keyboard: [
     // @ts-ignore
-    [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
-    [{ text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }],
+    [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' , style: 'primary' as const}],
+    [{ text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' , style: 'primary' as const}],
   ],
 };
 
@@ -221,8 +221,8 @@ function controlPanel() {
         { text: '📄 صفحة جديدة', callback_data: 'doc_new_page', style: 'primary' as const }
       ],
       // @ts-ignore
-      [{ text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }],
-      [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+      [{ text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' , style: 'primary' as const}],
+      [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' , style: 'primary' as const}]
     ]
   };
 }
@@ -230,13 +230,13 @@ function controlPanel() {
 const SIZE_KB = {
   inline_keyboard: [
     // @ts-ignore
-    [{ text: 'A4 (افتراضي)', callback_data: 'doc_size_A4' }, { text: 'A5', callback_data: 'doc_size_A5' }],
-    [{ text: 'Letter', callback_data: 'doc_size_Letter' }, { text: 'B5', callback_data: 'doc_size_B5' }],
+    [{ text: 'A4 (افتراضي)', callback_data: 'doc_size_A4' , style: 'primary' as const}, { text: 'A5', callback_data: 'doc_size_A5' , style: 'primary' as const}],
+    [{ text: 'Letter', callback_data: 'doc_size_Letter' , style: 'primary' as const}, { text: 'B5', callback_data: 'doc_size_B5' , style: 'primary' as const}],
     // @ts-ignore
-    [{ text: 'Legal', callback_data: 'doc_size_Legal' }, { text: 'Executive', callback_data: 'doc_size_Executive' }],
-    [{ text: '📐 مقاس مخصص', callback_data: 'doc_custom_size' }],
+    [{ text: 'Legal', callback_data: 'doc_size_Legal' , style: 'primary' as const}, { text: 'Executive', callback_data: 'doc_size_Executive' , style: 'primary' as const}],
+    [{ text: '📐 مقاس مخصص', callback_data: 'doc_custom_size' , style: 'primary' as const}],
     // @ts-ignore
-    [{ text: '🔙 رجوع', callback_data: 'doc_tpl_back' }],
+    [{ text: '🔙 رجوع', callback_data: 'doc_tpl_back' , style: 'danger' as const}],
   ],
 };
 
@@ -384,10 +384,10 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
       reply_markup: {
         inline_keyboard: [
           // @ts-ignore
-          [{ text: '📄 مستند نصي', callback_data: 'doc_type_text' }],
-          [{ text: '🖼 مستند مصور 🔒', callback_data: 'doc_type_image_locked' }],
+          [{ text: '📄 مستند نصي', callback_data: 'doc_type_text' , style: 'primary' as const}],
+          [{ text: '🖼 مستند مصور 🔒', callback_data: 'doc_type_image_locked' , style: 'primary' as const}],
           // @ts-ignore
-          [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+          [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' , style: 'danger' as const}],
         ],
       },
     });
@@ -418,13 +418,13 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1' }, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2' }],
-            [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3' }, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4' }],
+            [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1' , style: 'primary' as const}, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2' , style: 'primary' as const}],
+            [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3' , style: 'primary' as const}, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4' , style: 'primary' as const}],
             // @ts-ignore
-            [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5' }],
-            [{ text: '🎨 تصميم نموذج ملون (احترافي)', callback_data: 'doc_template_colored' }],
+            [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5' , style: 'primary' as const}],
+            [{ text: '🎨 تصميم نموذج ملون (احترافي)', callback_data: 'doc_template_colored' , style: 'primary' as const}],
             // @ts-ignore
-            [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+            [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' , style: 'danger' as const}],
           ],
         },
       }
@@ -489,11 +489,11 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1' }, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2' }],
-            [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3' }, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4' }],
+            [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1' , style: 'primary' as const}, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2' , style: 'primary' as const}],
+            [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3' , style: 'primary' as const}, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4' , style: 'primary' as const}],
             // @ts-ignore
-            [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5' }],
-            [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+            [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5' , style: 'primary' as const}],
+            [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' , style: 'danger' as const}],
           ],
         },
       }
@@ -512,7 +512,7 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
         caption: '📐 <b>مقاس مخصص</b>\n\nأرسل <b>العرض</b> بالسنتيمتر (مثال: 21):',
         parse_mode: 'HTML',
         // @ts-ignore
-        reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'doc_tpl_back' }]], style: 'danger' as const },
+        reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'doc_tpl_back' , style: 'danger' as const}]], style: 'danger' as const },
       }).catch(logDocMakerCleanup('[DocMaker] edit custom size prompt failed:'));
     } catch (e) { console.error('[DocMaker] custom_size error:', e); }
     return true;
@@ -532,14 +532,14 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
       reply_markup: {
         inline_keyboard: [
           // @ts-ignore
-          [{ text: '✒️ Omnia Serif',               callback_data: 'doc_font_Omnia' }],
-          [{ text: ' Modern Pro 2024',           callback_data: 'doc_font_ModernPro' }],
+          [{ text: '✒️ Omnia Serif',               callback_data: 'doc_font_Omnia' , style: 'primary' as const}],
+          [{ text: ' Modern Pro 2024',           callback_data: 'doc_font_ModernPro' , style: 'primary' as const}],
           // @ts-ignore
-          [{ text: '🎙 خط إذاعة ثمانية',       callback_data: 'doc_font_Thamanya' }],
-          [{ text: '📜 الخط الرسمي — Amiri', callback_data: 'doc_font_Amiri' }],
+          [{ text: '🎙 خط إذاعة ثمانية',       callback_data: 'doc_font_Thamanya' , style: 'primary' as const}],
+          [{ text: '📜 الخط الرسمي — Amiri', callback_data: 'doc_font_Amiri' , style: 'primary' as const}],
           // @ts-ignore
-          [{ text: '📱 Cairo العصري',          callback_data: 'doc_font_Cairo' }],
-          [{ text: '❌ إلغاء',                      callback_data: 'doc_cancel_end' }],
+          [{ text: '📱 Cairo العصري',          callback_data: 'doc_font_Cairo' , style: 'primary' as const}],
+          [{ text: '❌ إلغاء',                      callback_data: 'doc_cancel_end' , style: 'danger' as const}],
         ],
       },
     }).catch(logDocMakerCleanup('[DocMaker] edit font menu failed:'));
@@ -909,7 +909,7 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
                 { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines', style: 'primary' as const }
               ],
               // @ts-ignore
-              [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+              [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' , style: 'primary' as const}]
             ]
           }
         }
@@ -1136,7 +1136,7 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
               { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines', style: 'primary' as const }
             ],
             // @ts-ignore
-            [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+            [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' , style: 'primary' as const}]
           ]
         }
       }
@@ -1515,7 +1515,7 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
               { text: 'عنابي داكن 🍷', callback_data: 'doc_bg_#4A232C', style: 'primary' as const }
             ],
             // @ts-ignore
-            [{ text: '🔙 رجوع للنماذج', callback_data: 'doc_type_text' }]
+            [{ text: '🔙 رجوع للنماذج', callback_data: 'doc_type_text' , style: 'danger' as const}]
           ]
         }
       }
@@ -1550,7 +1550,7 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
               { text: 'أحمر قاني 🔴', callback_data: 'doc_txt_#8B0000', style: 'primary' as const }
             ],
             // @ts-ignore
-            [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored' }]
+            [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored' , style: 'danger' as const}]
           ]
         }
       }
@@ -1673,7 +1673,7 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
               { text: 'أحمر قاني 🔴', callback_data: 'doc_txt_#8B0000', style: 'primary' as const },
             ],
             // @ts-ignore
-            [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored' }],
+            [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored' , style: 'danger' as const}],
           ],
         },
       }
@@ -1878,7 +1878,7 @@ async function handleTypographyCallbackInner(ctx: BotContext, data: string): Pro
       {
         parse_mode: 'HTML',
         // @ts-ignore
-        reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'typo_cancel' }]], style: 'danger' as const }
+        reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'typo_cancel' , style: 'danger' as const}]], style: 'danger' as const }
       }
     );
     ctx.session.typographyPromptId = promptMsg.message_id;
@@ -2264,15 +2264,18 @@ async function showImageFormatMenuInner(ctx: any): Promise<void> {
     [
       { 
         text: currentAlign === 'right' ? '✅ يمين' : (usedAligns.includes('right') ? '🔒 يمين' : '➡️ يمين'),  
-        callback_data: usedAligns.includes('right') ? 'doc_img_align_locked' : 'doc_img_fmt_right'  
+        callback_data: usedAligns.includes('right') ? 'doc_img_align_locked' : 'doc_img_fmt_right',  
+        style: 'success' as const,
       },
       { 
         text: currentAlign === 'center' ? '✅ وسط' : (usedAligns.includes('center') ? '🔒 وسط' : '↔️ وسط'),   
-        callback_data: usedAligns.includes('center') ? 'doc_img_align_locked' : 'doc_img_fmt_center' 
+        callback_data: usedAligns.includes('center') ? 'doc_img_align_locked' : 'doc_img_fmt_center', 
+        style: 'success' as const,
       },
       { 
         text: currentAlign === 'left' ? '✅ يسار' : (usedAligns.includes('left') ? '🔒 يسار' : '⬅️ يسار'),  
-        callback_data: usedAligns.includes('left') ? 'doc_img_align_locked' : 'doc_img_fmt_left'   
+        callback_data: usedAligns.includes('left') ? 'doc_img_align_locked' : 'doc_img_fmt_left',   
+        style: 'success' as const,
       },
     ],
     // 2. Mask (Show ✅ if currently selected)
@@ -2288,23 +2291,24 @@ async function showImageFormatMenuInner(ctx: any): Promise<void> {
   // Reveal advanced options ONLY when both align and mask are selected
   if (isTempReady) {
     // @ts-ignore
-    keyboard.push([{ text: ctx.session.tempImage?.caption ? '✏️ تعديل النص تحت الصورة' : '📝 إضافة نص تحت الصورة', callback_data: 'doc_row_caption_temp' }]);
+    keyboard.push([{ text: ctx.session.tempImage?.caption ? '✏️ تعديل النص تحت الصورة' : '📝 إضافة نص تحت الصورة', callback_data: 'doc_row_caption_temp' , style: 'primary' as const}]);
     if (rowImages.length < 2) { 
       // @ts-ignore
-      keyboard.push([{ text: '🖼 إضافة صورة بجانبها في نفس السطر', callback_data: 'doc_row_add_image' }]);
+      keyboard.push([{ text: '🖼 إضافة صورة بجانبها في نفس السطر', callback_data: 'doc_row_add_image' , style: 'primary' as const}]);
     }
     // @ts-ignore
-    keyboard.push([{ text: '✅ إتمام التعديلات وإضافة للمستند', callback_data: 'doc_row_finish' }]);
+    keyboard.push([{ text: '✅ إتمام التعديلات وإضافة للمستند', callback_data: 'doc_row_finish' , style: 'success' as const}]);
   }
 
   // Captions for already saved images in this row
   const captionBtns = rowImages.map((img: any, idx: number) => ({
-    text: img.caption ? `✏️ تعديل نص صورة ${idx + 1}` : `📝 نص صورة ${idx + 1}`, callback_data: `doc_row_caption_${idx}`
+    text: img.caption ? `✏️ تعديل نص صورة ${idx + 1}` : `📝 نص صورة ${idx + 1}`, callback_data: `doc_row_caption_${idx}`,
+    style: 'primary' as const,
   }));
   if (captionBtns.length > 0) keyboard.push(captionBtns);
 
   // @ts-ignore
-  keyboard.push([{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' }]);
+  keyboard.push([{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' , style: 'danger' as const}]);
 
   const text = '🎨 <b>تنسيق الصورة:</b>\n\nاختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:';
   const options = { parse_mode: 'HTML' as const, reply_markup: { inline_keyboard: keyboard } };

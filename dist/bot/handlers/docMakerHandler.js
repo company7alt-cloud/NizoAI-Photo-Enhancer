@@ -229,8 +229,8 @@ function estimatePageCount(lines, _pageSize = 'A4') {
 const COMPILE_KB = {
     inline_keyboard: [
         // @ts-ignore
-        [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf' }],
-        [{ text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last' }],
+        [{ text: '📤 تصدير الآن', callback_data: 'doc_export_pdf', style: 'primary' }],
+        [{ text: '↩️ إعادة آخر سطر', callback_data: 'doc_undo_last', style: 'primary' }],
     ],
 };
 function controlPanel() {
@@ -247,21 +247,21 @@ function controlPanel() {
                 { text: '📄 صفحة جديدة', callback_data: 'doc_new_page', style: 'primary' }
             ],
             // @ts-ignore
-            [{ text: '📋 عرض الأسطر', callback_data: 'doc_view_lines' }],
-            [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+            [{ text: '📋 عرض الأسطر', callback_data: 'doc_view_lines', style: 'primary' }],
+            [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end', style: 'primary' }]
         ]
     };
 }
 const SIZE_KB = {
     inline_keyboard: [
         // @ts-ignore
-        [{ text: 'A4 (افتراضي)', callback_data: 'doc_size_A4' }, { text: 'A5', callback_data: 'doc_size_A5' }],
-        [{ text: 'Letter', callback_data: 'doc_size_Letter' }, { text: 'B5', callback_data: 'doc_size_B5' }],
+        [{ text: 'A4 (افتراضي)', callback_data: 'doc_size_A4', style: 'primary' }, { text: 'A5', callback_data: 'doc_size_A5', style: 'primary' }],
+        [{ text: 'Letter', callback_data: 'doc_size_Letter', style: 'primary' }, { text: 'B5', callback_data: 'doc_size_B5', style: 'primary' }],
         // @ts-ignore
-        [{ text: 'Legal', callback_data: 'doc_size_Legal' }, { text: 'Executive', callback_data: 'doc_size_Executive' }],
-        [{ text: '📐 مقاس مخصص', callback_data: 'doc_custom_size' }],
+        [{ text: 'Legal', callback_data: 'doc_size_Legal', style: 'primary' }, { text: 'Executive', callback_data: 'doc_size_Executive', style: 'primary' }],
+        [{ text: '📐 مقاس مخصص', callback_data: 'doc_custom_size', style: 'primary' }],
         // @ts-ignore
-        [{ text: '🔙 رجوع', callback_data: 'doc_tpl_back' }],
+        [{ text: '🔙 رجوع', callback_data: 'doc_tpl_back', style: 'danger' }],
     ],
 };
 async function renderActiveSession(ctx) {
@@ -403,10 +403,10 @@ async function handleDocMakerCallbackInner(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '📄 مستند نصي', callback_data: 'doc_type_text' }],
-                    [{ text: '🖼 مستند مصور 🔒', callback_data: 'doc_type_image_locked' }],
+                    [{ text: '📄 مستند نصي', callback_data: 'doc_type_text', style: 'primary' }],
+                    [{ text: '🖼 مستند مصور 🔒', callback_data: 'doc_type_image_locked', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+                    [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel', style: 'danger' }],
                 ],
             },
         });
@@ -433,13 +433,13 @@ async function handleDocMakerCallbackInner(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1' }, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2' }],
-                    [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3' }, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4' }],
+                    [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1', style: 'primary' }, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2', style: 'primary' }],
+                    [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3', style: 'primary' }, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5' }],
-                    [{ text: '🎨 تصميم نموذج ملون (احترافي)', callback_data: 'doc_template_colored' }],
+                    [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5', style: 'primary' }],
+                    [{ text: '🎨 تصميم نموذج ملون (احترافي)', callback_data: 'doc_template_colored', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+                    [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel', style: 'danger' }],
                 ],
             },
         });
@@ -497,11 +497,11 @@ async function handleDocMakerCallbackInner(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1' }, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2' }],
-                    [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3' }, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4' }],
+                    [{ text: '1️⃣ كلاسيكي', callback_data: 'doc_tpl_1', style: 'primary' }, { text: '2️⃣ احترافي', callback_data: 'doc_tpl_2', style: 'primary' }],
+                    [{ text: '3️⃣ زوايا', callback_data: 'doc_tpl_3', style: 'primary' }, { text: '4️⃣ أشرطة', callback_data: 'doc_tpl_4', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5' }],
-                    [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel' }],
+                    [{ text: '5️⃣ إطار مزدوج', callback_data: 'doc_tpl_5', style: 'primary' }],
+                    [{ text: '❌ إلغاء', callback_data: 'doc_maker_cancel', style: 'danger' }],
                 ],
             },
         });
@@ -518,7 +518,7 @@ async function handleDocMakerCallbackInner(ctx) {
                 caption: '📐 <b>مقاس مخصص</b>\n\nأرسل <b>العرض</b> بالسنتيمتر (مثال: 21):',
                 parse_mode: 'HTML',
                 // @ts-ignore
-                reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'doc_tpl_back' }]], style: 'danger' },
+                reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'doc_tpl_back', style: 'danger' }]], style: 'danger' },
             }).catch(logDocMakerCleanup('[DocMaker] edit custom size prompt failed:'));
         }
         catch (e) {
@@ -538,14 +538,14 @@ async function handleDocMakerCallbackInner(ctx) {
             reply_markup: {
                 inline_keyboard: [
                     // @ts-ignore
-                    [{ text: '✒️ Omnia Serif', callback_data: 'doc_font_Omnia' }],
-                    [{ text: ' Modern Pro 2024', callback_data: 'doc_font_ModernPro' }],
+                    [{ text: '✒️ Omnia Serif', callback_data: 'doc_font_Omnia', style: 'primary' }],
+                    [{ text: ' Modern Pro 2024', callback_data: 'doc_font_ModernPro', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '🎙 خط إذاعة ثمانية', callback_data: 'doc_font_Thamanya' }],
-                    [{ text: '📜 الخط الرسمي — Amiri', callback_data: 'doc_font_Amiri' }],
+                    [{ text: '🎙 خط إذاعة ثمانية', callback_data: 'doc_font_Thamanya', style: 'primary' }],
+                    [{ text: '📜 الخط الرسمي — Amiri', callback_data: 'doc_font_Amiri', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '📱 Cairo العصري', callback_data: 'doc_font_Cairo' }],
-                    [{ text: '❌ إلغاء', callback_data: 'doc_cancel_end' }],
+                    [{ text: '📱 Cairo العصري', callback_data: 'doc_font_Cairo', style: 'primary' }],
+                    [{ text: '❌ إلغاء', callback_data: 'doc_cancel_end', style: 'danger' }],
                 ],
             },
         }).catch(logDocMakerCleanup('[DocMaker] edit font menu failed:'));
@@ -865,7 +865,7 @@ async function handleDocMakerCallbackInner(ctx) {
                             { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines', style: 'primary' }
                         ],
                         // @ts-ignore
-                        [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+                        [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end', style: 'primary' }]
                     ]
                 }
             });
@@ -1032,7 +1032,7 @@ async function handleDocMakerCallbackInner(ctx) {
                         { text: '📋 عرض الأسطر', callback_data: 'doc_view_lines', style: 'primary' }
                     ],
                     // @ts-ignore
-                    [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end' }]
+                    [{ text: '🚪 إنهاء الجلسة', callback_data: 'doc_cancel_end', style: 'primary' }]
                 ]
             }
         }).catch(logDocMakerCleanup('[DocMaker] undo editMessageText failed:'));
@@ -1377,7 +1377,7 @@ async function handleDocMakerCallbackInner(ctx) {
                         { text: 'عنابي داكن 🍷', callback_data: 'doc_bg_#4A232C', style: 'primary' }
                     ],
                     // @ts-ignore
-                    [{ text: '🔙 رجوع للنماذج', callback_data: 'doc_type_text' }]
+                    [{ text: '🔙 رجوع للنماذج', callback_data: 'doc_type_text', style: 'danger' }]
                 ]
             }
         });
@@ -1407,7 +1407,7 @@ async function handleDocMakerCallbackInner(ctx) {
                         { text: 'أحمر قاني 🔴', callback_data: 'doc_txt_#8B0000', style: 'primary' }
                     ],
                     // @ts-ignore
-                    [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored' }]
+                    [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored', style: 'danger' }]
                 ]
             }
         });
@@ -1512,7 +1512,7 @@ async function handleDocMakerCallbackInner(ctx) {
                         { text: 'أحمر قاني 🔴', callback_data: 'doc_txt_#8B0000', style: 'primary' },
                     ],
                     // @ts-ignore
-                    [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored' }],
+                    [{ text: '🔙 رجوع لاختيار الخلفية', callback_data: 'doc_template_colored', style: 'danger' }],
                 ],
             },
         });
@@ -1690,7 +1690,7 @@ async function handleTypographyCallbackInner(ctx, data) {
         const promptMsg = await ctx.reply(`${title}\n\nأرسل رقماً للتطبيق:\n\n${examples}\n\n<i>القائمة أعلاه ستبقى — فقط أرسل الرقم.</i>`, {
             parse_mode: 'HTML',
             // @ts-ignore
-            reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'typo_cancel' }]], style: 'danger' }
+            reply_markup: { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'typo_cancel', style: 'danger' }]], style: 'danger' }
         });
         ctx.session.typographyPromptId = promptMsg.message_id;
         return true;
@@ -2022,15 +2022,18 @@ async function showImageFormatMenuInner(ctx) {
         [
             {
                 text: currentAlign === 'right' ? '✅ يمين' : (usedAligns.includes('right') ? '🔒 يمين' : '➡️ يمين'),
-                callback_data: usedAligns.includes('right') ? 'doc_img_align_locked' : 'doc_img_fmt_right'
+                callback_data: usedAligns.includes('right') ? 'doc_img_align_locked' : 'doc_img_fmt_right',
+                style: 'success',
             },
             {
                 text: currentAlign === 'center' ? '✅ وسط' : (usedAligns.includes('center') ? '🔒 وسط' : '↔️ وسط'),
-                callback_data: usedAligns.includes('center') ? 'doc_img_align_locked' : 'doc_img_fmt_center'
+                callback_data: usedAligns.includes('center') ? 'doc_img_align_locked' : 'doc_img_fmt_center',
+                style: 'success',
             },
             {
                 text: currentAlign === 'left' ? '✅ يسار' : (usedAligns.includes('left') ? '🔒 يسار' : '⬅️ يسار'),
-                callback_data: usedAligns.includes('left') ? 'doc_img_align_locked' : 'doc_img_fmt_left'
+                callback_data: usedAligns.includes('left') ? 'doc_img_align_locked' : 'doc_img_fmt_left',
+                style: 'success',
             },
         ],
         // 2. Mask (Show ✅ if currently selected)
@@ -2045,22 +2048,23 @@ async function showImageFormatMenuInner(ctx) {
     // Reveal advanced options ONLY when both align and mask are selected
     if (isTempReady) {
         // @ts-ignore
-        keyboard.push([{ text: ctx.session.tempImage?.caption ? '✏️ تعديل النص تحت الصورة' : '📝 إضافة نص تحت الصورة', callback_data: 'doc_row_caption_temp' }]);
+        keyboard.push([{ text: ctx.session.tempImage?.caption ? '✏️ تعديل النص تحت الصورة' : '📝 إضافة نص تحت الصورة', callback_data: 'doc_row_caption_temp', style: 'primary' }]);
         if (rowImages.length < 2) {
             // @ts-ignore
-            keyboard.push([{ text: '🖼 إضافة صورة بجانبها في نفس السطر', callback_data: 'doc_row_add_image' }]);
+            keyboard.push([{ text: '🖼 إضافة صورة بجانبها في نفس السطر', callback_data: 'doc_row_add_image', style: 'primary' }]);
         }
         // @ts-ignore
-        keyboard.push([{ text: '✅ إتمام التعديلات وإضافة للمستند', callback_data: 'doc_row_finish' }]);
+        keyboard.push([{ text: '✅ إتمام التعديلات وإضافة للمستند', callback_data: 'doc_row_finish', style: 'success' }]);
     }
     // Captions for already saved images in this row
     const captionBtns = rowImages.map((img, idx) => ({
-        text: img.caption ? `✏️ تعديل نص صورة ${idx + 1}` : `📝 نص صورة ${idx + 1}`, callback_data: `doc_row_caption_${idx}`
+        text: img.caption ? `✏️ تعديل نص صورة ${idx + 1}` : `📝 نص صورة ${idx + 1}`, callback_data: `doc_row_caption_${idx}`,
+        style: 'primary',
     }));
     if (captionBtns.length > 0)
         keyboard.push(captionBtns);
     // @ts-ignore
-    keyboard.push([{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session' }]);
+    keyboard.push([{ text: '🔙 رجوع وإلغاء الصورة', callback_data: 'doc_back_to_session', style: 'danger' }]);
     const text = '🎨 <b>تنسيق الصورة:</b>\n\nاختر <b>المحاذاة</b> وشكل <b>الإطار</b> كلاهما معاً ثم تُحفَظ الصورة تلقائياً:';
     const options = { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } };
     // CRITICAL FIX: Prevent crashes and message duplication.

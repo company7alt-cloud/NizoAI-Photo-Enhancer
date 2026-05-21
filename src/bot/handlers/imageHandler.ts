@@ -19,7 +19,14 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   const isAwaitingImage = (
     ctx.session?.workflowState === 'awaiting_image' ||
     ctx.session?.isAwaitingImage === true ||
-    ctx.session?.currentService != null
+    ctx.session?.currentService != null ||
+    ctx.session?.awaitingFilterAction != null ||
+    reportUser?.awaitingFilterImage === true ||
+    reportUser?.awaitingFormatConversion === true ||
+    reportUser?.awaitingCustomEraserImage === true ||
+    reportUser?.awaitingAutoEraserImage === true ||
+    reportUser?.awaitingNanoBananaImage === true ||
+    reportUser?.proEnhanceSettings?.isAwaitingImage === true
   );
 
   if (!isAwaitingImage) {
@@ -81,10 +88,10 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
             reply_markup: {
               inline_keyboard: [
                 // @ts-ignore
-                [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish' }],
-                [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}` }],
+                [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish' , style: 'success' as const}],
+                [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}` , style: 'success' as const}],
                 // @ts-ignore
-                [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' }],
+                [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' , style: 'danger' as const}],
               ],
             },
           }
@@ -106,7 +113,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
                   { text: '❌ لا، اختر الصيغة', callback_data: 'conv_batch_finish', style: 'primary' as const },
                 ],
                 // @ts-ignore
-                [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' }],
+                [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' , style: 'danger' as const}],
               ],
             },
           }
@@ -294,7 +301,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
               { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100', style: 'primary' as const },
             ],
             // @ts-ignore
-            [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' }],
+            [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' , style: 'danger' as const}],
           ]
         }
       }
@@ -906,7 +913,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     };
 
     if (isAdminUser) {
-      keyboard.inline_keyboard.push([{ text: '⚙️ لوحة تحكم الأدمن', callback_data: 'admin_panel' }]);
+      keyboard.inline_keyboard.push([{ text: '⚙️ لوحة تحكم الأدمن', callback_data: 'admin_panel' , style: 'primary' as const}]);
     }
 
     await ctx.reply(text, {

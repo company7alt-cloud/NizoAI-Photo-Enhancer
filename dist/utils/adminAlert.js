@@ -35,9 +35,9 @@ async function sendAdminAlert(ctx, errorDetails) {
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` }],
-                        [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` }],
-                        [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}` }],
+                        [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}`, style: 'primary' }],
+                        [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}`, style: 'primary' }],
+                        [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}`, style: 'primary' }],
                     ],
                 },
             });
