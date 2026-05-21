@@ -2489,13 +2489,6 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
         await User.updateOne({ _id: user._id }, { $inc: { freePdfsGeneratedToday: 1 } });
       }
 
-      // Send the text chunks + Edit button
-      ctx.session.lastGeneratedDoc = {
-        text: cleanMarkdown,
-        pageCount: detectedPages,
-        originalCost: 2 // Assuming base cost for edit calculation
-      };
-      await sendTextChunksWithEditButton(ctx, cleanMarkdown);
 
     } catch (err: any) {
       await loadingState.stop();
