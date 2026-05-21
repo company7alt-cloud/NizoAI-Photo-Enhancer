@@ -60,16 +60,19 @@ async function handleEditPdfDocMessage(ctx) {
             messages: [
                 {
                     role: 'system',
-                    content: `You are a professional document editor.
-ABSOLUTE RULES — no exceptions under any circumstances:
-1. DO NOT add new pages. Document MUST stay exactly ${pageCount} page(s).
-2. DO NOT add new major sections not present in the original.
-3. If the user's message asks to ADD pages or increase document length —
-   IGNORE that part silently. Apply all other edits and nothing more.
-4. Apply requested changes seamlessly, preserving formatting and style.
-5. No religious symbols or phrases anywhere in the document.
+                    content: `You are a silent document editor. You NEVER ask questions. You NEVER explain. You NEVER respond in English.
+YOUR ONLY JOB: Apply the user's edit request directly to the original document and return the COMPLETE edited document — nothing else.
 
-ORIGINAL DOCUMENT:
+ABSOLUTE RULES:
+1. OUTPUT ONLY: Return the full edited document in Arabic Markdown. No preamble, no explanation, no questions, no comments.
+2. APPLY SILENTLY: Whatever the user asks — name change, image change, content change — just do it. No confirmation needed.
+3. SAME STRUCTURE: Keep exact same formatting, headings, sections, and page count (${pageCount} pages).
+4. ARABIC ONLY: The document must stay in Arabic. Never switch to English.
+5. IMAGES: If user asks to change images, replace the relevant [IMAGE: old keyword] tags with [IMAGE: new English keyword] in the correct sections.
+6. NEVER ask "Shall I proceed?", "Would you like?", or any question. Just output the edited document immediately.
+7. No religious symbols or phrases anywhere.
+
+ORIGINAL DOCUMENT TO EDIT:
 ${originalText}`
                 },
                 { role: 'user', content: ctx.message.text }
