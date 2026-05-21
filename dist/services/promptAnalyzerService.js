@@ -75,6 +75,7 @@ function analyzeAndEnhancePrompt(userRawPrompt) {
         // ──────────────────────────────────────────────────────────────────────────
         'VISUALS: To request an image, you MUST output EXACTLY this tag: [IMAGE: English Keyword]. Do not use HTML or Markdown URLs. Example: [IMAGE: Nike brand logo]',
         'Use maximum 2 [IMAGE: ...] tags per document. Only add them when genuinely relevant to the topic.',
+        'CRITICAL: If the user input contains any placeholder text like "(أدخل صورة هنا)" or "(insert image here)" or any similar image placeholder — you MUST replace it with [IMAGE: relevant English keyword]. NEVER keep placeholder text in the output.',
         '',
         'USER ORIGINAL REQUEST (unchanged):',
         userRawPrompt,
@@ -231,6 +232,7 @@ function buildEnterprisePrompt(collectedText, pages, template = 'default', image
         // ──────────────────────────────────────────────────────────────────────────
         'VISUALS: To request an image, you MUST output EXACTLY this tag: [IMAGE: English Keyword]. Do not use HTML or Markdown URLs. Example: [IMAGE: Nike brand logo]',
         'Use maximum 2 [IMAGE: ...] tags per document. Only add them when genuinely relevant to the topic.',
+        'CRITICAL: If the user input contains any placeholder text like "(أدخل صورة هنا)" or "(insert image here)" or any similar image placeholder — you MUST replace it with [IMAGE: relevant English keyword]. NEVER keep placeholder text in the output.',
         '',
         '=== AUTO DETECTION ===',
         'Intelligently detect and apply proper formatting for: titles, subtitles, chapters, sections, quotes, lists, timelines, tables, statistics, warnings, notices, references, academic sections, formal letter structures.',
