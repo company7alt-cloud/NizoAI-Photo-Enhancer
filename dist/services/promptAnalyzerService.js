@@ -81,10 +81,10 @@ function analyzeAndEnhancePrompt(userRawPrompt) {
         userRawPrompt,
         ...(needsTables ? ['', buildTableTemplateInjection()] : []),
         '',
-        'CRITICAL LENGTH RULES (STRICT):',
-        '1. DYNAMIC LENGTH: Never force a fixed page count. Write exactly as much as the topic genuinely requires. A simple topic = 1 page. A complex topic = more pages. Do NOT pad with filler text or repeat yourself to fill space.',
-        '2. QUALITY OVER QUANTITY: Every sentence must add real value. If you have nothing more to say, STOP writing.',
-        '3. VAGUE INPUT: If the topic is a greeting or completely meaningless, output ONE short paragraph apologizing and asking for a real topic. Do not generate a full document.',
+        'CRITICAL LENGTH RULES (ABSOLUTE — NEVER VIOLATE):',
+        `1. PAGE COUNT IS LAW: The user requested EXACTLY ${detectedPages} page(s). You MUST stop after generating content that fills ${detectedPages} A4 page(s). One A4 page = approximately 400-450 Arabic words.`,
+        `2. HARD LIMIT: NEVER exceed ${detectedPages} page(s). If you finish the content early, end the document cleanly. Do NOT pad or repeat.`,
+        '3. VAGUE INPUT: If the topic is meaningless, output ONE short paragraph asking for a real topic.',
     ].join('\n');
     return {
         enhancedPrompt,
@@ -243,10 +243,10 @@ function buildEnterprisePrompt(collectedText, pages, template = 'default', image
         '=== USER CONTENT ===',
         'Use ONLY the content provided below. Do NOT invent information.',
         '',
-        'CRITICAL LENGTH RULES (STRICT):',
-        '1. DYNAMIC LENGTH: Never force a fixed page count. Write exactly as much as the topic genuinely requires. A simple topic = 1 page. A complex topic = more pages. Do NOT pad with filler text or repeat yourself to fill space.',
-        '2. QUALITY OVER QUANTITY: Every sentence must add real value. If you have nothing more to say, STOP writing.',
-        '3. VAGUE INPUT: If the topic is a greeting or completely meaningless, output ONE short paragraph apologizing and asking for a real topic. Do not generate a full document.',
+        'CRITICAL LENGTH RULES (ABSOLUTE — NEVER VIOLATE):',
+        `1. PAGE COUNT IS LAW: The user requested EXACTLY ${pages} page(s). You MUST stop after generating content that fills ${pages} A4 page(s). One A4 page = approximately 400-450 Arabic words.`,
+        `2. HARD LIMIT: NEVER exceed ${pages} page(s). If you finish the content early, end the document cleanly. Do NOT pad or repeat.`,
+        '3. VAGUE INPUT: If the topic is meaningless, output ONE short paragraph asking for a real topic.',
     ].join('\n');
     let userContent;
     if (imageBase64) {

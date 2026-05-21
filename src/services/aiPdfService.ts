@@ -211,14 +211,26 @@ async function processImages(text: string): Promise<string> {
 // ─── Unsplash image fetcher (used as intelligent fallback) ────────────────────
 
 async function fetchUnsplashImage(query: string): Promise<string> {
-  // DISABLED: Unsplash API times out on this server
-  // return getFallbackImage(query) uses picsum.photos — fast, no auth needed
-  return getFallbackImage(query);
+  try {
+    const keyword = encodeURIComponent(query.trim());
+    const url = `https://api.unsplash.com/photos/random?query=${keyword}&orientation=landscape&content_filter=high`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}` },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!response.ok) return getFallbackImage(query);
+    const data = await response.json() as { urls?: { regular?: string } };
+    return data?.urls?.regular ?? getFallbackImage(query);
+  } catch {
+    return getFallbackImage(query);
+  }
 }
 
 function getFallbackImage(query: string): string {
-  const keyword = encodeURIComponent(query);
-  return `https://picsum.photos/seed/${keyword}/800/400`;
+  const keyword = encodeURIComponent(query.trim());
+  // Use Lorem Picsum with a consistent seed based on keyword hash
+  const seed = keyword.substring(0, 20);
+  return `https://picsum.photos/seed/${seed}/800/400`;
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
