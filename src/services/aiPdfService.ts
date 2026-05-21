@@ -242,7 +242,8 @@ async function fetchUnsplashImage(query: string): Promise<string> {
     const response = await fetch(url, {
       headers: {
         Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`
-      }
+      },
+      signal: AbortSignal.timeout(10000) // guard against undici DOMException TimeoutError
     });
     if (!response.ok) return getFallbackImage(query);
     const data = await response.json() as { urls?: { regular?: string } };

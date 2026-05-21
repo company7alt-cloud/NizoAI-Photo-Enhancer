@@ -225,7 +225,8 @@ async function fetchUnsplashImage(query) {
         const response = await fetch(url, {
             headers: {
                 Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`
-            }
+            },
+            signal: AbortSignal.timeout(10000) // guard against undici DOMException TimeoutError
         });
         if (!response.ok)
             return getFallbackImage(query);
