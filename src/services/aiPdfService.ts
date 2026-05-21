@@ -185,9 +185,11 @@ async function processImages(text: string): Promise<string> {
   for (const imageMatch of imageMatches) {
     const fullTag = imageMatch[0];
     const keyword = imageMatch[1]?.trim() || 'professional illustration';
+    // Enhance keyword for better professional results
+    const enhancedKeyword = `${keyword} professional high quality`;
     try {
       console.log('[ImageInterceptor] Fetching Unsplash for:', keyword);
-      const unsplashUrl = await fetchUnsplashImage(keyword);
+      const unsplashUrl = await fetchUnsplashImage(enhancedKeyword);
       const imgRes = await fetch(unsplashUrl, { signal: AbortSignal.timeout(10000) });
       if (imgRes.ok) {
         const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
