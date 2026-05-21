@@ -149,73 +149,61 @@ function buildHtml(bodyContent, template) {
 </html>`;
 }
 async function processImages(text) {
+    // ── DISABLED: Old Pollinations URL interceptor (replaced by [IMAGE: keyword] system) ──
     // Fix 1: Convert markdown images to base64
     // Fix 2: Fix broken HTML img tags (RTL reversal causes src to appear wrong)
-    let processed = text;
-    // Collect all URLs to process
-    const urlsToProcess = [];
-    let match;
-    // From markdown format
-    const mdRegex = /https:\/\/image\.pollinations\.ai\/[^\s)"'>]+/g;
-    while ((match = mdRegex.exec(text)) !== null) {
-        urlsToProcess.push(match[0].replace(/['")\]>]+$/, ''));
-    }
-    // Download and replace each URL with base64
-    for (const url of [...new Set(urlsToProcess)]) {
+    // 
+    // let processed_old = text;
+    // const urlsToProcess: string[] = [];
+    // let match_old;
+    // const mdRegex = /https:\/\/image\.pollinations\.ai\/[^\s)"'>]+/g;
+    // while ((match_old = mdRegex.exec(text)) !== null) {
+    //   urlsToProcess.push(match_old[0].replace(/['"\)\]>]+$/, ''));
+    // }
+    // for (const url of [...new Set(urlsToProcess)]) {
+    //   try {
+    //     const cleanUrl = url.replace(/['"\)\]>\s]+$/, '').replace(/&amp;/g, '&');
+    //     const response = await fetch(cleanUrl, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0' } });
+    //     if (!response.ok) { continue; }
+    //     const buffer = Buffer.from(await response.arrayBuffer());
+    //     const base64 = buffer.toString('base64');
+    //     const dataUri = `data:image/jpeg;base64,${base64}`;
+    //     processed_old = processed_old.split(url).join(dataUri);
+    //     processed_old = processed_old.replace(/>\s*img[\s\S]*?nologo=true['"<>\s]*/g, `<img src="${dataUri}" ... />`);
+    //   } catch (err) { ... }
+    // }
+    // return processed_old;
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // ── NEW: [IMAGE: keyword] interceptor ──
+    // Matches tags emitted by the AI and replaces them with real Unsplash base64 images.
+    const imageRegex = /\[IMAGE:\s*(.*?)\]/g;
+    let processedText = text;
+    const imageMatches = [...text.matchAll(imageRegex)];
+    for (const imageMatch of imageMatches) {
+        const fullTag = imageMatch[0];
+        const keyword = imageMatch[1]?.trim() || 'professional illustration';
         try {
-            const cleanUrl = url.replace(/['")\]>\s]+$/, '').replace(/&amp;/g, '&');
-            console.log('[ImageInterceptor] Downloading:', cleanUrl);
-            const response = await fetch(cleanUrl, {
-                signal: AbortSignal.timeout(15000),
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
-            if (!response.ok) {
-                console.log('[ImageInterceptor] Failed HTTP:', response.status);
-                continue;
+            console.log('[ImageInterceptor] Fetching Unsplash for:', keyword);
+            const unsplashUrl = await fetchUnsplashImage(keyword);
+            const imgRes = await fetch(unsplashUrl, { signal: AbortSignal.timeout(10000) });
+            if (imgRes.ok) {
+                const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+                const imgBase64 = imgBuffer.toString('base64');
+                const imgHtml = `<br><img src="data:image/jpeg;base64,${imgBase64}" style="max-width:100%; max-height:350px; border-radius:8px; margin:15px auto; display:block;" alt="${keyword}"/><br>`;
+                processedText = processedText.replace(fullTag, imgHtml);
+                console.log('[ImageInterceptor] ✅ Unsplash image embedded for:', keyword);
             }
-            const buffer = Buffer.from(await response.arrayBuffer());
-            const base64 = buffer.toString('base64');
-            const dataUri = `data:image/jpeg;base64,${base64}`;
-            // Replace ALL occurrences of this URL with base64
-            processed = processed.split(url).join(dataUri);
-            // Also fix broken img tags containing this URL
-            processed = processed.replace(/>\s*img[\s\S]*?nologo=true['">\s]*/g, `<img src="${dataUri}" style="max-width:90%; margin:15px auto; display:block;" />`);
-            console.log('[ImageInterceptor] ✅ Replaced with base64, size:', buffer.length);
+            else {
+                console.warn('[ImageInterceptor] Unsplash HTTP failed for:', keyword, imgRes.status);
+                processedText = processedText.replace(fullTag, ''); // Remove tag if fetch fails
+            }
         }
         catch (err) {
-            console.error('[ImageInterceptor] Error:', err);
-            // On failure: try Unsplash fallback using keyword extracted from URL
-            try {
-                // Extract a readable keyword from the pollinations URL path
-                const sectionKeyword = url
-                    .replace(/https?:\/\/[^/]+\/prompt\//, '')
-                    .split('?')[0]
-                    .replace(/%20/g, ' ')
-                    .replace(/[_+]/g, ' ')
-                    .trim()
-                    .slice(0, 60) || 'professional document illustration';
-                const fallbackUrl = await fetchUnsplashImage(sectionKeyword);
-                const fallbackResponse = await fetch(fallbackUrl, { signal: AbortSignal.timeout(10000) });
-                if (fallbackResponse.ok) {
-                    const fbBuffer = Buffer.from(await fallbackResponse.arrayBuffer());
-                    const fbBase64 = fbBuffer.toString('base64');
-                    const fbDataUri = `data:image/jpeg;base64,${fbBase64}`;
-                    processed = processed.split(url).join(fbDataUri);
-                    processed = processed.replace(/>\s*img[\s\S]*?nologo=true['"\><\s]*/g, `<img src="${fbDataUri}" style="max-width:90%; margin:15px auto; display:block;" />`);
-                    console.log('[ImageInterceptor] ✅ Unsplash fallback applied for:', sectionKeyword);
-                }
-                else {
-                    // Unsplash also failed — remove the broken img tag completely
-                    processed = processed.replace(/>img[\s\S]*?nologo=true['"\>\s]*/g, '');
-                }
-            }
-            catch {
-                // All fallbacks exhausted — remove the broken img tag completely
-                processed = processed.replace(/>img[\s\S]*?nologo=true['"\>\s]*/g, '');
-            }
+            console.error('[ImageInterceptor] Failed/timed out for:', keyword, err);
+            processedText = processedText.replace(fullTag, ''); // Never crash — just remove the tag
         }
     }
-    return processed;
+    return processedText;
 }
 // ─── Unsplash image fetcher (used as intelligent fallback) ────────────────────
 async function fetchUnsplashImage(query) {
