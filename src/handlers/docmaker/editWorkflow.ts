@@ -44,7 +44,7 @@ export async function handleEditPdfDocMessage(ctx: BotContext): Promise<void> {
 
   const pageCount = ctx.session.lastAiDocPages || ctx.session.lastGeneratedDoc?.pageCount || 1;
   const originalCost = ctx.session.lastGeneratedDoc?.originalCost || 0;
-  const editCost = Math.ceil(originalCost / 2);
+  const editCost = originalCost > 0 ? Math.ceil(originalCost / 2) : 1;
 
   if (user.dailyQuota < editCost) {
     await ctx.reply(`رصيدك (${user.dailyQuota}) غير كافٍ. تحتاج ${editCost} نقاط للتعديل.`);
@@ -112,9 +112,17 @@ ${originalText}`
     ctx.session.workflowState = null;
 
   } catch (err: any) {
-    await loadingState.stop();
+    try { await loadingState.stop(); } catch {}
     await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: editCost } }); // refund
-    await ctx.reply("حدث خطأ أثناء التعديل. تم إعادة نقاطك تلقائياً.");
+    console.error('[EditWorkflow] Error:', err?.message || err);
+    const errMsg = err?.message || '';
+    const userMsg = errMsg.includes('quota') || errMsg.includes('rate')
+      ? '⚠️ الخدمة مشغولة الآن، حاول مرة أخرى بعد دقيقة. تم إعادة نقاطك.'
+      : errMsg.includes('empty')
+      ? '⚠️ النموذج لم يُرجع محتوى، حاول مرة أخرى. تم إعادة نقاطك.'
+      : '⚠️ حدث خطأ أثناء التعديل. تم إعادة نقاطك تلقائياً.';
+    await ctx.reply(userMsg);
     ctx.session.workflowState = null;
+    ctx.session.awaitingEditRequest = false;
   }
 }
