@@ -375,10 +375,26 @@ imageBot.hears('🎨 فلاتر الصور', async (ctx) => {
     ' <b>تأثير جيبلي فني</b> — فن رقمي ساحر',
     {
       parse_mode: 'HTML',
-      reply_markup: new InlineKeyboard()
-        .text('👤 تصفية الوجه', 'filter_face').text('🎨 تلوين الصور', 'filter_color').row()
-        .text('🌸 تحويل أنمي', 'filter_anime').text(' تأثير جيبلي', 'filter_ghibli').row()
-        .text('❌ إلغاء', 'cancel_filter')
+      reply_markup: {
+        inline_keyboard: [
+          [
+            // @ts-ignore
+            { text: '👤 تصفية الوجه', callback_data: 'filter_face', style: 'primary' },
+            // @ts-ignore
+            { text: '🎨 تلوين الصور', callback_data: 'filter_color', style: 'primary' }
+          ],
+          [
+            // @ts-ignore
+            { text: '🌸 تحويل أنمي', callback_data: 'filter_anime', style: 'primary' },
+            // @ts-ignore
+            { text: ' تأثير جيبلي', callback_data: 'filter_ghibli', style: 'primary' }
+          ],
+          [
+            // @ts-ignore
+            { text: '❌ إلغاء', callback_data: 'cancel_filter', style: 'danger' }
+          ]
+        ]
+      }
     }
   );
 });

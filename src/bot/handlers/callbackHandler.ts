@@ -85,138 +85,30 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     await ctx.editMessageText('👥 <b>لوحة التحكم في العملاء</b>\n\nاختر الإجراء المطلوب:', {
       parse_mode: 'HTML',
-      reply_markup: new InlineKeyboard()
-        .text('🚫 حظر العميل', 'auc_ban').text('⚠️ تقييد العميل', 'auc_restrict').row()
-        .text('✅ فك الحظر', 'auc_unban').text('♻️ فك التقييد', 'auc_unrestrict').row()
-        .text('ℹ️ معلومات العميل', 'auc_info').row()
-        .text('🔙 رجوع', 'admin_panel')
-    }).catch(()=>{});
-    return;
-  }
-
-  if (['auc_ban', 'auc_restrict', 'auc_unban', 'auc_unrestrict', 'auc_info'].includes(data)) {
-    const adminIds = (process.env.ADMIN_IDS || '').split(',');
-    if (!adminIds.includes(ctx.from!.id.toString())) return;
-
-    const actionMap: Record<string, string> = {
-      auc_ban: 'حظر', auc_restrict: 'تقييد', auc_unban: 'فك حظر',
-      auc_unrestrict: 'فك تقييد', auc_info: 'استعلام عن'
-    };
-
-    await User.updateOne(
-      { telegramId: ctx.from!.id.toString() },
-      { $set: { adminActionState: data } }
-    );
-
-    await ctx.editMessageText(
-      `قم بإرسال <b>ID</b> العميل المراد <b>${actionMap[data]}</b>:\n\n(أو اضغط إلغاء)`,
-      {
-        parse_mode: 'HTML',
-        reply_markup: new InlineKeyboard().text('❌ إلغاء', 'admin_cancel_action')
-      }
-    ).catch(()=>{});
-    return;
-  }
-
-  if (data === 'admin_cancel_action') {
-    const adminIds = (process.env.ADMIN_IDS || '').split(',');
-    if (!adminIds.includes(ctx.from!.id.toString())) return;
-
-    await User.updateOne(
-      { telegramId: ctx.from!.id.toString() },
-      { $set: { adminActionState: '', adminTargetId: '' } }
-    );
-    await ctx.editMessageText('تم الإلغاء ❌').catch(()=>{});
-    return;
-  }
-
-  if (data.startsWith('auc_confirm_')) {
-    const adminIds = (process.env.ADMIN_IDS || '').split(',');
-    if (!adminIds.includes(ctx.from!.id.toString())) return;
-
-    const parts = data.split('_'); // auc_confirm_ban_12345
-    const action = parts[2];
-    const targetId = parts[3];
-
-    const targetUser = await User.findOne({ telegramId: targetId });
-    if (!targetUser) {
-      await ctx.answerCallbackQuery({ text: 'العميل غير موجود!' });
-      return;
-    }
-
-    let msg = '';
-    if (action === 'ban') {
-      await User.updateOne({ telegramId: targetId }, { $set: { isBanned: true, isPermBanned: false } });
-      msg = 'تم حظر العميل بنجاح 🚫';
-      await ctx.api.sendMessage(targetId,
-        "⚠️ <b>عذراً منك صديقي!</b>\n\nتم حظر حسابك من استخدام خدمات البوت.\nإذا كنت تعتقد أن هناك خطأ أو لبس في هذا الحظر، يمكنك فتح محادثة مع الإدارة لمراجعة حسابك.",
-        { parse_mode: 'HTML', reply_markup: new InlineKeyboard().text('💬 فتح محادثة مع الإدارة', 'user_appeal') }
-      ).catch(()=>{});
-    } else if (action === 'restrict') {
-      await User.updateOne({ telegramId: targetId }, { $set: { isRestricted: true } });
-      msg = 'تم تقييد العميل بنجاح ⚠️';
-    } else if (action === 'unban' || action === 'unrestrict') {
-      await User.updateOne({ telegramId: targetId }, { $set: { isBanned: false, isRestricted: false, isPermBanned: false, isAppealing: false } });
-      msg = 'تم فك القيود عن العميل ✅';
-      await ctx.api.sendMessage(targetId, "✅ <b>تم مراجعة حسابك ورفع القيود!</b>\nيمكنك الآن استخدام البوت بشكل طبيعي.", { parse_mode: 'HTML' }).catch(()=>{});
-    }
-
-    await User.updateOne(
-      { telegramId: ctx.from!.id.toString() },
-      { $set: { adminActionState: '', adminTargetId: '' } }
-    );
-    await ctx.editMessageText(msg).catch(()=>{});
-    return;
-  }
-
-  if (data === 'user_appeal') {
-    await User.updateOne(
-      { telegramId: ctx.from!.id.toString() },
-      { $set: { isAppealing: true } }
-    );
-    await ctx.editMessageText("📝 <b>تواصل مع الإدارة:</b>\n\nاكتب رسالتك أو شكواك في رسالة واحدة وسنقوم بإرسالها للإدارة فوراً.", { parse_mode: 'HTML' }).catch(()=>{});
-    return;
-  }
-
-  if (data.startsWith('auc_permban_')) {
-    const targetId = data.replace('auc_permban_', '');
-    await User.updateOne(
-      { telegramId: targetId },
-      { $set: { isPermBanned: true, isAppealing: false } }
-    );
-    const msgText = ctx.callbackQuery?.message?.text || '';
-    await ctx.editMessageText(msgText + '\n\n💀 <b>تم الحظر النهائي (لن تصلك رسائله).</b>', { entities: ctx.callbackQuery?.message?.entities }).catch(()=>{});
-    return;
-  }
-
-  // ── Handle open_filters_menu (inline button from start menu) ────────────────
-  if (data === 'open_filters_menu') {
-    await ctx.answerCallbackQuery().catch(() => {});
-    const filterMenuSettings = await getSettings();
-    const filterMenuAdminIds = (process.env.ADMIN_IDS || '').split(',');
-    const isFilterMenuAdmin = filterMenuAdminIds.includes(ctx.from!.id.toString());
-
-    if (filterMenuSettings.locks.btn_filters && !isFilterMenuAdmin) {
-      await ctx.answerCallbackQuery({ text: '🔒 قسم الفلاتر مغلق مؤقتاً', show_alert: true }).catch(() => {});
-      return;
-    }
-
-    if (ctx.session) ctx.session.inFiltersMenu = true;
-
-    await ctx.reply(
-      '🎨 <b>فلاتر ومعالجة الصور الاحترافية</b>\n\n' +
-      'اختر الفلتر الذي تريد تطبيقه على صورتك:\n\n' +
-      '👤 <b>تصفية الوجه</b> — يحسن الملامح ويزيل التشويش\n' +
-      '🎨 <b>تلوين الصور القديمة</b> — يلون الأبيض والأسود\n' +
-      '🌸 <b>تحويل إلى أنمي</b> — يحول صورتك لأنمي احترافي\n' +
-      ' <b>تأثير جيبلي فني</b> — فن رقمي ساحر',
-      {
-        parse_mode: 'HTML',
-        reply_markup: new InlineKeyboard()
-          .text('👤 تصفية الوجه', 'filter_face').text('🎨 تلوين الصور', 'filter_color').row()
-          .text('🌸 تحويل أنمي', 'filter_anime').text(' تأثير جيبلي', 'filter_ghibli').row()
-          .text('🪄 ترميم الصور القديمة', 'filter_restore').row()
-          .text('❌ إلغاء', 'cancel_filter')
+      reply_markup: {
+          inline_keyboard: [
+            [
+              // @ts-ignore
+              { text: '👤 تصفية الوجه', callback_data: 'filter_face', style: 'primary' },
+              // @ts-ignore
+              { text: '🎨 تلوين الصور', callback_data: 'filter_color', style: 'primary' }
+            ],
+            [
+              // @ts-ignore
+              { text: '🌸 تحويل أنمي', callback_data: 'filter_anime', style: 'primary' },
+              // @ts-ignore
+              { text: ' تأثير جيبلي', callback_data: 'filter_ghibli', style: 'primary' }
+            ],
+            [
+              // @ts-ignore
+              { text: '🪄 ترميم الصور القديمة', callback_data: 'filter_restore', style: 'primary' }
+            ],
+            [
+              // @ts-ignore
+              { text: '❌ إلغاء', callback_data: 'cancel_filter', style: 'danger' }
+            ]
+          ]
+        }
       }
     );
     return;

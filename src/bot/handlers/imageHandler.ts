@@ -15,31 +15,21 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   const telegramId = ctx.from?.id.toString();
   const reportUser = await User.findOne({ telegramId });
 
-  // ── Image Upload Guard ──────────────────────────────────────────────────────
-  // Block images ONLY when user is locked in an incompatible text/doc workflow.
-  // The normal image-enhance flow (drop photo → 2K/4K menu) must always pass.
-  const isInIncompatibleWorkflow = (
-    ctx.session?.isInDocMaker === true ||
-    ctx.session?.awaitingFreeAiTopic === true ||
-    ctx.session?.awaitingPremiumAiTopic === true ||
-    ctx.session?.awaitingPremiumText === true ||
-    ctx.session?.awaitingCustomPages === true ||
-    ctx.session?.awaitingMoreText === true ||
-    ctx.session?.templateWorkflowState === 'collecting_text' ||
-    ctx.session?.templateWorkflowState === 'waiting_for_pages'
+    // ── Strict Image Upload Guard ──
+  const isAwaitingImage = (
+    ctx.session?.workflowState === 'awaiting_image' ||
+    ctx.session?.isAwaitingImage === true ||
+    ctx.session?.currentService != null
   );
 
-  if (isInIncompatibleWorkflow) {
-    console.warn(`[ImageGuard] ⛔ Rejected — userId: ${ctx.from?.id}, blocked in doc/AI workflow`);
+  if (!isAwaitingImage) {
     await ctx.reply(
-      '⚠️ أنت في منتصف عملية نصية حالياً!\n' +
-      'يرجى إتمام العملية أو إلغاؤها قبل إرسال الصورة.'
+      '⚠️ صديقي، لم تقم باختيار الخدمة أولاً!\n' +
+      'يرجى الضغط على الزر المناسب لتحسين صورتك من القائمة الرئيسية 👆'
     );
     return;
   }
-
-  console.log(`[ImageGuard] ✅ Allowed — userId: ${ctx.from?.id}`);
-  // ── End Guard ──────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────
 
   // ── Format Conversion Interceptor ──
   const userRecord = reportUser;
@@ -892,19 +882,31 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
     const isAdminUser = adminIds.includes(ctx.from!.id.toString());
 
-    const keyboard = new InlineKeyboard()
-      .row()
-      .text(locks.btn_2k ? '🔒 دقة 2K — مقفلة' : '🚀 دقة 2K — محاولة واحدة', 'enhance_2k')
-      .row()
-      .text(locks.btn_4k ? '🔒 دقة 4K — مقفلة' : ' دقة 4K — محاولتان (جودة فائقة)', 'enhance_4k')
-      .row()
-      .text(locks.btn_8k ? '🔒 دقة 8K — مقفلة' : '💎 دقة 8K', 'locked_8k')
-      .row()
-      .text(locks.btn_4kai ? '🔒 4K-Ai — مقفل' : ' 4K - Ai', 'process_4k_ai')
-      .text(locks.btn_8kai ? '🔒 8K-Ai — مقفل' : '🔒 8K - Ai', 'locked_8k_ai');
+    const keyboard: any = {
+      inline_keyboard: [
+        [
+          // @ts-ignore
+          { text: locks.btn_2k ? '🔒 دقة 2K — مقفلة' : '🚀 دقة 2K — محاولة واحدة', callback_data: 'enhance_2k', style: 'primary' }
+        ],
+        [
+          // @ts-ignore
+          { text: locks.btn_4k ? '🔒 دقة 4K — مقفلة' : ' دقة 4K — محاولتان (جودة فائقة)', callback_data: 'enhance_4k', style: 'primary' }
+        ],
+        [
+          // @ts-ignore
+          { text: locks.btn_8k ? '🔒 دقة 8K — مقفلة' : '💎 دقة 8K', callback_data: 'locked_8k', style: 'primary' }
+        ],
+        [
+          // @ts-ignore
+          { text: locks.btn_4kai ? '🔒 4K-Ai — مقفل' : ' 4K - Ai', callback_data: 'process_4k_ai', style: 'primary' },
+          // @ts-ignore
+          { text: locks.btn_8kai ? '🔒 8K-Ai — مقفل' : '🔒 8K - Ai', callback_data: 'locked_8k_ai', style: 'primary' }
+        ]
+      ]
+    };
 
     if (isAdminUser) {
-      keyboard.row().text('⚙️ لوحة تحكم الأدمن', 'admin_panel');
+      keyboard.inline_keyboard.push([{ text: '⚙️ لوحة تحكم الأدمن', callback_data: 'admin_panel' }]);
     }
 
     await ctx.reply(text, {

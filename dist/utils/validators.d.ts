@@ -118,7 +118,7 @@ export interface SessionData {
     totalWords?: number;
     aiDocStyle?: string;
     awaitingStyleSelect?: boolean;
-    workflowState?: 'waiting_for_doc_edit' | null;
+    workflowState?: 'waiting_for_doc_edit' | 'awaiting_image' | null;
     lastGeneratedDoc?: {
         text: string;
         pageCount: number;
@@ -127,6 +127,8 @@ export interface SessionData {
     lastAiGeneratedText?: string;
     lastAiDocPages?: number;
     awaitingEditRequest?: boolean;
+    isAwaitingImage?: boolean;
+    currentService?: string | null;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;
