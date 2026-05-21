@@ -1,4 +1,4 @@
-﻿// src/bot/handlers/imageHandler.ts
+// src/bot/handlers/imageHandler.ts
 import { InlineKeyboard } from 'grammy';
 import { InputFile } from 'grammy';
 
@@ -15,27 +15,38 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   const telegramId = ctx.from?.id.toString();
   const reportUser = await User.findOne({ telegramId });
 
+  // ── Image Upload Guard ──────────────────────────────────────────────────────
+  // Block images ONLY when user is locked in an incompatible text/doc workflow.
+  // The normal image-enhance flow (drop photo → 2K/4K menu) must always pass.
+  const isInIncompatibleWorkflow = (
+    ctx.session?.isInDocMaker === true ||
+    ctx.session?.awaitingFreeAiTopic === true ||
+    ctx.session?.awaitingPremiumAiTopic === true ||
+    ctx.session?.awaitingPremiumText === true ||
+    ctx.session?.awaitingCustomPages === true ||
+    ctx.session?.awaitingMoreText === true ||
+    ctx.session?.templateWorkflowState === 'collecting_text' ||
+    ctx.session?.templateWorkflowState === 'waiting_for_pages'
+  );
+
+  if (isInIncompatibleWorkflow) {
+    console.warn(`[ImageGuard] ⛔ Rejected — userId: ${ctx.from?.id}, blocked in doc/AI workflow`);
+    await ctx.reply(
+      '⚠️ أنت في منتصف عملية نصية حالياً!\n' +
+      'يرجى إتمام العملية أو إلغاؤها قبل إرسال الصورة.'
+    );
+    return;
+  }
+
+  console.log(`[ImageGuard] ✅ Allowed — userId: ${ctx.from?.id}`);
+  // ── End Guard ──────────────────────────────────────────────────────────────────────────
+
   // ── Format Conversion Interceptor ──
   const userRecord = reportUser;
 
   if (userRecord?.awaitingFormatConversion &&
     !userRecord.awaitingCustomEraserImage) {
     const doc = ctx.message?.document;
-
-    if (!doc) {
-      if ((userRecord as any).awaitingCustomEraserImage) {
-        // fall through — do NOT return, let custom eraser handlers below take over
-      } else {
-        await ctx.reply(
-          '⚠️ أرسل الصورة كـ <b>مستند (ملف)</b> وليس كصورة عادية.\n' +
-          'اضغط 📎 ← اختر "ملف" ← اختر صورتك',
-          { parse_mode: 'HTML' }
-        );
-        return;
-      }
-      return; // exit format conversion block entirely — custom eraser handles below
-    }
-
     if (doc) {
       const mimeType = doc.mime_type || '';
       const isImage = mimeType.startsWith('image/') ||
