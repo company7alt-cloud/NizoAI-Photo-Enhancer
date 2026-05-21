@@ -184,11 +184,61 @@ async function processImages(text) {
         }
         catch (err) {
             console.error('[ImageInterceptor] Error:', err);
-            // On failure: remove the broken img tag completely
-            processed = processed.replace(/>img[\s\S]*?nologo=true['">\s]*/g, '');
+            // On failure: try Unsplash fallback using keyword extracted from URL
+            try {
+                // Extract a readable keyword from the pollinations URL path
+                const sectionKeyword = url
+                    .replace(/https?:\/\/[^/]+\/prompt\//, '')
+                    .split('?')[0]
+                    .replace(/%20/g, ' ')
+                    .replace(/[_+]/g, ' ')
+                    .trim()
+                    .slice(0, 60) || 'professional document illustration';
+                const fallbackUrl = await fetchUnsplashImage(sectionKeyword);
+                const fallbackResponse = await fetch(fallbackUrl, { signal: AbortSignal.timeout(10000) });
+                if (fallbackResponse.ok) {
+                    const fbBuffer = Buffer.from(await fallbackResponse.arrayBuffer());
+                    const fbBase64 = fbBuffer.toString('base64');
+                    const fbDataUri = `data:image/jpeg;base64,${fbBase64}`;
+                    processed = processed.split(url).join(fbDataUri);
+                    processed = processed.replace(/>\s*img[\s\S]*?nologo=true['"\><\s]*/g, `<img src="${fbDataUri}" style="max-width:90%; margin:15px auto; display:block;" />`);
+                    console.log('[ImageInterceptor] ✅ Unsplash fallback applied for:', sectionKeyword);
+                }
+                else {
+                    // Unsplash also failed — remove the broken img tag completely
+                    processed = processed.replace(/>img[\s\S]*?nologo=true['"\>\s]*/g, '');
+                }
+            }
+            catch {
+                // All fallbacks exhausted — remove the broken img tag completely
+                processed = processed.replace(/>img[\s\S]*?nologo=true['"\>\s]*/g, '');
+            }
         }
     }
     return processed;
+}
+// ─── Unsplash image fetcher (used as intelligent fallback) ────────────────────
+async function fetchUnsplashImage(query) {
+    try {
+        const keyword = encodeURIComponent(query);
+        const url = `https://api.unsplash.com/photos/random?query=${keyword}&orientation=landscape&content_filter=high`;
+        const response = await fetch(url, {
+            headers: {
+                Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`
+            }
+        });
+        if (!response.ok)
+            return getFallbackImage(query);
+        const data = await response.json();
+        return data?.urls?.regular ?? getFallbackImage(query);
+    }
+    catch {
+        return getFallbackImage(query);
+    }
+}
+function getFallbackImage(query) {
+    const keyword = encodeURIComponent(query);
+    return `https://picsum.photos/seed/${keyword}/800/400`;
 }
 // ─── Main export ──────────────────────────────────────────────────────────────
 async function generateAiPDF(rawMarkdown, template = 'default') {
