@@ -86,10 +86,18 @@ export async function forceSubMiddleware(
         }).catch(() => {});
       });
     } else {
-      await ctx.reply(text, {
-        parse_mode: 'HTML',
-        reply_markup: { inline_keyboard: keyboard },
-      });
+      try {
+        await ctx.reply(text, {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: keyboard },
+        });
+      } catch (err: any) {
+        if (err?.error_code === 403) {
+          console.warn(`[ForceSub] User ${ctx.from?.id} blocked the bot. Ignoring.`);
+          return; // Exit middleware gracefully — do not crash
+        }
+        console.error('[ForceSub] Error sending subscription prompt:', err?.message ?? err);
+      }
     }
 
     return; // HALT — do not call next()
