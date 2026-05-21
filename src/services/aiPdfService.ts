@@ -211,21 +211,9 @@ async function processImages(text: string): Promise<string> {
 // ─── Unsplash image fetcher (used as intelligent fallback) ────────────────────
 
 async function fetchUnsplashImage(query: string): Promise<string> {
-  try {
-    const keyword = encodeURIComponent(query);
-    const url = `https://api.unsplash.com/photos/random?query=${keyword}&orientation=landscape&content_filter=high`;
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`
-      },
-      signal: AbortSignal.timeout(10000) // guard against undici DOMException TimeoutError
-    });
-    if (!response.ok) return getFallbackImage(query);
-    const data = await response.json() as { urls?: { regular?: string } };
-    return data?.urls?.regular ?? getFallbackImage(query);
-  } catch {
-    return getFallbackImage(query);
-  }
+  // DISABLED: Unsplash API times out on this server
+  // return getFallbackImage(query) uses picsum.photos — fast, no auth needed
+  return getFallbackImage(query);
 }
 
 function getFallbackImage(query: string): string {
