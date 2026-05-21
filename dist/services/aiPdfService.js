@@ -118,11 +118,11 @@ function buildHtml(bodyContent, template) {
     tr:nth-child(even) td { background-color: #f8f9fa; }
     /* ── Image safety ── */
     img {
-      max-width: 100% !important;
-      max-height: 45vh !important;
-      object-fit: contain !important;
+      max-width: 80% !important;
+      max-height: 180px !important;
+      object-fit: cover !important;
       display: block;
-      margin: 12px auto;
+      margin: 8px auto;
       border-radius: 6px;
     }
     /* ── Orphan & Widow Control ─────────────────── */
@@ -191,7 +191,7 @@ async function processImages(text) {
             if (imgRes.ok) {
                 const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
                 const imgBase64 = imgBuffer.toString('base64');
-                const imgHtml = `<br><img src="data:image/jpeg;base64,${imgBase64}" style="max-width:100%; max-height:350px; border-radius:8px; margin:15px auto; display:block;" alt="${keyword}"/><br>`;
+                const imgHtml = `<img src="data:image/jpeg;base64,${imgBase64}" style="max-width:80%; max-height:180px; object-fit:cover; border-radius:6px; margin:6px auto; display:block;" alt="${keyword}"/>`;
                 processedText = processedText.replace(fullTag, imgHtml);
                 console.log('[ImageInterceptor] ✅ Unsplash image embedded for:', keyword);
             }
