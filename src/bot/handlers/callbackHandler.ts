@@ -2423,23 +2423,23 @@ function buildCellKeyboard(
   for (let i = 1; i <= totalCells; i++) {
     const isSelected = selectedCells.includes(i);
     const label = isSelected ? `✅${i}` : String(i);
-    kb.text(label, `cgz_${i}`);
+    kb.text({ text: label, style: 'primary' as const }, `cgz_${i}`);
     if (i % BTNS_PER_ROW === 0) kb.row();
   }
 
   // Process button
   kb.row().text(
-    selectedCells.length > 0
+    { text: selectedCells.length > 0
       ? `🚀 عالج الصورة (${selectedCells.length} مربع)`
-      : '🚀 عالج الصورة',
+      : '🚀 عالج الصورة', style: 'success' as const },
     'cgz_process'
   );
 
   // Back button
-  kb.row().text('🔙 رجوع لاختيار الحجم', 'cgz_back');
+  kb.row().text({ text: '🔙 رجوع لاختيار الحجم', style: 'danger' as const }, 'cgz_back');
 
   // Cancel button
-  kb.row().text('❌ إلغاء', 'cancel_custom_eraser');
+  kb.row().text({ text: '❌ إلغاء', style: 'danger' as const }, 'cancel_custom_eraser');
 
   return kb;
 }
@@ -2539,12 +2539,12 @@ function buildCellKeyboard(
       await ctx.reply("🔄 <b>تحويل الصيغة:</b>", {
         parse_mode: 'HTML',
         reply_markup: new InlineKeyboard()
-          .text('JPG', 'eraser_fmt_jpg')
-          .text('PNG', 'eraser_fmt_png')
-          .text('WEBP', 'eraser_fmt_webp')
+          .text({ text: 'JPG 🖼️', style: 'primary' as const }, 'eraser_fmt_jpg')
+          .text({ text: 'PNG 🖼️', style: 'primary' as const }, 'eraser_fmt_png')
+          .text({ text: 'WEBP 🖼️', style: 'primary' as const }, 'eraser_fmt_webp')
           .row()
-          .text('GIF', 'eraser_fmt_gif')
-          .text('TIFF', 'eraser_fmt_tiff')
+          .text({ text: 'GIF 🖼️', style: 'primary' as const }, 'eraser_fmt_gif')
+          .text({ text: 'TIFF 🖼️', style: 'primary' as const }, 'eraser_fmt_tiff')
       });
 
       const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;

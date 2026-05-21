@@ -1904,18 +1904,18 @@ async function callbackHandler(ctx) {
         for (let i = 1; i <= totalCells; i++) {
             const isSelected = selectedCells.includes(i);
             const label = isSelected ? `✅${i}` : String(i);
-            kb.text(label, `cgz_${i}`);
+            kb.text({ text: label, style: 'primary' }, `cgz_${i}`);
             if (i % BTNS_PER_ROW === 0)
                 kb.row();
         }
         // Process button
-        kb.row().text(selectedCells.length > 0
-            ? `🚀 عالج الصورة (${selectedCells.length} مربع)`
-            : '🚀 عالج الصورة', 'cgz_process');
+        kb.row().text({ text: selectedCells.length > 0
+                ? `🚀 عالج الصورة (${selectedCells.length} مربع)`
+                : '🚀 عالج الصورة', style: 'success' }, 'cgz_process');
         // Back button
-        kb.row().text('🔙 رجوع لاختيار الحجم', 'cgz_back');
+        kb.row().text({ text: '🔙 رجوع لاختيار الحجم', style: 'danger' }, 'cgz_back');
         // Cancel button
-        kb.row().text('❌ إلغاء', 'cancel_custom_eraser');
+        kb.row().text({ text: '❌ إلغاء', style: 'danger' }, 'cancel_custom_eraser');
         return kb;
     }
     if (data === 'cgz_more') {
@@ -1988,12 +1988,12 @@ async function callbackHandler(ctx) {
             await ctx.reply("🔄 <b>تحويل الصيغة:</b>", {
                 parse_mode: 'HTML',
                 reply_markup: new InlineKeyboard()
-                    .text('JPG', 'eraser_fmt_jpg')
-                    .text('PNG', 'eraser_fmt_png')
-                    .text('WEBP', 'eraser_fmt_webp')
+                    .text({ text: 'JPG 🖼️', style: 'primary' }, 'eraser_fmt_jpg')
+                    .text({ text: 'PNG 🖼️', style: 'primary' }, 'eraser_fmt_png')
+                    .text({ text: 'WEBP 🖼️', style: 'primary' }, 'eraser_fmt_webp')
                     .row()
-                    .text('GIF', 'eraser_fmt_gif')
-                    .text('TIFF', 'eraser_fmt_tiff')
+                    .text({ text: 'GIF 🖼️', style: 'primary' }, 'eraser_fmt_gif')
+                    .text({ text: 'TIFF 🖼️', style: 'primary' }, 'eraser_fmt_tiff')
             });
             const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
             if (archiveChannel) {

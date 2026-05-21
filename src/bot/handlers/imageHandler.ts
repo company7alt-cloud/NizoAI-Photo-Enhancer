@@ -453,12 +453,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         {
           parse_mode: "Markdown",
           reply_markup: new InlineKeyboard()
-            .text("🖼 JPG", "eraser_fmt_jpg")
-            .text("🗋 PNG", "eraser_fmt_png")
-            .text("🌐 WEBP", "eraser_fmt_webp")
+            .text({ text: "🖼 JPG 🖼️", style: 'primary' as const }, "eraser_fmt_jpg")
+            .text({ text: "🗋 PNG 🖼️", style: 'primary' as const }, "eraser_fmt_png")
+            .text({ text: "🌐 WEBP 🖼️", style: 'primary' as const }, "eraser_fmt_webp")
             .row()
-            .text("🎞 GIF", "eraser_fmt_gif")
-            .text("📄 TIFF", "eraser_fmt_tiff")
+            .text({ text: "🎞 GIF 🖼️", style: 'primary' as const }, "eraser_fmt_gif")
+            .text({ text: "📄 TIFF 🖼️", style: 'primary' as const }, "eraser_fmt_tiff")
         }
       );
 
