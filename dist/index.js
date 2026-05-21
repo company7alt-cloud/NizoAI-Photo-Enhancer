@@ -2080,6 +2080,18 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
                 'استخدم زر [ NizoAI PDF ] المجاور بأسعار رمزية 🚀', { parse_mode: 'HTML' });
             return;
         }
+        // ── Short Prompt Guard ──────────────────────────
+        const _userText = ctx.message?.text?.trim() ?? '';
+        const _charCount = _userText.length;
+        const _wordCount = _userText.split(/\s+/).filter(Boolean).length;
+        if (_charCount < 100 || _wordCount < 20) {
+            await ctx.reply('⚠️ عذراً، الموضوع المُدخَل قصير جداً!\n\n' +
+                '📝 لإنشاء مستند احترافي، يرجى كتابة موضوع واضح ومفصّل\n' +
+                '(على الأقل جملة أو جملتين تشرح ما تريده بالضبط).\n\n' +
+                '💡 مثال جيد: "اكتب لي تقريراً عن تأثير الذكاء الاصطناعي على سوق العمل مع ذكر الإيجابيات والسلبيات"');
+            return;
+        }
+        // ────────────────────────────────────────────────
         const promptAnalysis = (0, promptAnalyzerService_1.analyzeAndEnhancePrompt)(text);
         const detectedPages = promptAnalysis.detectedPages;
         const pageLimit = await getUserPageLimit(userId);

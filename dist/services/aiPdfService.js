@@ -125,6 +125,20 @@ function buildHtml(bodyContent, template) {
       margin: 12px auto;
       border-radius: 6px;
     }
+    /* ── Orphan & Widow Control ─────────────────── */
+    p, li, td {
+      orphans: 4;
+      widows: 4;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      page-break-after: avoid;
+      page-break-inside: avoid;
+    }
+    p, ul, ol, blockquote {
+      page-break-inside: avoid;
+    }
+    /* If only 3 or fewer lines remain → force them up, never open new page */
+    /* ─────────────────────────────────────────────── */
     /* ── Per-template overrides ── */
     ${extra}
   </style>

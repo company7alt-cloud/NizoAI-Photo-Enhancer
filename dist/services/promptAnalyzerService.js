@@ -75,6 +75,11 @@ function analyzeAndEnhancePrompt(userRawPrompt) {
         'USER ORIGINAL REQUEST (unchanged):',
         userRawPrompt,
         ...(needsTables ? ['', buildTableTemplateInjection()] : []),
+        '',
+        'CRITICAL LENGTH RULES (STRICT):',
+        '1. DYNAMIC LENGTH: Never force a fixed page count. Write exactly as much as the topic genuinely requires. A simple topic = 1 page. A complex topic = more pages. Do NOT pad with filler text or repeat yourself to fill space.',
+        '2. QUALITY OVER QUANTITY: Every sentence must add real value. If you have nothing more to say, STOP writing.',
+        '3. VAGUE INPUT: If the topic is a greeting or completely meaningless, output ONE short paragraph apologizing and asking for a real topic. Do not generate a full document.',
     ].join('\n');
     return {
         enhancedPrompt,
@@ -227,6 +232,11 @@ function buildEnterprisePrompt(collectedText, pages, template = 'default', image
         '',
         '=== USER CONTENT ===',
         'Use ONLY the content provided below. Do NOT invent information.',
+        '',
+        'CRITICAL LENGTH RULES (STRICT):',
+        '1. DYNAMIC LENGTH: Never force a fixed page count. Write exactly as much as the topic genuinely requires. A simple topic = 1 page. A complex topic = more pages. Do NOT pad with filler text or repeat yourself to fill space.',
+        '2. QUALITY OVER QUANTITY: Every sentence must add real value. If you have nothing more to say, STOP writing.',
+        '3. VAGUE INPUT: If the topic is a greeting or completely meaningless, output ONE short paragraph apologizing and asking for a real topic. Do not generate a full document.',
     ].join('\n');
     let userContent;
     if (imageBase64) {
