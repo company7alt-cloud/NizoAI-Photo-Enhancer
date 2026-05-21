@@ -17,19 +17,18 @@ const aiClient = new openai_1.default({
     apiKey: process.env.OPENROUTER_API_KEY ?? '',
 });
 async function handleEditPdfDocCallback(ctx) {
-    if (!ctx.session.lastGeneratedDoc) {
+    const originalText = ctx.session.lastAiGeneratedText || ctx.session.lastGeneratedDoc?.text;
+    if (!originalText) {
         await ctx.answerCallbackQuery({
-            text: 'انتهت صلاحية التعديل. أنشئ مستنداً جديداً أولاً.',
+            text: '⚠️ انتهت صلاحية التعديل، أنشئ مستنداً جديداً',
             show_alert: true
         });
         return;
     }
-    const editCost = Math.ceil(ctx.session.lastGeneratedDoc.originalCost / 2);
-    await ctx.reply(`✏️ أرسل التعديلات المطلوبة على النص.\n\n` +
-        `💳 سيُخصم ${editCost} نقاط عند التنفيذ.\n\n` +
-        `⚠️ لا يمكن زيادة عدد الصفحات في هذه المرحلة.`);
-    ctx.session.workflowState = 'waiting_for_doc_edit';
     await ctx.answerCallbackQuery();
+    ctx.session.awaitingEditRequest = true;
+    ctx.session.workflowState = 'waiting_for_doc_edit'; // keep for backward compat
+    await ctx.reply('✏️ أرسل التعديلات المطلوبة وسيتم تطبيقها على المستند:');
 }
 async function handleEditPdfDocMessage(ctx) {
     const userId = ctx.from?.id;
@@ -38,11 +37,14 @@ async function handleEditPdfDocMessage(ctx) {
     const user = await User_1.User.findOne({ telegramId: userId });
     if (!user)
         return;
-    if (!ctx.session.lastGeneratedDoc) {
+    const originalText = ctx.session.lastAiGeneratedText || ctx.session.lastGeneratedDoc?.text;
+    if (!originalText) {
         ctx.session.workflowState = null;
+        ctx.session.awaitingEditRequest = false;
         return;
     }
-    const { text: originalText, pageCount, originalCost } = ctx.session.lastGeneratedDoc;
+    const pageCount = ctx.session.lastAiDocPages || ctx.session.lastGeneratedDoc?.pageCount || 1;
+    const originalCost = ctx.session.lastGeneratedDoc?.originalCost || 0;
     const editCost = Math.ceil(originalCost / 2);
     if (user.dailyQuota < editCost) {
         await ctx.reply(`رصيدك (${user.dailyQuota}) غير كافٍ. تحتاج ${editCost} نقاط للتعديل.`);
@@ -94,6 +96,8 @@ ${originalText}`
             pageCount: pageCount,
             originalCost: editCost
         };
+        ctx.session.lastAiGeneratedText = cleanMarkdown;
+        ctx.session.awaitingEditRequest = false;
         ctx.session.workflowState = null;
     }
     catch (err) {

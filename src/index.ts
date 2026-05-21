@@ -2043,6 +2043,8 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
         pageCount: finalPages,
         originalCost: finalCost
       };
+      ctx.session.lastAiGeneratedText = cleanMarkdown;
+      ctx.session.lastAiDocPages = finalPages;
       await sendTextChunksWithEditButton(ctx, cleanMarkdown);
 
       ctx.session.collectedText = '';
@@ -2484,6 +2486,15 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
         { caption: '✅ مستندك المجاني جاهز! 📄\n\nمدعوم بـ AI Free PDF ⚡' }
       );
 
+      ctx.session.lastAiGeneratedText = cleanMarkdown;
+      ctx.session.lastAiDocPages = detectedPages;
+      ctx.session.lastGeneratedDoc = {
+        text: cleanMarkdown,
+        pageCount: detectedPages,
+        originalCost: 0
+      }; // Adding back compatibility for edit Workflow
+      await sendTextChunksWithEditButton(ctx, cleanMarkdown);
+
       // Increment only on successful delivery
       if (!isAdminUser) {
         await User.updateOne({ _id: user._id }, { $inc: { freePdfsGeneratedToday: 1 } });
@@ -2561,6 +2572,12 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
     const isImageDoc = !!ctx.message?.document && ((ctx.message.document.mime_type?.startsWith('image/')) ?? false);
 
     if (isPhoto || isImageDoc) {
+      const isInManualDoc = (ctx.session as any).isInDocMaker === true;
+      const isInAiFlow = (ctx.session as any).awaitingPremiumImage === true || 
+                         (ctx.session as any).awaitingFreeAiTopic === true ||
+                         (ctx.session as any).awaitingPremiumText === true;
+
+      if (!isInManualDoc || isInAiFlow) return next();
       if ((ctx.session as any).awaitingNextRowImage) {
         const fileId = isPhoto
           ? ctx.message!.photo![ctx.message!.photo!.length - 1].file_id

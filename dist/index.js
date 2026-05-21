@@ -1707,6 +1707,8 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
                 pageCount: finalPages,
                 originalCost: finalCost
             };
+            ctx.session.lastAiGeneratedText = cleanMarkdown;
+            ctx.session.lastAiDocPages = finalPages;
             await (0, textOutput_1.sendTextChunksWithEditButton)(ctx, cleanMarkdown);
             ctx.session.collectedText = '';
             ctx.session.referenceImageBuffer = '';
@@ -2088,6 +2090,14 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
             const fileName = `nizoai_free_${Date.now()}.pdf`;
             await loadingState.stop();
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), { caption: '✅ مستندك المجاني جاهز! 📄\n\nمدعوم بـ AI Free PDF ⚡' });
+            ctx.session.lastAiGeneratedText = cleanMarkdown;
+            ctx.session.lastAiDocPages = detectedPages;
+            ctx.session.lastGeneratedDoc = {
+                text: cleanMarkdown,
+                pageCount: detectedPages,
+                originalCost: 0
+            }; // Adding back compatibility for edit Workflow
+            await (0, textOutput_1.sendTextChunksWithEditButton)(ctx, cleanMarkdown);
             // Increment only on successful delivery
             if (!isAdminUser) {
                 await User_1.User.updateOne({ _id: user._id }, { $inc: { freePdfsGeneratedToday: 1 } });
@@ -2154,6 +2164,12 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
         const isPhoto = !!ctx.message?.photo;
         const isImageDoc = !!ctx.message?.document && ((ctx.message.document.mime_type?.startsWith('image/')) ?? false);
         if (isPhoto || isImageDoc) {
+            const isInManualDoc = ctx.session.isInDocMaker === true;
+            const isInAiFlow = ctx.session.awaitingPremiumImage === true ||
+                ctx.session.awaitingFreeAiTopic === true ||
+                ctx.session.awaitingPremiumText === true;
+            if (!isInManualDoc || isInAiFlow)
+                return next();
             if (ctx.session.awaitingNextRowImage) {
                 const fileId = isPhoto
                     ? ctx.message.photo[ctx.message.photo.length - 1].file_id

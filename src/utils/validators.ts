@@ -142,6 +142,9 @@ export interface SessionData {
     pageCount: number;
     originalCost: number;
   } | null;
+  lastAiGeneratedText?: string;
+  lastAiDocPages?: number;
+  awaitingEditRequest?: boolean;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;
