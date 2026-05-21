@@ -134,12 +134,56 @@ function buildHtml(bodyContent, template) {
 </body>
 </html>`;
 }
+async function processImages(text) {
+    // Fix 1: Convert markdown images to base64
+    // Fix 2: Fix broken HTML img tags (RTL reversal causes src to appear wrong)
+    let processed = text;
+    // Collect all URLs to process
+    const urlsToProcess = [];
+    let match;
+    // From markdown format
+    const mdRegex = /https:\/\/image\.pollinations\.ai\/[^\s)"'>]+/g;
+    while ((match = mdRegex.exec(text)) !== null) {
+        urlsToProcess.push(match[0].replace(/['")\]>]+$/, ''));
+    }
+    // Download and replace each URL with base64
+    for (const url of [...new Set(urlsToProcess)]) {
+        try {
+            const cleanUrl = url.replace(/['")\]>\s]+$/, '').replace(/&amp;/g, '&');
+            console.log('[ImageInterceptor] Downloading:', cleanUrl);
+            const response = await fetch(cleanUrl, {
+                signal: AbortSignal.timeout(15000),
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            if (!response.ok) {
+                console.log('[ImageInterceptor] Failed HTTP:', response.status);
+                continue;
+            }
+            const buffer = Buffer.from(await response.arrayBuffer());
+            const base64 = buffer.toString('base64');
+            const dataUri = `data:image/jpeg;base64,${base64}`;
+            // Replace ALL occurrences of this URL with base64
+            processed = processed.split(url).join(dataUri);
+            // Also fix broken img tags containing this URL
+            processed = processed.replace(/>\s*img[\s\S]*?nologo=true['">\s]*/g, `<img src="${dataUri}" style="max-width:90%; margin:15px auto; display:block;" />`);
+            console.log('[ImageInterceptor] ✅ Replaced with base64, size:', buffer.length);
+        }
+        catch (err) {
+            console.error('[ImageInterceptor] Error:', err);
+            // On failure: remove the broken img tag completely
+            processed = processed.replace(/>img[\s\S]*?nologo=true['">\s]*/g, '');
+        }
+    }
+    return processed;
+}
 // ─── Main export ──────────────────────────────────────────────────────────────
 async function generateAiPDF(rawMarkdown, template = 'default') {
     // 1. Sanitize
     const cleanMarkdown = sanitizeForPdf(rawMarkdown);
+    // 1.5. Process Images
+    const processedText = await processImages(cleanMarkdown);
     // 2. Markdown → HTML
-    const bodyHtml = await Promise.resolve(marked_1.marked.parse(cleanMarkdown));
+    const bodyHtml = await Promise.resolve(marked_1.marked.parse(processedText));
     // 3. Full HTML document
     const fullHtml = buildHtml(bodyHtml, template);
     // 4. Output path
