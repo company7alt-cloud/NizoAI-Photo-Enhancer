@@ -188,11 +188,11 @@ async function showProImageEditMenu(ctx) {
     const totalImages = ctx.session.lastImageCount ?? 0;
     const rows = [];
     if (totalImages > 0) {
-        // One button per image, one image per row (each page = one row)
+        // One descriptive button per image, one per row
         for (let n = 1; n <= totalImages; n++) {
             const isDone = ctx.session.proEditImages?.[n] != null;
             rows.push([{
-                    text: isDone ? '✅ ' + n : String(n),
+                    text: isDone ? `✅ الصورة ${n} — تم الاستبدال` : `🖼️ استبدال الصورة ${n}`,
                     callback_data: 'pro_edit_img_' + n,
                     style: 'primary'
                 }]);
@@ -485,23 +485,84 @@ async function handleProEditConfirmV2(ctx) {
             ],
             temperature: 0.3,
         });
+        // ── FIX 2: Unified Image Engine ────────────────────────────────────
+        // ── STEP 1: Get AI-edited markdown ───────────────────────────────────────────
         const editedText = response.choices[0]?.message?.content ?? '';
         if (!editedText.trim())
             throw new Error('AI returned empty content.');
         const cleanMarkdown = editedText.replace(/^```[a-z]*\n?/gm, '').replace(/```$/gm, '');
         await loadingState.stop();
-        // BUG 3: use generateAiPDFAndHtml to cache the HTML
-        const { pdfPath, html: newHtml } = await (0, aiPdfService_1.generateAiPDFAndHtml)(cleanMarkdown, ctx.session.aiDocStyle || 'default');
-        // BUG 3: Success message with text preview
-        const textPreviewText = cleanMarkdown
+        // ── STEP 2: Build fresh HTML (Unsplash images are a side-effect we will override) ─
+        const { html: freshHtml } = await (0, aiPdfService_1.generateAiPDFAndHtml)(cleanMarkdown, ctx.session.aiDocStyle || 'default');
+        // ── STEP 3: Snapshot original image srcs from cached HTML ────────────────────
+        const originalHtml = ctx.session.lastGeneratedHtml ?? '';
+        const originalSrcs = [...originalHtml.matchAll(/<img[^>]+src="([^"]+)"/ig)].map(m => m[1]);
+        // ── STEP 4: Replace every <img> in freshHtml with a numbered placeholder ────────
+        let imgCounter = 0;
+        const unsplashSrcs = [];
+        let patchedHtml = freshHtml.replace(/<img[^>]+src="([^"]+)"[^>]*>/ig, (_match, src) => {
+            unsplashSrcs.push(src);
+            imgCounter++;
+            return `|||IMG_SLOT_${imgCounter}|||`;
+        });
+        // ── STEP 5: Resolve each slot — priority: user upload > original > Unsplash ─────
+        await ctx.reply('⏳ جاري دمج الصور وتجهيز المستند...');
+        const botToken = process.env.DOC_BOT_TOKEN || process.env.BOT_TOKEN || '';
+        for (let slot = 1; slot <= imgCounter; slot++) {
+            const customFileId = ctx.session.proEditImages?.[slot];
+            let finalSrc = '';
+            if (customFileId) {
+                // A) User uploaded a custom replacement for this slot
+                try {
+                    const fileInfoRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${encodeURIComponent(customFileId)}`, { signal: AbortSignal.timeout(10000) });
+                    if (fileInfoRes.ok) {
+                        const fileInfoData = await fileInfoRes.json();
+                        const filePath = fileInfoData.result?.file_path;
+                        if (filePath) {
+                            const fileRes = await fetch(`https://api.telegram.org/file/bot${botToken}/${filePath}`, { signal: AbortSignal.timeout(15000) });
+                            if (fileRes.ok) {
+                                const base64 = Buffer.from(await fileRes.arrayBuffer()).toString('base64');
+                                const mime = filePath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+                                finalSrc = `data:${mime};base64,${base64}`;
+                            }
+                        }
+                    }
+                }
+                catch (e) {
+                    console.error('[UnifiedEngine] slot', slot, 'custom fetch failed, using original:', e);
+                    finalSrc = originalSrcs[slot - 1] || unsplashSrcs[slot - 1] || '';
+                }
+            }
+            else {
+                // B) No replacement — restore original; fallback to Unsplash if AI added new slot
+                finalSrc = originalSrcs[slot - 1] || unsplashSrcs[slot - 1] || '';
+            }
+            // FIX 3: object-fit:contain prevents stretching
+            const imgTag = finalSrc
+                ? `<img src="${finalSrc}" style="width:100%; max-height:400px; object-fit:contain; border-radius:8px; margin:15px auto; display:block;" alt="صورة ${slot}" />`
+                : '';
+            patchedHtml = patchedHtml.replace(`|||IMG_SLOT_${slot}|||`, imgTag);
+        }
+        // ── STEP 6: Render final PDF from fully patched HTML ───────────────────────
+        const finalPdfPath = await (0, aiPdfService_1.generateAiPDFFromHtml)(patchedHtml);
+        // ── STEP 7: Persist new state ─────────────────────────────────────────────────
+        ctx.session.lastGeneratedHtml = patchedHtml;
+        ctx.session.lastAiGeneratedText = cleanMarkdown;
+        ctx.session.lastGeneratedDoc = { text: cleanMarkdown, pageCount, originalCost: 0 };
+        ctx.session.lastImageCount = imgCounter; // sync button count with actual rendered images
+        ctx.session.lastGeneratedText = cleanMarkdown;
+        ctx.session.proEditText = null;
+        ctx.session.proEditImages = {};
+        ctx.session.proEditCurrentImgPage = null;
+        ctx.session.awaitingProEditText = false;
+        // ── STEP 8: Send PDF to user ───────────────────────────────────────────────
+        const textPreview = cleanMarkdown
             .replace(/#{1,6}\s/g, '')
             .replace(/\*\*/g, '')
             .trim()
             .substring(0, 800);
-        await ctx.replyWithDocument(new grammy_1.InputFile(pdfPath, `NizoAI_Doc_Edited_${Date.now()}.pdf`), {
-            caption: textPreviewText +
-                '\n\n---\n### إعداد الطالب\n' +
-                (ctx.from?.first_name ?? 'المستخدم'),
+        await ctx.replyWithDocument(new grammy_1.InputFile(finalPdfPath, `NizoAI_Doc_Edited_${Date.now()}.pdf`), {
+            caption: textPreview + '\n\n---\n### إعداد الطالب\n' + (ctx.from?.first_name ?? 'المستخدم'),
             reply_markup: {
                 inline_keyboard: [[
                         // @ts-ignore
@@ -509,14 +570,6 @@ async function handleProEditConfirmV2(ctx) {
                     ]]
             }
         });
-        ctx.session.lastAiGeneratedText = cleanMarkdown;
-        ctx.session.lastGeneratedDoc = { text: cleanMarkdown, pageCount, originalCost: 0 };
-        ctx.session.lastGeneratedHtml = newHtml; // BUG 3: cache for future image-only edits
-        ctx.session.lastGeneratedText = cleanMarkdown; // BUG 3: for success caption on next edit
-        ctx.session.proEditText = null;
-        ctx.session.proEditImages = {};
-        ctx.session.proEditCurrentImgPage = null;
-        ctx.session.awaitingProEditText = false;
     }
     catch (err) {
         try {
@@ -532,7 +585,7 @@ async function handleProEditConfirmV2(ctx) {
         await ctx.reply('⚠️ حدث خطأ أثناء التعديل. تم إعادة نقاطك تلقائياً.');
     }
 }
-// ── BUG 1: buildProEditRows — rebuilds keyboard with current ✅ state ──────────
+// ── FIX 1: buildProEditRows — one descriptive button per row ─────────────────
 function buildProEditRows(ctx) {
     const rows = [];
     rows.push([{
@@ -541,21 +594,16 @@ function buildProEditRows(ctx) {
             style: 'primary'
         }]);
     const imageCount = ctx.session.lastImageCount ?? 0;
-    let currentRow = [];
     for (let i = 1; i <= imageCount; i++) {
         const isDone = ctx.session.proEditImages?.[i] != null;
-        currentRow.push({
-            text: isDone ? '✅ ' + i : String(i),
-            callback_data: 'pro_edit_img_' + i,
-            style: 'primary'
-        });
-        if (currentRow.length === 5 || i === imageCount) {
-            rows.push(currentRow);
-            currentRow = [];
-        }
+        rows.push([{
+                text: isDone ? `✅ الصورة ${i} — تم الاستبدال` : `🖼️ استبدال الصورة ${i}`,
+                callback_data: `pro_edit_img_${i}`,
+                style: 'primary'
+            }]);
     }
-    rows.push([{ text: '✅ موافق', callback_data: 'pro_edit_confirm', style: 'success' }]);
-    rows.push([{ text: 'إلغاء', callback_data: 'cancel', style: 'danger' }]);
+    rows.push([{ text: '✅ موافق — تطبيق التعديلات', callback_data: 'pro_edit_confirm', style: 'success' }]);
+    rows.push([{ text: '❌ إلغاء', callback_data: 'cancel', style: 'danger' }]);
     return rows;
 }
 // ── BUG 2: replaceImagesInHtml — replaces <img> src with Telegram user uploads ─
