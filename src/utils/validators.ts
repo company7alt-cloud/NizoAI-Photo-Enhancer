@@ -171,6 +171,8 @@ export interface SessionData {
   lastPdfMode?: 'free_auto' | 'free_pro' | 'nizo_auto' | 'nizo_pro';
   editCount?: number;
   lastImageCount?: number;
+  lastImageCountPerPage?: number[];   // images per markdown section/page (Task 8 Fix)
+  proEditMenuMessageId?: number;      // message ID for in-place button ✅ updates (Task 8 Fix)
 
   // ── Task 2: Edit State Machine (prevents TypeScript errors) ──────────────
   awaitingAutoEdit?: boolean;

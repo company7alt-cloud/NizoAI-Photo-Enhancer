@@ -192,56 +192,51 @@ export async function handleProEdit(ctx: BotContext): Promise<void> {
   ctx.session.proEditImages = {};
   ctx.session.proEditCurrentImgPage = null;
   ctx.session.awaitingProEditText = false;
+  ctx.session.proEditMenuMessageId = undefined;
 
-  await ctx.reply(
-    '✏️ تعديل المستند\n\n' +
-    'الجزء 1: تعديل النص\n' +
-    'هل تريد تعديل النص؟',
-    {
-      reply_markup: {
-        inline_keyboard: [
-          // @ts-ignore
-          [{ text: 'تعديل النص', callback_data: 'pro_edit_text',      style: 'primary' }],
-          // @ts-ignore
-          [{ text: 'تخطي',       callback_data: 'pro_edit_skip_text', style: 'primary' }],
-          // @ts-ignore
-          [{ text: 'إلغاء',      callback_data: 'cancel',             style: 'danger'  }],
-        ]
-      }
-    }
-  );
+  // Task 8 Fix: Show ONE combined message with image buttons (no separate text step)
+  await showProImageEditMenu(ctx);
 }
 
-// ── Task 7: showProImageEditMenu helper ───────────────────────────────────────
+// ── Task 8 Fix: showProImageEditMenu ───────────────────────────────────────────────
 export async function showProImageEditMenu(ctx: BotContext): Promise<void> {
-  const imageCount = ctx.session.lastImageCount ?? 0;
-  const imageButtons: any[] = [];
+  const pagesImageCount = ctx.session.lastImageCountPerPage ?? [];
+  const rows: any[] = [];
+  let imgNum = 1;
 
-  for (let i = 1; i <= imageCount; i++) {
-    const isDone = ctx.session.proEditImages?.[i] != null;
-    imageButtons.push([{
-      // @ts-ignore
-      text: isDone ? '✅ الصورة ' + i : 'الصورة ' + i,
-      callback_data: 'pro_edit_img_' + i,
-      style: 'primary'
-    }]);
+  // Build one row per page/section
+  for (let page = 0; page < pagesImageCount.length; page++) {
+    const pageImgs = pagesImageCount[page];
+    const row: any[] = [];
+    for (let i = 0; i < pageImgs; i++) {
+      const n = imgNum;
+      const isDone = ctx.session.proEditImages?.[n] != null;
+      row.push({ text: isDone ? '✅ ' + n : String(n), callback_data: 'pro_edit_img_' + n });
+      imgNum++;
+    }
+    if (row.length > 0) rows.push(row);
   }
 
-  imageButtons.push([
-    // @ts-ignore
-    { text: 'موافق — تطبيق التعديلات', callback_data: 'pro_edit_confirm', style: 'success' }
-  ]);
-  imageButtons.push([
-    // @ts-ignore
-    { text: 'إلغاء', callback_data: 'cancel', style: 'danger' }
-  ]);
+  // Fallback: use lastImageCount if no per-page data, one row for all
+  if (rows.length === 0 && (ctx.session.lastImageCount ?? 0) > 0) {
+    const row: any[] = [];
+    for (let n = 1; n <= (ctx.session.lastImageCount ?? 0); n++) {
+      const isDone = ctx.session.proEditImages?.[n] != null;
+      row.push({ text: isDone ? '✅ ' + n : String(n), callback_data: 'pro_edit_img_' + n });
+    }
+    rows.push(row);
+  }
 
-  await ctx.reply(
-    '🖼️ الجزء 2: تعديل الصور\n\n' +
-    'اضغط رقم الصورة التي تريد تغييرها\n' +
-    '(يمكنك تغيير أكثر من صورة)',
-    { reply_markup: { inline_keyboard: imageButtons } }
-  );
+  rows.push([{ text: 'موافق', callback_data: 'pro_edit_confirm' }]);
+  rows.push([{ text: 'إلغاء', callback_data: 'cancel' }]);
+
+  const imageCount = ctx.session.lastImageCount ?? 0;
+  const caption = imageCount > 0
+    ? '✏️ تعديل المستند\n\nاضغط رقم الصورة لتغييرها\nالأرقام مرتبة حسب الصفحة — كل صف = صفحة واحدة\n\n✅ عند الانتهاء اضغط موافق'
+    : '✏️ تعديل المستند\nلا توجد صور قابلة للتعديل في هذا المستند.\nاضغط موافق للمتابعة.';
+
+  const sentMsg = await ctx.reply(caption, { reply_markup: { inline_keyboard: rows } });
+  ctx.session.proEditMenuMessageId = sentMsg.message_id;
 }
 
 // ── Task 8: Message Handlers for Auto/Pro Edits ──────────────────────────────
@@ -269,7 +264,7 @@ export async function processProEditTextMessage(ctx: BotContext): Promise<void> 
 
 export async function processProEditImageUpload(ctx: BotContext): Promise<boolean> {
   if (ctx.session.proEditCurrentImgPage == null) return false;
-  
+
   let fileId: string | undefined;
   if (ctx.message?.photo) {
     fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
@@ -280,28 +275,48 @@ export async function processProEditImageUpload(ctx: BotContext): Promise<boolea
   if (!fileId) return false;
 
   const page = ctx.session.proEditCurrentImgPage;
-  
-  try {
-    const file = await ctx.api.getFile(fileId);
-    const filePath = file.file_path;
-    if (!filePath) throw new Error('File path not found');
 
-    const res = await fetch(`https://api.telegram.org/file/bot${process.env.DOC_BOT_TOKEN}/${filePath}`);
-    const arrayBuffer = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    
-    if (!ctx.session.proEditImages) ctx.session.proEditImages = {};
-    ctx.session.proEditImages[page] = buffer.toString('base64');
-    
-    ctx.session.proEditCurrentImgPage = null; // Clear lock
-    await ctx.reply(`✅ تم استلام الصورة البديلة لرقم ${page}.`);
-    await showProImageEditMenu(ctx);
-    
-    return true; // Handled
-  } catch (error) {
-    console.error('Error fetching image for Pro Edit:', error);
-    await ctx.reply('❌ حدث خطأ أثناء معالجة الصورة. حاول مجدداً.');
-    return true;
+  // Task 8 Fix: save file_id directly (no download needed at capture time)
+  if (!ctx.session.proEditImages) ctx.session.proEditImages = {};
+  ctx.session.proEditImages[page] = fileId;
+  ctx.session.proEditCurrentImgPage = null; // Clear lock
+
+  // Task 8 Fix: Edit the original buttons message in-place to show ✅ on button N
+  const menuMsgId = ctx.session.proEditMenuMessageId;
+  if (menuMsgId && ctx.chat?.id) {
+    try {
+      // Rebuild keyboard with updated ✅ marks
+      const pagesImageCount = ctx.session.lastImageCountPerPage ?? [];
+      const rows: any[] = [];
+      let imgNum = 1;
+      for (let p = 0; p < pagesImageCount.length; p++) {
+        const row: any[] = [];
+        for (let i = 0; i < pagesImageCount[p]; i++) {
+          const n = imgNum;
+          const isDone = ctx.session.proEditImages?.[n] != null;
+          row.push({ text: isDone ? '✅ ' + n : String(n), callback_data: 'pro_edit_img_' + n });
+          imgNum++;
+        }
+        if (row.length > 0) rows.push(row);
+      }
+      // Fallback row
+      if (rows.length === 0 && (ctx.session.lastImageCount ?? 0) > 0) {
+        const row: any[] = [];
+        for (let n = 1; n <= (ctx.session.lastImageCount ?? 0); n++) {
+          const isDone = ctx.session.proEditImages?.[n] != null;
+          row.push({ text: isDone ? '✅ ' + n : String(n), callback_data: 'pro_edit_img_' + n });
+        }
+        rows.push(row);
+      }
+      rows.push([{ text: 'موافق', callback_data: 'pro_edit_confirm' }]);
+      rows.push([{ text: 'إلغاء', callback_data: 'cancel' }]);
+      await ctx.api.editMessageReplyMarkup(ctx.chat.id, menuMsgId, {
+        reply_markup: { inline_keyboard: rows }
+      }).catch(() => {}); // Never crash if edit fails
+    } catch (_) { /* silent */ }
   }
+
+  await ctx.reply('✅ صورة ' + page + ' جاهزة');
+  return true;
 }
 

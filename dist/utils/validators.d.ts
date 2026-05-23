@@ -147,6 +147,8 @@ export interface SessionData {
     lastPdfMode?: 'free_auto' | 'free_pro' | 'nizo_auto' | 'nizo_pro';
     editCount?: number;
     lastImageCount?: number;
+    lastImageCountPerPage?: number[];
+    proEditMenuMessageId?: number;
     awaitingAutoEdit?: boolean;
     awaitingProEditText?: boolean;
     proEditText?: string | null;

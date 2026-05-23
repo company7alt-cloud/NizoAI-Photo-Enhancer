@@ -2198,7 +2198,8 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
       ctx.session.lastGeneratedTopic = collectedText;
       ctx.session.lastPdfMode = 'nizo_auto';
       ctx.session.editCount = 0;
-      ctx.session.lastImageCount = 0;
+      ctx.session.lastImageCount = (cleanMarkdown.match(/\[IMAGE:/g) ?? []).length;
+      ctx.session.lastImageCountPerPage = parseImageSections(cleanMarkdown);
       await sendTextChunksWithEditButton(ctx, cleanMarkdown);
 
       ctx.session.collectedText = '';
@@ -2989,7 +2990,8 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
       ctx.session.lastGeneratedTopic = text;
       ctx.session.lastPdfMode = ctx.session.proImageMode ? 'free_pro' : 'free_auto';
       ctx.session.editCount = 0;
-      ctx.session.lastImageCount = 0;
+      ctx.session.lastImageCount = (cleanMarkdown.match(/\[IMAGE:/g) ?? []).length;
+      ctx.session.lastImageCountPerPage = parseImageSections(cleanMarkdown);
       await sendTextChunksWithEditButton(ctx, cleanMarkdown);
 
       // Increment only on successful delivery
@@ -3248,6 +3250,24 @@ async function bootstrap(): Promise<void> {
     console.error('[Bootstrap] ❌ Fatal error:', error);
     process.exit(1);
   }
+}
+
+// ── Task 8 Fix: parseImageSections helper ──────────────────────────────────────────────
+// Counts [IMAGE:] tags per markdown section (h2 heading = one section ≈ one page).
+// Returns an array like [2, 1, 3] (images in each section).
+function parseImageSections(markdown: string): number[] {
+  const sections = markdown.split(/^## /m);
+  const counts: number[] = [];
+  for (const section of sections) {
+    const count = (section.match(/\[IMAGE:/g) ?? []).length;
+    if (count > 0) counts.push(count);
+  }
+  // Fallback: if no h2 sections found, treat the whole doc as one section
+  if (counts.length === 0) {
+    const total = (markdown.match(/\[IMAGE:/g) ?? []).length;
+    if (total > 0) counts.push(total);
+  }
+  return counts;
 }
 
 bootstrap();
