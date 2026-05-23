@@ -1,4 +1,4 @@
-﻿// src/bot/handlers/callbackHandler.ts
+// src/bot/handlers/callbackHandler.ts
 import { InputFile, InlineKeyboard } from 'grammy';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
@@ -121,59 +121,6 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const filterNames: Record<string, string> = {
       'filter_restore': '🪄 ترميم الصور القديمة',
       'filter_face': '👤 تصفية الوجه',
-      'filter_color': '🎨 تلوين الصور',
-      'filter_anime': '🌸 تحويل أنمي',
-      'filter_ghibli': ' تأثير جيبلي',
-    };
-    const fName = filterNames[data] || 'هذا الفلتر';
-
-    // Set unified awaiting state — imageHandler interceptor handles processing
-    ctx.session.awaitingFilterAction = data;
-    ctx.session.inFiltersMenu = false;
-
-    await ctx.editMessageText(
-      `📎 <b>أرسل الصورة الآن:</b>\n\nقم بإرسال الصورة التي تريد تطبيق ( <b>${fName}</b> ) عليها ليتم معالجتها فوراً.`,
-      { parse_mode: 'HTML' }
-    ).catch(() => {});
-    return;
-  }
-
-  // ── Handle filter selection ───────────────────────────────────────────────────
-  if (['filter_face','filter_color','filter_anime','filter_ghibli'].includes(data)) {
-    await ctx.answerCallbackQuery().catch(() => {});
-
-    const costMap: Record<string,number> = {
-      face: 2, color: 2, anime: 3, ghibli: 3
-    };
-    const filterType = data.replace('filter_','');
-    const cost = costMap[filterType];
-
-    const filterUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
-    if (!filterUser) return;
-
-    const filterAdminIds = (process.env.ADMIN_IDS||'').split(',');
-    const isFilterAdmin = filterAdminIds.includes(ctx.from!.id.toString());
-
-    if (!isFilterAdmin && filterUser.dailyQuota < cost) {
-      await ctx.reply(
-        `⚠️ رصيدك غير كافٍ!\nتحتاج <b>${cost} محاولات</b> لهذا الفلتر.\nرصيدك الحالي: <b>${filterUser.dailyQuota}</b>`,
-        { parse_mode: 'HTML' }
-      );
-      return;
-    }
-
-    await User.updateOne(
-      { telegramId: ctx.from!.id.toString() },
-      { $set: {
-          awaitingFilterImage: true,
-          selectedFilterType: filterType,
-          awaitingCustomEraserImage: false,
-          awaitingCustomEraserZone: false,
-          awaitingNanoBananaImage: false,
-          awaitingAutoEraserImage: false
-      }}
-    );
-
     await ctx.editMessageText(
       `🖼️ <b>أرسل الصورة الآن</b>\n\n` +
       `سيتم تطبيق الفلتر خلال 30-60 ثانية \n` +
