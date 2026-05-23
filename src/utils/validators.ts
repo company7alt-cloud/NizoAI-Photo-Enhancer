@@ -181,6 +181,7 @@ export interface SessionData {
   proEditImages?: Record<number, string>;
   proEditCurrentImgPage?: number | null;
   lastGeneratedHtml?: string; // BUG 3: stored HTML for image-only edits
+  lastGeneratedText?: string; // BUG 3: stored AI text for success message caption
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

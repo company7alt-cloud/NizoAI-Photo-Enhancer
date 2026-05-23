@@ -273,44 +273,21 @@ export async function processProEditImageUpload(ctx: BotContext): Promise<boolea
 
   const page = ctx.session.proEditCurrentImgPage;
 
-  // Task 8 Fix: save file_id directly (no download needed at capture time)
+  // BUG 1 FIX: save file_id directly (no download needed at capture time)
   if (!ctx.session.proEditImages) ctx.session.proEditImages = {};
   ctx.session.proEditImages[page] = fileId;
   ctx.session.proEditCurrentImgPage = null; // Clear lock
 
-  // Task 8 Fix: Edit the original buttons message in-place to show ✅ on button N
+  // BUG 1 FIX: Edit the original buttons message in-place to show ✅ on button N
   const menuMsgId = ctx.session.proEditMenuMessageId;
-  if (false && menuMsgId && ctx.chat?.id) { // BUG 2 FIX: never edit buttons message after image upload
+  if (menuMsgId && ctx.chat?.id) {
     try {
-      // Rebuild keyboard with updated ✅ marks
-      const pagesImageCount = ctx.session.lastImageCountPerPage ?? [];
-      const rows: any[] = [];
-      let imgNum = 1;
-      for (let p = 0; p < pagesImageCount.length; p++) {
-        const row: any[] = [];
-        for (let i = 0; i < pagesImageCount[p]; i++) {
-          const n = imgNum;
-          const isDone = ctx.session.proEditImages?.[n] != null;
-          row.push({ text: isDone ? '✅ ' + n : String(n), callback_data: 'pro_edit_img_' + n });
-          imgNum++;
-        }
-        if (row.length > 0) rows.push(row);
-      }
-      // Fallback row
-      if (rows.length === 0 && (ctx.session.lastImageCount ?? 0) > 0) {
-        const row: any[] = [];
-        for (let n = 1; n <= (ctx.session.lastImageCount ?? 0); n++) {
-          const isDone = ctx.session.proEditImages?.[n] != null;
-          row.push({ text: isDone ? '✅ ' + n : String(n), callback_data: 'pro_edit_img_' + n });
-        }
-        rows.push(row);
-      }
-      rows.push([{ text: 'موافق', callback_data: 'pro_edit_confirm' }]);
-      rows.push([{ text: 'إلغاء', callback_data: 'cancel' }]);
-      // @ts-ignore
-      await ctx.api.editMessageReplyMarkup(ctx.chat!.id, menuMsgId!, {
-        reply_markup: { inline_keyboard: rows }
-      }).catch(() => {}); // Never crash if edit fails
+      const updatedRows = buildProEditRows(ctx);
+      await ctx.api.editMessageReplyMarkup(
+        ctx.chat!.id,
+        menuMsgId,
+        { reply_markup: { inline_keyboard: updatedRows } }
+      ).catch(() => {}); // Never crash if edit fails
     } catch (_) { /* silent */ }
   }
 
@@ -496,51 +473,33 @@ export async function handleProEditConfirmV2(ctx: BotContext): Promise<void> {
         const { html: freshHtml } = await generateAiPDFAndHtml(originalMd, ctx.session.aiDocStyle || 'default');
         editedHtml = freshHtml;
       }
-      const botToken = process.env.DOC_BOT_TOKEN || process.env.BOT_TOKEN || '';
-
-      // Replace each requested image by 1-based index in HTML
-      const imgEntries = Object.entries(ctx.session.proEditImages ?? {}).sort(
-        ([a], [b]) => parseInt(a) - parseInt(b)
-      );
-
-      for (const [idxStr, fileId] of imgEntries) {
-        const imgIndex = parseInt(idxStr) - 1; // 0-based
-        try {
-          // Download from Telegram
-          const fileInfoRes = await fetch(
-            `https://api.telegram.org/bot${botToken}/getFile?file_id=${encodeURIComponent(fileId)}`,
-            { signal: AbortSignal.timeout(10000) }
-          );
-          if (!fileInfoRes.ok) continue;
-          const fileInfoData = await fileInfoRes.json() as { ok: boolean; result?: { file_path?: string } };
-          const filePath = fileInfoData.result?.file_path;
-          if (!filePath) continue;
-
-          const fileRes = await fetch(
-            `https://api.telegram.org/file/bot${botToken}/${filePath}`,
-            { signal: AbortSignal.timeout(15000) }
-          );
-          if (!fileRes.ok) continue;
-          const base64 = Buffer.from(await fileRes.arrayBuffer()).toString('base64');
-          const dataUri = `data:image/jpeg;base64,${base64}`;
-
-          // Replace Nth <img src="..."> in HTML (0-based)
-          let count = 0;
-          editedHtml = editedHtml.replace(/(<img[^>]+src=")[^"]*(")/g, (match, pre, post) => {
-            if (count === imgIndex) { count++; return pre + dataUri + post; }
-            count++;
-            return match;
-          });
-        } catch (imgErr) {
-          console.error(`[ProEditV2] Image ${idxStr} replace error:`, imgErr);
-        }
-      }
+      // BUG 2 FIX: use replaceImagesInHtml (1-based index, proper mime detection)
+      editedHtml = await replaceImagesInHtml(editedHtml, ctx.session.proEditImages ?? {}, ctx);
 
       await loadingState.stop();
       const pdfPath = await generateAiPDFFromHtml(editedHtml);
+
+      // BUG 3: Success message with text preview
+      const textPreview = (ctx.session.lastGeneratedText ?? '')
+        .replace(/#{1,6}\s/g, '')
+        .replace(/\*\*/g, '')
+        .trim()
+        .substring(0, 800);
+
       await ctx.replyWithDocument(
         new InputFile(pdfPath, `NizoAI_Doc_Edited_${Date.now()}.pdf`),
-        { caption: '✅ <b>تم استبدال الصور بنجاح!</b>', parse_mode: 'HTML' }
+        {
+          caption:
+            textPreview +
+            '\n\n---\n### إعداد الطالب\n' +
+            (ctx.from?.first_name ?? 'المستخدم'),
+          reply_markup: {
+            inline_keyboard: [[
+              // @ts-ignore
+              { text: '✏️ تعديل', callback_data: 'edit_pdf_doc', style: 'success' as any }
+            ]]
+          }
+        }
       );
 
       // Update stored HTML and reset edit state
@@ -549,16 +508,6 @@ export async function handleProEditConfirmV2(ctx: BotContext): Promise<void> {
       ctx.session.proEditImages = {};
       ctx.session.proEditCurrentImgPage = null;
       ctx.session.awaitingProEditText = false;
-
-      // BUG 4: Unlimited — show edit button again
-      await ctx.reply('✅ تم التعديل بنجاح!', {
-        reply_markup: {
-          inline_keyboard: [[
-            // @ts-ignore
-            { text: '✏️ تعديل', callback_data: 'edit_pdf_doc', style: 'primary' as any }
-          ]]
-        }
-      });
 
     } catch (err) {
       try { await loadingState.stop(); } catch { /* silent */ }
@@ -617,33 +566,37 @@ export async function handleProEditConfirmV2(ctx: BotContext): Promise<void> {
     // BUG 3: use generateAiPDFAndHtml to cache the HTML
     const { pdfPath, html: newHtml } = await generateAiPDFAndHtml(cleanMarkdown, ctx.session.aiDocStyle || 'default');
 
+    // BUG 3: Success message with text preview
+    const textPreviewText = cleanMarkdown
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\*\*/g, '')
+      .trim()
+      .substring(0, 800);
+
     await ctx.replyWithDocument(
       new InputFile(pdfPath, `NizoAI_Doc_Edited_${Date.now()}.pdf`),
       {
-        caption: `✅ <b>تم تطبيق التعديلات بنجاح!</b>\n🎨 القالب: ${(ctx.session.aiDocStyle || 'default').toUpperCase()}`,
-        parse_mode: 'HTML'
+        caption:
+          textPreviewText +
+          '\n\n---\n### إعداد الطالب\n' +
+          (ctx.from?.first_name ?? 'المستخدم'),
+        reply_markup: {
+          inline_keyboard: [[
+            // @ts-ignore
+            { text: '✏️ تعديل', callback_data: 'edit_pdf_doc', style: 'success' as any }
+          ]]
+        }
       }
     );
 
     ctx.session.lastAiGeneratedText = cleanMarkdown;
     ctx.session.lastGeneratedDoc = { text: cleanMarkdown, pageCount, originalCost: 0 };
     ctx.session.lastGeneratedHtml = newHtml; // BUG 3: cache for future image-only edits
+    ctx.session.lastGeneratedText = cleanMarkdown; // BUG 3: for success caption on next edit
     ctx.session.proEditText = null;
     ctx.session.proEditImages = {};
     ctx.session.proEditCurrentImgPage = null;
     ctx.session.awaitingProEditText = false;
-
-
-
-    // BUG 4: Unlimited — always show edit button
-    await ctx.reply('✅ تم التعديل بنجاح!', {
-      reply_markup: {
-        inline_keyboard: [[
-          // @ts-ignore
-          { text: '✏️ تعديل', callback_data: 'edit_pdf_doc', style: 'primary' as any }
-        ]]
-      }
-    });
 
   } catch (err) {
     try { await loadingState.stop(); } catch { /* silent */ }
@@ -655,4 +608,79 @@ export async function handleProEditConfirmV2(ctx: BotContext): Promise<void> {
     console.error('[ProEditV2 TextEdit] Error:', e);
     await ctx.reply('⚠️ حدث خطأ أثناء التعديل. تم إعادة نقاطك تلقائياً.');
   }
+}
+
+// ── BUG 1: buildProEditRows — rebuilds keyboard with current ✅ state ──────────
+function buildProEditRows(ctx: BotContext): any[][] {
+  const rows: any[][] = [];
+  rows.push([{
+    text: '✏️ تعديل النص',
+    callback_data: 'pro_edit_text',
+    style: 'primary' as any
+  }]);
+
+  const imageCount = ctx.session.lastImageCount ?? 0;
+  let currentRow: any[] = [];
+
+  for (let i = 1; i <= imageCount; i++) {
+    const isDone = ctx.session.proEditImages?.[i] != null;
+    currentRow.push({
+      text: isDone ? '✅ ' + i : String(i),
+      callback_data: 'pro_edit_img_' + i,
+      style: 'primary' as any
+    });
+    if (currentRow.length === 5 || i === imageCount) {
+      rows.push(currentRow);
+      currentRow = [];
+    }
+  }
+
+  rows.push([{ text: '✅ موافق', callback_data: 'pro_edit_confirm', style: 'success' as any }]);
+  rows.push([{ text: 'إلغاء', callback_data: 'cancel', style: 'danger' as any }]);
+  return rows;
+}
+
+// ── BUG 2: replaceImagesInHtml — replaces <img> src with Telegram user uploads ─
+async function replaceImagesInHtml(
+  html: string,
+  editImages: Record<number, string>,
+  _ctx: BotContext
+): Promise<string> {
+  let result = html;
+  const matches = [...html.matchAll(/(<img[^>]+src=")([^"]*)("|[^>]*>)/g)];
+  let imgIndex = 1;
+
+  for (const match of matches) {
+    const fileId = editImages[imgIndex];
+    if (fileId) {
+      try {
+        const botToken = process.env.DOC_BOT_TOKEN || process.env.BOT_TOKEN || '';
+        const fileInfoRes = await fetch(
+          `https://api.telegram.org/bot${botToken}/getFile?file_id=${encodeURIComponent(fileId)}`,
+          { signal: AbortSignal.timeout(10000) }
+        );
+        if (fileInfoRes.ok) {
+          const fileInfoData = await fileInfoRes.json() as { ok: boolean; result?: { file_path?: string } };
+          const filePath = fileInfoData.result?.file_path;
+          if (filePath) {
+            const fileRes = await fetch(
+              `https://api.telegram.org/file/bot${botToken}/${filePath}`,
+              { signal: AbortSignal.timeout(15000) }
+            );
+            if (fileRes.ok) {
+              const base64 = Buffer.from(await fileRes.arrayBuffer()).toString('base64');
+              const ext = filePath.split('.').pop() ?? 'jpeg';
+              const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+              const dataUri = `data:${mime};base64,${base64}`;
+              result = result.replace(match[0], match[0].replace(match[2], dataUri));
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[replaceImagesInHtml] Image replacement error:', imgIndex, e);
+      }
+    }
+    imgIndex++;
+  }
+  return result;
 }
