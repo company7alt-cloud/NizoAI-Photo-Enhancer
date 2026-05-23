@@ -180,6 +180,7 @@ export interface SessionData {
   proEditText?: string | null;
   proEditImages?: Record<number, string>;
   proEditCurrentImgPage?: number | null;
+  lastGeneratedHtml?: string; // BUG 3: stored HTML for image-only edits
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

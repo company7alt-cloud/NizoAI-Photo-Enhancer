@@ -154,6 +154,7 @@ export interface SessionData {
     proEditText?: string | null;
     proEditImages?: Record<number, string>;
     proEditCurrentImgPage?: number | null;
+    lastGeneratedHtml?: string;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

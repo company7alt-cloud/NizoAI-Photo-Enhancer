@@ -8,3 +8,4 @@ export declare function processAutoEditMessage(ctx: BotContext): Promise<void>;
 export declare function processProEditTextMessage(ctx: BotContext): Promise<void>;
 export declare function processProEditImageUpload(ctx: BotContext): Promise<boolean>;
 export declare function handleProEditConfirm(ctx: BotContext): Promise<void>;
+export declare function handleProEditConfirmV2(ctx: BotContext): Promise<void>;

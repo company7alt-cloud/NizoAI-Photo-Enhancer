@@ -1,13 +1,15 @@
 const fs = require('fs');
-const f = 'src/bot/handlers/callbackHandler.ts';
-let lines = fs.readFileSync(f, 'utf8').split('\n');
+let idx = fs.readFileSync('src/index.ts', 'utf8');
 
-const idx = lines.findIndex(l => l.includes("const filterNames: Record<string, string> = {"));
-if (idx === -1) { console.error('filterNames line not found'); process.exit(1); }
+const oldImport = "import { handleEditPdfDocCallback, handleEditPdfDocMessage, showProImageEditMenu, processAutoEditMessage, processProEditTextMessage, processProEditImageUpload, handleProEditConfirm, handleProEditConfirmV2 } from './handlers/docmaker/editWorkflow';";
+const newImport = "// @ts-ignore — handleProEditConfirm kept for backward compat\nimport { handleEditPdfDocCallback, handleEditPdfDocMessage, showProImageEditMenu, processAutoEditMessage, processProEditTextMessage, processProEditImageUpload, handleProEditConfirm, handleProEditConfirmV2 } from './handlers/docmaker/editWorkflow';";
 
-// Insert a @ts-ignore comment on the line before
-lines.splice(idx, 0, '    // @ts-ignore -- filterNames used as reference; actual lookup done in imageHandler\r');
-
-fs.writeFileSync(f, lines.join('\n'), 'utf8');
-console.log('Done. Inserted @ts-ignore at line', idx + 1);
-console.log('Line ' + (idx + 2) + ':', lines[idx + 1]);
+if (idx.includes(oldImport)) {
+  idx = idx.replace(oldImport, newImport);
+  fs.writeFileSync('src/index.ts', idx, 'utf8');
+  console.log('✅ Added @ts-ignore above editWorkflow import');
+} else {
+  console.log('⚠️  Import line not matched — showing current import:');
+  const lines = idx.split('\n');
+  lines.forEach((l, i) => { if (l.includes('editWorkflow')) console.log((i+1) + ': ' + l); });
+}

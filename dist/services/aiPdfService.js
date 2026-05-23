@@ -4,6 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAiPDF = generateAiPDF;
+exports.generateAiPDFFromHtml = generateAiPDFFromHtml;
+exports.generateAiPDFAndHtml = generateAiPDFAndHtml;
 exports.generateProImagePDF = generateProImagePDF;
 const puppeteer_1 = __importDefault(require("puppeteer"));
 const marked_1 = require("marked");
@@ -273,6 +275,42 @@ async function generateAiPDF(rawMarkdown, template = 'default') {
         await browser.close();
     }
     return pdfPath;
+}
+// ─── Re-render PDF from pre-built HTML (BUG 3) ────────────────────────────────
+async function generateAiPDFFromHtml(fullHtml) {
+    const pdfPath = path_1.default.join(process.cwd(), 'temp', `document_${Date.now()}.pdf`);
+    if (!fs_1.default.existsSync(path_1.default.dirname(pdfPath))) {
+        fs_1.default.mkdirSync(path_1.default.dirname(pdfPath), { recursive: true });
+    }
+    const browser = await puppeteer_1.default.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none', '--disable-dev-shm-usage'],
+        timeout: 90000,
+    });
+    try {
+        const page = await browser.newPage();
+        await page.setContent(fullHtml, { waitUntil: 'networkidle2', timeout: 90000 });
+        await page.evaluateHandle('document.fonts.ready');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await page.pdf({
+            path: pdfPath, format: 'A4', printBackground: true,
+            margin: { top: '2.5cm', right: '2cm', bottom: '2.5cm', left: '2cm' },
+            displayHeaderFooter: false, timeout: 90000,
+        });
+    }
+    finally {
+        await browser.close();
+    }
+    return pdfPath;
+}
+// ─── Generate PDF + return HTML for caching (BUG 3) ──────────────────────────
+async function generateAiPDFAndHtml(rawMarkdown, template = 'default') {
+    const cleanMarkdown = sanitizeForPdf(rawMarkdown);
+    const processedText = await processImages(cleanMarkdown);
+    const bodyHtml = await Promise.resolve(marked_1.marked.parse(processedText));
+    const fullHtml = buildHtml(bodyHtml, template);
+    const pdfPath = await generateAiPDFFromHtml(fullHtml);
+    return { pdfPath, html: fullHtml };
 }
 async function generateProImagePDF(opts) {
     const { topic, images, botToken, template = 'default' } = opts;

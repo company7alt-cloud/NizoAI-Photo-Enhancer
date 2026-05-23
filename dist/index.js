@@ -74,6 +74,7 @@ const promptAnalyzerService_1 = require("./services/promptAnalyzerService");
 const freeLimit_1 = require("./handlers/docmaker/freeLimit");
 const pricing_1 = require("./handlers/docmaker/pricing");
 const textOutput_1 = require("./handlers/docmaker/textOutput");
+// @ts-ignore — handleProEditConfirm kept for backward compat
 const editWorkflow_1 = require("./handlers/docmaker/editWorkflow");
 const loading_1 = require("./utils/loading");
 // ─── Bot Instances ─────────────────────────────────────────────────────────────
@@ -2106,7 +2107,7 @@ registerDocCallback(/^pro_edit_img_(\d+)$/, 'pro_edit_img', async (ctx) => {
     await ctx.reply(`📸 أرسل الصورة البديلة لرقم ${page}:`);
 });
 registerDocCallback('pro_edit_confirm', 'pro_edit_confirm', async (ctx) => {
-    await (0, editWorkflow_1.handleProEditConfirm)(ctx);
+    await (0, editWorkflow_1.handleProEditConfirmV2)(ctx);
 });
 // ──────────────────────────────────────────────────────────────────────────────
 // â”€â”€â”€ Pro Mode: photo handler (STEP F) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

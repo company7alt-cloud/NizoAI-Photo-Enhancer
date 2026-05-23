@@ -296,6 +296,43 @@ export interface ProImagePageData {
   caption?: string;
 }
 
+// ─── Re-render PDF from pre-built HTML (BUG 3) ────────────────────────────────
+export async function generateAiPDFFromHtml(fullHtml: string): Promise<string> {
+  const pdfPath = path.join(process.cwd(), 'temp', `document_${Date.now()}.pdf`);
+  if (!fs.existsSync(path.dirname(pdfPath))) {
+    fs.mkdirSync(path.dirname(pdfPath), { recursive: true });
+  }
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none', '--disable-dev-shm-usage'],
+    timeout: 90000,
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(fullHtml, { waitUntil: 'networkidle2' as any, timeout: 90000 });
+    await page.evaluateHandle('document.fonts.ready');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await page.pdf({
+      path: pdfPath, format: 'A4', printBackground: true,
+      margin: { top: '2.5cm', right: '2cm', bottom: '2.5cm', left: '2cm' },
+      displayHeaderFooter: false, timeout: 90000,
+    });
+  } finally {
+    await browser.close();
+  }
+  return pdfPath;
+}
+
+// ─── Generate PDF + return HTML for caching (BUG 3) ──────────────────────────
+export async function generateAiPDFAndHtml(rawMarkdown: string, template: string = 'default'): Promise<{ pdfPath: string; html: string }> {
+  const cleanMarkdown = sanitizeForPdf(rawMarkdown);
+  const processedText = await processImages(cleanMarkdown);
+  const bodyHtml = await Promise.resolve(marked.parse(processedText));
+  const fullHtml = buildHtml(bodyHtml, template);
+  const pdfPath = await generateAiPDFFromHtml(fullHtml);
+  return { pdfPath, html: fullHtml };
+}
+
 export async function generateProImagePDF(opts: {
   topic: string;
   images: ProImagePageData[];

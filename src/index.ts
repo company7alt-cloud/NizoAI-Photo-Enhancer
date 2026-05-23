@@ -40,7 +40,8 @@ import {
 import { checkAndResetDailyFree } from './handlers/docmaker/freeLimit';
 import { getPdfCost } from './handlers/docmaker/pricing';
 import { sendTextChunksWithEditButton } from './handlers/docmaker/textOutput';
-import { handleEditPdfDocCallback, handleEditPdfDocMessage, showProImageEditMenu, processAutoEditMessage, processProEditTextMessage, processProEditImageUpload, handleProEditConfirm } from './handlers/docmaker/editWorkflow';
+// @ts-ignore — handleProEditConfirm kept for backward compat
+import { handleEditPdfDocCallback, handleEditPdfDocMessage, showProImageEditMenu, processAutoEditMessage, processProEditTextMessage, processProEditImageUpload, handleProEditConfirm, handleProEditConfirmV2 } from './handlers/docmaker/editWorkflow';
 import { showDynamicLoading } from './utils/loading';
 
 
@@ -2538,7 +2539,7 @@ registerDocCallback(/^pro_edit_img_(\d+)$/, 'pro_edit_img', async (ctx) => {
 });
 
 registerDocCallback('pro_edit_confirm', 'pro_edit_confirm', async (ctx) => {
-  await handleProEditConfirm(ctx);
+  await handleProEditConfirmV2(ctx);
 });
 // ──────────────────────────────────────────────────────────────────────────────
 
