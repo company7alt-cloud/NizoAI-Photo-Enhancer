@@ -129,6 +129,7 @@ export interface SessionData {
     awaitingEditRequest?: boolean;
     isAwaitingImage?: boolean;
     currentService?: string | null;
+    activeFilter?: string;
     proImageMode?: boolean;
     proImagePageCount?: number;
     proImageData?: {

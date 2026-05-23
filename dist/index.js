@@ -995,6 +995,21 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
     const user = await User_1.User.findOne({ telegramId });
     const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
     const isAdm = adminIds.includes(telegramId || '');
+    // ── PHOTO GUARD: block photos sent before selecting a service ──
+    if (!isAdm && !user?.supportSessionActive) {
+        const hasActiveFlow = ctx.session?.activeFilter ||
+            ctx.session?.isAwaitingImage ||
+            ctx.session?.pendingConversionFileId ||
+            ctx.session?.awaitingCustomWidth ||
+            ctx.session?.awaitingCustomHeight;
+        if (!hasActiveFlow) {
+            await ctx.reply('⚠️ <b>يرجى اختيار الخدمة أولاً!</b>\n\n' +
+                'لا يمكن إرسال الصور مباشرة.\n' +
+                'اختر إحدى الخدمات من القائمة الرئيسية أولاً 👆', { parse_mode: 'HTML' });
+            return;
+        }
+    }
+    // ── END PHOTO GUARD ──
     // 1. Admin -> User (Confirm media sending)
     if (isAdm) {
         const activeUser = await User_1.User.findOne({
@@ -1056,6 +1071,32 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
 });
 // ─── Image & Callback Handlers ─────────────────────────────────────────────────
 imageBot.on([':photo', ':document'], imageHandler_1.imageHandler);
+// ─── Filter button callbacks (TASK 2) ───────────────────────────────────────────
+imageBot.callbackQuery('filter_face', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    ctx.session.activeFilter = 'face';
+    await ctx.reply('👤 <b>فلتر تصفية الوجه</b>\n\nأرسل الصورة الآن وسيتم تحسين الملامح تلقائياً:', { parse_mode: 'HTML' });
+});
+imageBot.callbackQuery('filter_color', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    ctx.session.activeFilter = 'color';
+    await ctx.reply('🎨 <b>فلتر تلوين الصور القديمة</b>\n\nأرسل صورتك الأبيض والأسود وسيتم تلوينها:', { parse_mode: 'HTML' });
+});
+imageBot.callbackQuery('filter_anime', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    ctx.session.activeFilter = 'anime';
+    await ctx.reply('🌸 <b>فلتر تحويل أنمي</b>\n\nأرسل صورتك وسيتم تحويلها لأنمي احترافي:', { parse_mode: 'HTML' });
+});
+imageBot.callbackQuery('filter_ghibli', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    ctx.session.activeFilter = 'ghibli';
+    await ctx.reply('🎭 <b>فلتر تأثير جيبلي</b>\n\nأرسل صورتك وسيتم تطبيق تأثير جيبلي الفني:', { parse_mode: 'HTML' });
+});
+imageBot.callbackQuery('cancel_filter', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    ctx.session.activeFilter = undefined;
+    await ctx.deleteMessage().catch(() => { });
+});
 imageBot.callbackQuery(/.*/, callbackHandler_1.callbackHandler);
 // ─── chat_member: Leave / Kick Penalty + Force-Sub Clawback ───────────────────
 imageBot.on('chat_member', async (ctx) => {

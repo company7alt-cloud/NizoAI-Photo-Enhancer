@@ -149,6 +149,7 @@ export interface SessionData {
   // Image Bot
   isAwaitingImage?: boolean;
   currentService?: string | null;
+  activeFilter?: string;
 
   // Professional Mode — Image Collection
   proImageMode?: boolean;
