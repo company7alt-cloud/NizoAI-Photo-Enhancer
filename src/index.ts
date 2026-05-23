@@ -1183,14 +1183,21 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
   const user = await User.findOne({ telegramId });
   const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
   const isAdm = adminIds.includes(telegramId || '');
-  // ── PHOTO GUARD: block photos sent before selecting a service ──
+  // ── PHOTO GUARD ──
   if (!isAdm && !user?.supportSessionActive) {
+    const dbUser = await User.findOne({ telegramId: ctx.from?.id.toString() });
     const hasActiveFlow =
-      ctx.session?.activeFilter ||
-      ctx.session?.isAwaitingImage ||
+      ctx.session?.awaitingFilterAction ||
+      ctx.session?.pendingFile ||
       ctx.session?.pendingConversionFileId ||
       ctx.session?.awaitingCustomWidth ||
-      ctx.session?.awaitingCustomHeight;
+      ctx.session?.awaitingCustomHeight ||
+      dbUser?.awaitingFilterImage ||
+      dbUser?.awaitingNanoBananaImage ||
+      dbUser?.awaitingAutoEraserImage ||
+      dbUser?.awaitingCustomEraserImage ||
+      dbUser?.awaitingFormatConversion ||
+      (dbUser?.proEnhanceSettings as any)?.isAwaitingImage;
 
     if (!hasActiveFlow) {
       await ctx.reply(
@@ -1202,7 +1209,7 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
       return;
     }
   }
-  // ── END PHOTO GUARD ──
+  // ── END GUARD ──
 
 
 

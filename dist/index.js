@@ -995,13 +995,20 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
     const user = await User_1.User.findOne({ telegramId });
     const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
     const isAdm = adminIds.includes(telegramId || '');
-    // ── PHOTO GUARD: block photos sent before selecting a service ──
+    // ── PHOTO GUARD ──
     if (!isAdm && !user?.supportSessionActive) {
-        const hasActiveFlow = ctx.session?.activeFilter ||
-            ctx.session?.isAwaitingImage ||
+        const dbUser = await User_1.User.findOne({ telegramId: ctx.from?.id.toString() });
+        const hasActiveFlow = ctx.session?.awaitingFilterAction ||
+            ctx.session?.pendingFile ||
             ctx.session?.pendingConversionFileId ||
             ctx.session?.awaitingCustomWidth ||
-            ctx.session?.awaitingCustomHeight;
+            ctx.session?.awaitingCustomHeight ||
+            dbUser?.awaitingFilterImage ||
+            dbUser?.awaitingNanoBananaImage ||
+            dbUser?.awaitingAutoEraserImage ||
+            dbUser?.awaitingCustomEraserImage ||
+            dbUser?.awaitingFormatConversion ||
+            dbUser?.proEnhanceSettings?.isAwaitingImage;
         if (!hasActiveFlow) {
             await ctx.reply('⚠️ <b>يرجى اختيار الخدمة أولاً!</b>\n\n' +
                 'لا يمكن إرسال الصور مباشرة.\n' +
@@ -1009,7 +1016,7 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
             return;
         }
     }
-    // ── END PHOTO GUARD ──
+    // ── END GUARD ──
     // 1. Admin -> User (Confirm media sending)
     if (isAdm) {
         const activeUser = await User_1.User.findOne({
