@@ -164,6 +164,20 @@ export interface SessionData {
   proOriginalTopic?: string;
   proModeUsed?: boolean;    // usage limit flag (session level)
   proModeType?: 'free' | 'nizo'; // which flow triggered pro mode
+
+  // ── Task 2: Edit routing fields ──────────────────────────────────────────
+  lastOriginalPrompt?: string;
+  lastGeneratedTopic?: string;
+  lastPdfMode?: 'free_auto' | 'free_pro' | 'nizo_auto' | 'nizo_pro';
+  editCount?: number;
+  lastImageCount?: number;
+
+  // ── Task 2: Edit State Machine (prevents TypeScript errors) ──────────────
+  awaitingAutoEdit?: boolean;
+  awaitingProEditText?: boolean;
+  proEditText?: string | null;
+  proEditImages?: Record<number, string>;
+  proEditCurrentImgPage?: number | null;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

@@ -1377,9 +1377,12 @@ registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {
         '(النسخة الاحترافية متاحة مرة واحدة فقط مجاناً)', {
         reply_markup: {
             inline_keyboard: [
-                [{ text: '⚡ تلقائي', callback_data: 'free_pdf_auto' }],
-                [{ text: '✨ احترافي', callback_data: 'free_pdf_pro' }],
-                [{ text: '❌ إلغاء', callback_data: 'cancel' }],
+                // @ts-ignore
+                [{ text: 'تلقائي', callback_data: 'free_pdf_auto', style: 'primary' }],
+                // @ts-ignore
+                [{ text: 'احترافي', callback_data: 'free_pdf_pro', style: 'primary' }],
+                // @ts-ignore
+                [{ text: 'إلغاء', callback_data: 'cancel', style: 'danger' }],
             ],
         },
     });
@@ -1649,9 +1652,12 @@ registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
         '(النسخة الاحترافية متاحة مرة واحدة فقط مجاناً)', {
         reply_markup: {
             inline_keyboard: [
-                [{ text: '⚡ تلقائي', callback_data: 'nizo_pdf_auto' }],
-                [{ text: '✨ احترافي', callback_data: 'nizo_pdf_pro' }],
-                [{ text: '❌ إلغاء', callback_data: 'cancel' }],
+                // @ts-ignore
+                [{ text: 'تلقائي', callback_data: 'nizo_pdf_auto', style: 'primary' }],
+                // @ts-ignore
+                [{ text: 'احترافي', callback_data: 'nizo_pdf_pro', style: 'primary' }],
+                // @ts-ignore
+                [{ text: 'إلغاء', callback_data: 'cancel', style: 'danger' }],
             ],
         },
     });
@@ -1816,6 +1822,12 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
             };
             ctx.session.lastAiGeneratedText = cleanMarkdown;
             ctx.session.lastAiDocPages = finalPages;
+            // Task 4: Store generation context for edit routing
+            ctx.session.lastOriginalPrompt = systemPrompt + '\n\n' + collectedText;
+            ctx.session.lastGeneratedTopic = collectedText;
+            ctx.session.lastPdfMode = 'nizo_auto';
+            ctx.session.editCount = 0;
+            ctx.session.lastImageCount = 0;
             await (0, textOutput_1.sendTextChunksWithEditButton)(ctx, cleanMarkdown);
             ctx.session.collectedText = '';
             ctx.session.referenceImageBuffer = '';
@@ -2072,8 +2084,44 @@ registerDocCallback('pro_confirm', 'pro_confirm', async (ctx) => {
         await ctx.reply(`❌ فشل إنشاء المستند: ${err?.message || 'خطأ غير معروف'}`);
     }
 });
+// ── Task 8: Pro Edit Callbacks ────────────────────────────────────────────────
+registerDocCallback('pro_edit_text', 'pro_edit_text', async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => { });
+    ctx.session.awaitingProEditText = true;
+    await ctx.reply('✏️ أرسل التعديلات النصية المطلوبة:');
+});
+registerDocCallback('pro_edit_skip_text', 'pro_edit_skip_text', async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => { });
+    ctx.session.awaitingProEditText = false;
+    await (0, editWorkflow_1.showProImageEditMenu)(ctx);
+});
+registerDocCallback(/^pro_edit_img_(\d+)$/, 'pro_edit_img', async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => { });
+    const match = ctx.callbackQuery?.data?.match(/^pro_edit_img_(\d+)$/);
+    if (!match)
+        return;
+    const page = parseInt(match[1]);
+    ctx.session.proEditCurrentImgPage = page;
+    await ctx.reply(`📸 أرسل الصورة البديلة لرقم ${page}:`);
+});
+registerDocCallback('pro_edit_confirm', 'pro_edit_confirm', async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => { });
+    ctx.session.editCount = (ctx.session.editCount ?? 0) + 1;
+    ctx.session.workflowState = 'waiting_for_doc_edit';
+    // Forward to handleEditPdfDocMessage passing the text as pseudo-message
+    const pseudoCtx = Object.create(ctx);
+    pseudoCtx.message = { text: ctx.session.proEditText || 'تطبيق تعديلات الصور فقط' };
+    await (0, editWorkflow_1.handleEditPdfDocMessage)(pseudoCtx);
+});
+// ──────────────────────────────────────────────────────────────────────────────
 // â”€â”€â”€ Pro Mode: photo handler (STEP F) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 docBot.on(['message:photo', 'message:document'], withDocBotHandler('pro_image_collector', async (ctx, next) => {
+    // Task 8: Pro Edit Image Interceptor
+    if (ctx.session.proEditCurrentImgPage != null) {
+        const handled = await (0, editWorkflow_1.processProEditImageUpload)(ctx);
+        if (handled)
+            return;
+    }
     // Only handle if in pro mode AND a page is selected
     if (!ctx.session.proImageMode)
         return next();
@@ -2376,6 +2424,14 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
         await (0, editWorkflow_1.handleEditPdfDocMessage)(ctx);
         return;
     }
+    if (ctx.session.awaitingAutoEdit) {
+        await (0, editWorkflow_1.processAutoEditMessage)(ctx);
+        return;
+    }
+    if (ctx.session.awaitingProEditText) {
+        await (0, editWorkflow_1.processProEditTextMessage)(ctx);
+        return;
+    }
     // ── Free AI Topic Interceptor ───────────────────────────────────────────────
     if (ctx.session.awaitingFreeAiTopic) {
         ctx.session.awaitingFreeAiTopic = false;
@@ -2435,6 +2491,12 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
                 pageCount: detectedPages,
                 originalCost: 0
             }; // Adding back compatibility for edit Workflow
+            // Task 4: Store generation context for edit routing
+            ctx.session.lastOriginalPrompt = promptAnalysis.enhancedPrompt + '\n\n' + text;
+            ctx.session.lastGeneratedTopic = text;
+            ctx.session.lastPdfMode = ctx.session.proImageMode ? 'free_pro' : 'free_auto';
+            ctx.session.editCount = 0;
+            ctx.session.lastImageCount = 0;
             await (0, textOutput_1.sendTextChunksWithEditButton)(ctx, cleanMarkdown);
             // Increment only on successful delivery
             if (!isAdminUser) {

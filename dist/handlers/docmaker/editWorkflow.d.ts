@@ -1,3 +1,9 @@
 import { BotContext } from '../../utils/validators';
 export declare function handleEditPdfDocCallback(ctx: BotContext): Promise<void>;
 export declare function handleEditPdfDocMessage(ctx: BotContext): Promise<void>;
+export declare function handleAutoEdit(ctx: BotContext): Promise<void>;
+export declare function handleProEdit(ctx: BotContext): Promise<void>;
+export declare function showProImageEditMenu(ctx: BotContext): Promise<void>;
+export declare function processAutoEditMessage(ctx: BotContext): Promise<void>;
+export declare function processProEditTextMessage(ctx: BotContext): Promise<void>;
+export declare function processProEditImageUpload(ctx: BotContext): Promise<boolean>;

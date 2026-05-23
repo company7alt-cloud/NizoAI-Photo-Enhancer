@@ -226,6 +226,13 @@ const UserSchema = new mongoose_1.Schema({
         type: Boolean,
         default: false,
     },
+    // Edit & Generation Counters (Task 1)
+    freeAutoGenerations: { type: Number, default: 0 },
+    freeAutoEdits: { type: Number, default: 0 },
+    freeProGenerations: { type: Number, default: 0 },
+    freeProEdits: { type: Number, default: 0 },
+    paidProGenerations: { type: Number, default: 0 },
+    paidProEdits: { type: Number, default: 0 },
 }, {
     timestamps: false,
     versionKey: false,

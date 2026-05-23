@@ -124,6 +124,12 @@ export interface IUser extends Document {
     freePdfsGeneratedToday: number;
     freePdfsLastResetDate: string;
     usedProMode: boolean;
+    freeAutoGenerations: number;
+    freeAutoEdits: number;
+    freeProGenerations: number;
+    freeProEdits: number;
+    paidProGenerations: number;
+    paidProEdits: number;
 }
 export interface IUserModel extends Model<IUser> {
     findByTelegramId(telegramId: number): Promise<IUser | null>;

@@ -142,6 +142,16 @@ export interface SessionData {
     proOriginalTopic?: string;
     proModeUsed?: boolean;
     proModeType?: 'free' | 'nizo';
+    lastOriginalPrompt?: string;
+    lastGeneratedTopic?: string;
+    lastPdfMode?: 'free_auto' | 'free_pro' | 'nizo_auto' | 'nizo_pro';
+    editCount?: number;
+    lastImageCount?: number;
+    awaitingAutoEdit?: boolean;
+    awaitingProEditText?: boolean;
+    proEditText?: string | null;
+    proEditImages?: Record<number, string>;
+    proEditCurrentImgPage?: number | null;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

@@ -1,4 +1,4 @@
-﻿// src/index.ts
+// src/index.ts
 import 'dotenv/config';
 
 // ─── Environment Guards ────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ import {
 import { checkAndResetDailyFree } from './handlers/docmaker/freeLimit';
 import { getPdfCost } from './handlers/docmaker/pricing';
 import { sendTextChunksWithEditButton } from './handlers/docmaker/textOutput';
-import { handleEditPdfDocCallback, handleEditPdfDocMessage } from './handlers/docmaker/editWorkflow';
+import { handleEditPdfDocCallback, handleEditPdfDocMessage, showProImageEditMenu, processAutoEditMessage, processProEditTextMessage, processProEditImageUpload } from './handlers/docmaker/editWorkflow';
 import { showDynamicLoading } from './utils/loading';
 
 
@@ -1664,9 +1664,12 @@ registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {
     {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '⚡ تلقائي', callback_data: 'free_pdf_auto' }],
-          [{ text: '✨ احترافي', callback_data: 'free_pdf_pro' }],
-          [{ text: '❌ إلغاء', callback_data: 'cancel' }],
+          // @ts-ignore
+          [{ text: 'تلقائي',  callback_data: 'free_pdf_auto', style: 'primary' }],
+          // @ts-ignore
+          [{ text: 'احترافي', callback_data: 'free_pdf_pro',  style: 'primary' }],
+          // @ts-ignore
+          [{ text: 'إلغاء',  callback_data: 'cancel',         style: 'danger'  }],
         ],
       },
     }
@@ -1990,9 +1993,12 @@ registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
     {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '⚡ تلقائي', callback_data: 'nizo_pdf_auto' }],
-          [{ text: '✨ احترافي', callback_data: 'nizo_pdf_pro' }],
-          [{ text: '❌ إلغاء', callback_data: 'cancel' }],
+          // @ts-ignore
+          [{ text: 'تلقائي',  callback_data: 'nizo_pdf_auto', style: 'primary' }],
+          // @ts-ignore
+          [{ text: 'احترافي', callback_data: 'nizo_pdf_pro',  style: 'primary' }],
+          // @ts-ignore
+          [{ text: 'إلغاء',  callback_data: 'cancel',         style: 'danger'  }],
         ],
       },
     }
@@ -2187,6 +2193,12 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
       };
       ctx.session.lastAiGeneratedText = cleanMarkdown;
       ctx.session.lastAiDocPages = finalPages;
+      // Task 4: Store generation context for edit routing
+      ctx.session.lastOriginalPrompt = systemPrompt + '\n\n' + collectedText;
+      ctx.session.lastGeneratedTopic = collectedText;
+      ctx.session.lastPdfMode = 'nizo_auto';
+      ctx.session.editCount = 0;
+      ctx.session.lastImageCount = 0;
       await sendTextChunksWithEditButton(ctx, cleanMarkdown);
 
       ctx.session.collectedText = '';
@@ -2502,8 +2514,47 @@ registerDocCallback('pro_confirm', 'pro_confirm', async (ctx) => {
   }
 });
 
+// ── Task 8: Pro Edit Callbacks ────────────────────────────────────────────────
+registerDocCallback('pro_edit_text', 'pro_edit_text', async (ctx) => {
+  await ctx.answerCallbackQuery().catch(() => {});
+  ctx.session.awaitingProEditText = true;
+  await ctx.reply('✏️ أرسل التعديلات النصية المطلوبة:');
+});
+
+registerDocCallback('pro_edit_skip_text', 'pro_edit_skip_text', async (ctx) => {
+  await ctx.answerCallbackQuery().catch(() => {});
+  ctx.session.awaitingProEditText = false;
+  await showProImageEditMenu(ctx);
+});
+
+registerDocCallback(/^pro_edit_img_(\d+)$/, 'pro_edit_img', async (ctx) => {
+  await ctx.answerCallbackQuery().catch(() => {});
+  const match = ctx.callbackQuery?.data?.match(/^pro_edit_img_(\d+)$/);
+  if (!match) return;
+  const page = parseInt(match[1]);
+  ctx.session.proEditCurrentImgPage = page;
+  await ctx.reply(`📸 أرسل الصورة البديلة لرقم ${page}:`);
+});
+
+registerDocCallback('pro_edit_confirm', 'pro_edit_confirm', async (ctx) => {
+  await ctx.answerCallbackQuery().catch(() => {});
+  ctx.session.editCount = (ctx.session.editCount ?? 0) + 1;
+  ctx.session.workflowState = 'waiting_for_doc_edit';
+  
+  // Forward to handleEditPdfDocMessage passing the text as pseudo-message
+  const pseudoCtx = Object.create(ctx);
+  pseudoCtx.message = { text: ctx.session.proEditText || 'تطبيق تعديلات الصور فقط' };
+  await handleEditPdfDocMessage(pseudoCtx);
+});
+// ──────────────────────────────────────────────────────────────────────────────
+
 // â”€â”€â”€ Pro Mode: photo handler (STEP F) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 docBot.on(['message:photo', 'message:document'], withDocBotHandler('pro_image_collector', async (ctx, next) => {
+  // Task 8: Pro Edit Image Interceptor
+  if (ctx.session.proEditCurrentImgPage != null) {
+    const handled = await processProEditImageUpload(ctx);
+    if (handled) return;
+  }
   // Only handle if in pro mode AND a page is selected
   if (!ctx.session.proImageMode) return next();
 
@@ -2844,6 +2895,16 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
     await handleEditPdfDocMessage(ctx);
     return;
   }
+  
+  if (ctx.session.awaitingAutoEdit) {
+    await processAutoEditMessage(ctx);
+    return;
+  }
+  
+  if (ctx.session.awaitingProEditText) {
+    await processProEditTextMessage(ctx);
+    return;
+  }
 
   // ── Free AI Topic Interceptor ───────────────────────────────────────────────
   if (ctx.session.awaitingFreeAiTopic) {
@@ -2923,6 +2984,12 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
         pageCount: detectedPages,
         originalCost: 0
       }; // Adding back compatibility for edit Workflow
+      // Task 4: Store generation context for edit routing
+      ctx.session.lastOriginalPrompt = promptAnalysis.enhancedPrompt + '\n\n' + text;
+      ctx.session.lastGeneratedTopic = text;
+      ctx.session.lastPdfMode = ctx.session.proImageMode ? 'free_pro' : 'free_auto';
+      ctx.session.editCount = 0;
+      ctx.session.lastImageCount = 0;
       await sendTextChunksWithEditButton(ctx, cleanMarkdown);
 
       // Increment only on successful delivery
