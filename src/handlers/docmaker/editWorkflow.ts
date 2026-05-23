@@ -361,6 +361,17 @@ export async function handleProEditConfirm(ctx: BotContext): Promise<void> {
   const pageCount = ctx.session.lastAiDocPages || ctx.session.lastGeneratedDoc?.pageCount || 1;
   const loadingState = await showDynamicLoading(ctx, '\u270f\ufe0f جاري تطبيق التعديلات');
 
+  const finalPrompt =
+    (ctx.session.lastOriginalPrompt ?? '') +
+    '\n\n════ طلب التعديل من العميل ════\n' +
+    (hasTextEdit ? (ctx.session.proEditText ?? 'لا توجد تعديلات نصية') : 'طبّق تعديلات الصور المحددة فقط') +
+    '\n══════════════════════════════\n\n' +
+    '⚠️ أوامر صارمة جداً للتعديل (CRITICAL INSTRUCTIONS):\n' +
+    '1. يجب عليك إعادة كتابة المستند بالكامل من البداية للنهاية مع تطبيق التعديل المطلوب فقط.\n' +
+    '2. إياك أن تختصر النص أو تكتب عبارات مثل "الباقي كما هو". أريد المستند كاملاً.\n' +
+    '3. يجب أن تعيد جميع علامات الصور [IMAGE: Keyword] في أماكنها الصحيحة تماماً كما كانت في النص الأصلي، لكي لا يختل التصميم.\n' +
+    '4. أعطني المستند النهائي كاملاً الآن.';
+
   try {
     const response = await aiClient.chat.completions.create({
       model: process.env.REPLICATE_AI_MODEL_ID || 'anthropic/claude-3-haiku',
@@ -371,7 +382,7 @@ export async function handleProEditConfirm(ctx: BotContext): Promise<void> {
         },
         {
           role: 'user',
-          content: hasTextEdit ? ctx.session.proEditText! : 'طبّق تعديلات الصور المحددة فقط'
+          content: finalPrompt
         }
       ],
       temperature: 0.3,
@@ -573,6 +584,17 @@ export async function handleProEditConfirmV2(ctx: BotContext): Promise<void> {
   const pageCount = ctx.session.lastAiDocPages || ctx.session.lastGeneratedDoc?.pageCount || 1;
   const loadingState = await showDynamicLoading(ctx, '✏️ جاري تطبيق التعديلات');
 
+  const finalPrompt =
+    (ctx.session.lastOriginalPrompt ?? '') +
+    '\n\n════ طلب التعديل من العميل ════\n' +
+    (ctx.session.proEditText ?? 'لا توجد تعديلات نصية') +
+    '\n══════════════════════════════\n\n' +
+    '⚠️ أوامر صارمة جداً للتعديل (CRITICAL INSTRUCTIONS):\n' +
+    '1. يجب عليك إعادة كتابة المستند بالكامل من البداية للنهاية مع تطبيق التعديل المطلوب فقط.\n' +
+    '2. إياك أن تختصر النص أو تكتب عبارات مثل "الباقي كما هو". أريد المستند كاملاً.\n' +
+    '3. يجب أن تعيد جميع علامات الصور [IMAGE: Keyword] في أماكنها الصحيحة تماماً كما كانت في النص الأصلي، لكي لا يختل التصميم.\n' +
+    '4. أعطني المستند النهائي كاملاً الآن.';
+
   try {
     const response = await aiClient.chat.completions.create({
       model: process.env.REPLICATE_AI_MODEL_ID || 'anthropic/claude-3-haiku',
@@ -581,7 +603,7 @@ export async function handleProEditConfirmV2(ctx: BotContext): Promise<void> {
           role: 'system',
           content: `You are a silent document editor. Apply the user's edits and return the COMPLETE edited document in Arabic Markdown only. Keep exact same structure and page count (${pageCount} pages). No explanations.\n\nORIGINAL DOCUMENT:\n${originalText}`
         },
-        { role: 'user', content: ctx.session.proEditText! }
+        { role: 'user', content: finalPrompt }
       ],
       temperature: 0.3,
     });
