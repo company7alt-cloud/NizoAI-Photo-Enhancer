@@ -200,31 +200,19 @@ export async function handleProEdit(ctx: BotContext): Promise<void> {
 
 // ── Task 8 Fix: showProImageEditMenu ───────────────────────────────────────────────
 export async function showProImageEditMenu(ctx: BotContext): Promise<void> {
-  const pagesImageCount = ctx.session.lastImageCountPerPage ?? [];
+  const totalImages = ctx.session.lastImageCount ?? 0;
   const rows: any[] = [];
-  let imgNum = 1;
 
-  // Build one row per page/section
-  for (let page = 0; page < pagesImageCount.length; page++) {
-    const pageImgs = pagesImageCount[page];
-    const row: any[] = [];
-    for (let i = 0; i < pageImgs; i++) {
-      const n = imgNum;
+  if (totalImages > 0) {
+    // One button per image, one image per row (each page = one row)
+    for (let n = 1; n <= totalImages; n++) {
       const isDone = ctx.session.proEditImages?.[n] != null;
-      row.push({ text: isDone ? '✅ ' + n : String(n), callback_data: 'pro_edit_img_' + n, style: 'primary' as any });
-      imgNum++;
+      rows.push([{
+        text: isDone ? '✅ ' + n : String(n),
+        callback_data: 'pro_edit_img_' + n,
+        style: 'primary' as any
+      }]);
     }
-    if (row.length > 0) rows.push(row);
-  }
-
-  // Fallback: use lastImageCount if no per-page data, one row for all
-  if (rows.length === 0 && (ctx.session.lastImageCount ?? 0) > 0) {
-    const row: any[] = [];
-    for (let n = 1; n <= (ctx.session.lastImageCount ?? 0); n++) {
-      const isDone = ctx.session.proEditImages?.[n] != null;
-      row.push({ text: isDone ? '✅ ' + n : String(n), callback_data: 'pro_edit_img_' + n, style: 'primary' as any });
-    }
-    rows.push(row);
   }
 
   // Text-edit button always at top
@@ -483,10 +471,20 @@ export async function handleProEditConfirmV2(ctx: BotContext): Promise<void> {
 
   // BUG 3: Image-only path — skip AI, replace img tags in stored HTML
   const storedHtml = ctx.session.lastGeneratedHtml;
-  if (!hasTextEdit && hasImageEdit && storedHtml) {
+  if (!hasTextEdit && hasImageEdit) {
     const loadingState = await showDynamicLoading(ctx, '🖼️ جاري استبدال الصور');
     try {
+      // If no cached HTML, regenerate it first
       let editedHtml = storedHtml;
+      if (!editedHtml) {
+        const originalMd = ctx.session.lastAiGeneratedText || ctx.session.lastGeneratedDoc?.text || '';
+        if (!originalMd) {
+          await ctx.reply('⚠️ انتهت صلاحية التعديل، أنشئ مستنداً جديداً.');
+          return;
+        }
+        const { html: freshHtml } = await generateAiPDFAndHtml(originalMd, ctx.session.aiDocStyle || 'default');
+        editedHtml = freshHtml;
+      }
       const botToken = process.env.DOC_BOT_TOKEN || process.env.BOT_TOKEN || '';
 
       // Replace each requested image by 1-based index in HTML
@@ -613,7 +611,7 @@ export async function handleProEditConfirmV2(ctx: BotContext): Promise<void> {
     ctx.session.proEditCurrentImgPage = null;
     ctx.session.awaitingProEditText = false;
 
-    await sendTextChunksWithEditButton(ctx, cleanMarkdown);
+
 
     // BUG 4: Unlimited — always show edit button
     await ctx.reply('✅ تم التعديل بنجاح!', {
