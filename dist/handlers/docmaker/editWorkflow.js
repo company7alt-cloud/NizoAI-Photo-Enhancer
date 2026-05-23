@@ -11,6 +11,7 @@ exports.showProImageEditMenu = showProImageEditMenu;
 exports.processAutoEditMessage = processAutoEditMessage;
 exports.processProEditTextMessage = processProEditTextMessage;
 exports.processProEditImageUpload = processProEditImageUpload;
+exports.handleProEditConfirm = handleProEditConfirm;
 const User_1 = require("../../database/models/User");
 const loading_1 = require("../../utils/loading");
 const aiPdfService_1 = require("../../services/aiPdfService");
@@ -208,12 +209,20 @@ async function showProImageEditMenu(ctx) {
         }
         rows.push(row);
     }
-    rows.push([{ text: 'موافق', callback_data: 'pro_edit_confirm' }]);
+    // Text-edit button always at top
+    rows.unshift([{ text: '✏️ تعديل النص', callback_data: 'pro_edit_text' }]);
+    rows.push([{ text: 'موافق ✅', callback_data: 'pro_edit_confirm' }]);
     rows.push([{ text: 'إلغاء', callback_data: 'cancel' }]);
+    const editCount = ctx.session.editCount ?? 0;
+    const remaining = 3 - editCount;
     const imageCount = ctx.session.lastImageCount ?? 0;
-    const caption = imageCount > 0
-        ? '✏️ تعديل المستند\n\nاضغط رقم الصورة لتغييرها\nالأرقام مرتبة حسب الصفحة — كل صف = صفحة واحدة\n\n✅ عند الانتهاء اضغط موافق'
-        : '✏️ تعديل المستند\nلا توجد صور قابلة للتعديل في هذا المستند.\nاضغط موافق للمتابعة.';
+    const caption = '✏️ تعديل المستند\n\n' +
+        '• اضغط "تعديل النص" لتعديل محتوى المستند\n' +
+        (imageCount > 0
+            ? '• اضغط رقم الصورة لاستبدالها (كل صف = صفحة)\n'
+            : '') +
+        '• اضغط موافق عند الانتهاء\n\n' +
+        '📊 التعديلات المتبقية: ' + remaining + '/3';
     const sentMsg = await ctx.reply(caption, { reply_markup: { inline_keyboard: rows } });
     ctx.session.proEditMenuMessageId = sentMsg.message_id;
 }
@@ -293,5 +302,96 @@ async function processProEditImageUpload(ctx) {
     }
     await ctx.reply('✅ صورة ' + page + ' جاهزة');
     return true;
+}
+// ── FIX 6: Proper pro_edit_confirm handler ────────────────────────────────────
+async function handleProEditConfirm(ctx) {
+    await ctx.answerCallbackQuery().catch(() => { });
+    const editCount = ctx.session.editCount ?? 0;
+    if (editCount >= 3) {
+        await ctx.reply('\u26a0\ufe0f استخدمت جميع تعديلاتك الـ 3 لهذا المستند.');
+        return;
+    }
+    const hasTextEdit = !!(ctx.session.proEditText?.trim());
+    const hasImageEdit = Object.keys(ctx.session.proEditImages ?? {}).length > 0;
+    if (!hasTextEdit && !hasImageEdit) {
+        await ctx.reply('\u26a0\ufe0f لم تقم بأي تعديل. اضغط رقم صورة أو عدّل النص أولاً.');
+        return;
+    }
+    // Deduct 2 points for nizo_pro edits
+    if (ctx.session.lastPdfMode === 'nizo_pro') {
+        const u = await User_1.User.findOne({ telegramId: ctx.from.id });
+        if ((u?.dailyQuota ?? 0) < 2) {
+            await ctx.reply('\u26a0\ufe0f رصيدك غير كافٍ. تحتاج 2 نقاط للتعديل.');
+            return;
+        }
+        await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id }, { $inc: { dailyQuota: -2 } });
+    }
+    const originalText = ctx.session.lastAiGeneratedText ||
+        ctx.session.lastGeneratedDoc?.text || '';
+    if (!originalText) {
+        await ctx.reply('\u26a0\ufe0f انتهت صلاحية التعديل، أنشئ مستنداً جديداً.');
+        return;
+    }
+    const pageCount = ctx.session.lastAiDocPages || ctx.session.lastGeneratedDoc?.pageCount || 1;
+    const loadingState = await (0, loading_1.showDynamicLoading)(ctx, '\u270f\ufe0f جاري تطبيق التعديلات');
+    try {
+        const response = await aiClient.chat.completions.create({
+            model: process.env.REPLICATE_AI_MODEL_ID || 'anthropic/claude-3-haiku',
+            messages: [
+                {
+                    role: 'system',
+                    content: `You are a silent document editor. Apply the user's edits and return the COMPLETE edited document in Arabic Markdown only. Keep exact same structure and page count (${pageCount} pages). No explanations.\n\nORIGINAL DOCUMENT:\n${originalText}`
+                },
+                {
+                    role: 'user',
+                    content: hasTextEdit ? ctx.session.proEditText : 'طبّق تعديلات الصور المحددة فقط'
+                }
+            ],
+            temperature: 0.3,
+        });
+        const editedText = response.choices[0]?.message?.content ?? '';
+        if (!editedText.trim())
+            throw new Error('AI returned empty content.');
+        const cleanMarkdown = editedText.replace(/^```[a-z]*\n?/gm, '').replace(/```$/gm, '');
+        await loadingState.stop();
+        const pdfPath = await (0, aiPdfService_1.generateAiPDF)(cleanMarkdown, ctx.session.aiDocStyle || 'default');
+        await ctx.replyWithDocument(new grammy_1.InputFile(pdfPath, `NizoAI_Doc_Edited_${Date.now()}.pdf`), {
+            caption: `\u2705 <b>تم تطبيق التعديلات بنجاح!</b>\n\ud83c\udfa8 القالب: ${(ctx.session.aiDocStyle || 'default').toUpperCase()}`,
+            parse_mode: 'HTML'
+        });
+        ctx.session.lastAiGeneratedText = cleanMarkdown;
+        ctx.session.lastGeneratedDoc = { text: cleanMarkdown, pageCount, originalCost: 0 };
+        ctx.session.editCount = editCount + 1;
+        const remaining = 3 - ctx.session.editCount;
+        ctx.session.proEditText = null;
+        ctx.session.proEditImages = {};
+        ctx.session.proEditCurrentImgPage = null;
+        ctx.session.awaitingProEditText = false;
+        await (0, textOutput_1.sendTextChunksWithEditButton)(ctx, cleanMarkdown);
+        if (remaining > 0) {
+            await ctx.reply(`\u2705 تم التعديل (${ctx.session.editCount}/3)\nمتبقي: ${remaining} تعديلات`, {
+                reply_markup: {
+                    inline_keyboard: [[
+                            { text: `\u270f\ufe0f تعديل (${remaining} متبقية)`, callback_data: 'edit_pdf_doc' }
+                        ]]
+                }
+            });
+        }
+        else {
+            await ctx.reply('\u2705 تم التعديل. لا تعديلات إضافية متاحة لهذا المستند.');
+        }
+    }
+    catch (err) {
+        try {
+            await loadingState.stop();
+        }
+        catch { /* silent */ }
+        if (ctx.session.lastPdfMode === 'nizo_pro') {
+            await User_1.User.findOneAndUpdate({ telegramId: ctx.from.id }, { $inc: { dailyQuota: 2 } });
+        }
+        const e = err instanceof Error ? err : new Error(String(err));
+        console.error('[ProEditConfirm] Error:', e.message);
+        await ctx.reply('\u26a0\ufe0f حدث خطأ أثناء التعديل. تم إعادة نقاطك تلقائياً.');
+    }
 }
 //# sourceMappingURL=editWorkflow.js.map

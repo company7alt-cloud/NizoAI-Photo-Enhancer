@@ -7,3 +7,4 @@ export declare function showProImageEditMenu(ctx: BotContext): Promise<void>;
 export declare function processAutoEditMessage(ctx: BotContext): Promise<void>;
 export declare function processProEditTextMessage(ctx: BotContext): Promise<void>;
 export declare function processProEditImageUpload(ctx: BotContext): Promise<boolean>;
+export declare function handleProEditConfirm(ctx: BotContext): Promise<void>;

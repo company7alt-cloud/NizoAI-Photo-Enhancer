@@ -2106,13 +2106,7 @@ registerDocCallback(/^pro_edit_img_(\d+)$/, 'pro_edit_img', async (ctx) => {
     await ctx.reply(`📸 أرسل الصورة البديلة لرقم ${page}:`);
 });
 registerDocCallback('pro_edit_confirm', 'pro_edit_confirm', async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => { });
-    ctx.session.editCount = (ctx.session.editCount ?? 0) + 1;
-    ctx.session.workflowState = 'waiting_for_doc_edit';
-    // Forward to handleEditPdfDocMessage passing the text as pseudo-message
-    const pseudoCtx = Object.create(ctx);
-    pseudoCtx.message = { text: ctx.session.proEditText || 'تطبيق تعديلات الصور فقط' };
-    await (0, editWorkflow_1.handleEditPdfDocMessage)(pseudoCtx);
+    await (0, editWorkflow_1.handleProEditConfirm)(ctx);
 });
 // ──────────────────────────────────────────────────────────────────────────────
 // â”€â”€â”€ Pro Mode: photo handler (STEP F) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

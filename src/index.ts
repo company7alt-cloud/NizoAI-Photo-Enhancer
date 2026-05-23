@@ -40,7 +40,7 @@ import {
 import { checkAndResetDailyFree } from './handlers/docmaker/freeLimit';
 import { getPdfCost } from './handlers/docmaker/pricing';
 import { sendTextChunksWithEditButton } from './handlers/docmaker/textOutput';
-import { handleEditPdfDocCallback, handleEditPdfDocMessage, showProImageEditMenu, processAutoEditMessage, processProEditTextMessage, processProEditImageUpload } from './handlers/docmaker/editWorkflow';
+import { handleEditPdfDocCallback, handleEditPdfDocMessage, showProImageEditMenu, processAutoEditMessage, processProEditTextMessage, processProEditImageUpload, handleProEditConfirm } from './handlers/docmaker/editWorkflow';
 import { showDynamicLoading } from './utils/loading';
 
 
@@ -2538,14 +2538,7 @@ registerDocCallback(/^pro_edit_img_(\d+)$/, 'pro_edit_img', async (ctx) => {
 });
 
 registerDocCallback('pro_edit_confirm', 'pro_edit_confirm', async (ctx) => {
-  await ctx.answerCallbackQuery().catch(() => {});
-  ctx.session.editCount = (ctx.session.editCount ?? 0) + 1;
-  ctx.session.workflowState = 'waiting_for_doc_edit';
-  
-  // Forward to handleEditPdfDocMessage passing the text as pseudo-message
-  const pseudoCtx = Object.create(ctx);
-  pseudoCtx.message = { text: ctx.session.proEditText || 'تطبيق تعديلات الصور فقط' };
-  await handleEditPdfDocMessage(pseudoCtx);
+  await handleProEditConfirm(ctx);
 });
 // ──────────────────────────────────────────────────────────────────────────────
 
