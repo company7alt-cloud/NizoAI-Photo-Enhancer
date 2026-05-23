@@ -123,6 +123,7 @@ export interface IUser extends Document {
     };
     freePdfsGeneratedToday: number;
     freePdfsLastResetDate: string;
+    usedProMode: boolean;
 }
 export interface IUserModel extends Model<IUser> {
     findByTelegramId(telegramId: number): Promise<IUser | null>;

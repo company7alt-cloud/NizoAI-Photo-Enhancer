@@ -121,6 +121,7 @@ export interface IUser extends Document {
   };
   freePdfsGeneratedToday: number;
   freePdfsLastResetDate: string;
+  usedProMode: boolean;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -348,6 +349,10 @@ const UserSchema = new Schema<IUser>(
     },
     freePdfsGeneratedToday: { type: Number, default: 0 },
     freePdfsLastResetDate: { type: String, default: '' },
+    usedProMode: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: false,

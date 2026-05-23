@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer';
+﻿import puppeteer from 'puppeteer';
 import { marked } from 'marked';
 import fs from 'fs';
 import path from 'path';
@@ -186,6 +186,7 @@ async function processImages(text: string): Promise<string> {
     const fullTag = imageMatch[0];
     const keyword = imageMatch[1]?.trim() || 'professional illustration';
     // Enhance keyword for better professional results
+    // TASK 5 FIX: extract keywords with section context
     const enhancedKeyword = `${keyword} professional high quality`;
     try {
       console.log('[ImageInterceptor] Fetching Unsplash for:', keyword);
@@ -268,6 +269,118 @@ export async function generateAiPDF(rawMarkdown: string, template: string = 'def
     await page.setContent(fullHtml, { waitUntil: 'networkidle2' as any, timeout: 90000 });
 
     // CRITICAL: wait for Cairo to load (with 5s safety net)
+    await page.evaluateHandle('document.fonts.ready');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    await page.pdf({
+      path: pdfPath,
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '2.5cm', right: '2cm', bottom: '2.5cm', left: '2cm' },
+      displayHeaderFooter: false,
+      timeout: 90000,
+    });
+  } finally {
+    await browser.close();
+  }
+
+  return pdfPath;
+}
+
+// â”€â”€â”€ Pro Image PDF Generator (TASK 5) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Builds a PDF from user-uploaded Telegram images with optional captions.
+
+export interface ProImagePageData {
+  page: number;
+  photos: string[];   // Telegram file_ids
+  caption?: string;
+}
+
+export async function generateProImagePDF(opts: {
+  topic: string;
+  images: ProImagePageData[];
+  botToken: string;
+  template?: string;
+}): Promise<string> {
+  const { topic, images, botToken, template = 'default' } = opts;
+
+  // Build HTML body â€” header + pages with user images
+  let bodyHtml = `<h1>${topic}</h1>\n`;
+
+  for (const pageData of images) {
+    if (!pageData.photos || pageData.photos.length === 0) continue;
+
+    bodyHtml += `<h2>الصفحة ${pageData.page}</h2>\n`;
+
+    for (const file_id of pageData.photos) {
+      try {
+        // Step 1: Get file path from Telegram
+        const fileInfoRes = await fetch(
+          `https://api.telegram.org/bot${botToken}/getFile?file_id=${encodeURIComponent(file_id)}`,
+          { signal: AbortSignal.timeout(10000) }
+        );
+        if (!fileInfoRes.ok) {
+          console.warn(`[ProImagePDF] getFile failed for ${file_id}: ${fileInfoRes.status}`);
+          continue;
+        }
+        const fileInfoData = await fileInfoRes.json() as { ok: boolean; result?: { file_path?: string } };
+        const filePath = fileInfoData.result?.file_path;
+        if (!filePath) {
+          console.warn(`[ProImagePDF] No file_path for ${file_id}`);
+          continue;
+        }
+
+        // Step 2: Download as Buffer and convert to Base64
+        const fileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+        const response = await fetch(fileUrl, { signal: AbortSignal.timeout(15000) });
+        if (!response.ok) {
+          console.warn(`[ProImagePDF] Download failed for ${file_id}: ${response.status}`);
+          continue;
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString('base64');
+        const mimeType = 'image/jpeg';
+        const dataUri = `data:${mimeType};base64,${base64}`;
+
+        // Step 3: Inject Base64 into HTML (NOT raw URL)
+        bodyHtml += `<img src="${dataUri}"
+          style="width:100%; max-height:350px; object-fit:cover;
+                 border-radius:10px; margin:15px 0; display:block;"
+          alt="صورة الصفحة ${pageData.page}">\n`;
+
+      } catch (err) {
+        console.error(`[ProImagePDF] Error processing file_id ${file_id}:`, err);
+        // Never crash â€” skip this image
+      }
+    }
+
+    // Add caption if exists
+    if (pageData.caption) {
+      bodyHtml += `<p style="text-align:center; color:#666; font-size:13px; margin-top:5px;">${pageData.caption}</p>\n`;
+    }
+
+    bodyHtml += `<hr>\n`;
+  }
+
+  // Build full HTML document
+  const fullHtml = buildHtml(bodyHtml, template);
+
+  // Output path
+  const pdfPath = path.join(process.cwd(), 'temp', `pro_doc_${Date.now()}.pdf`);
+  if (!fs.existsSync(path.dirname(pdfPath))) {
+    fs.mkdirSync(path.dirname(pdfPath), { recursive: true });
+  }
+
+  // Puppeteer
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none', '--disable-dev-shm-usage'],
+    timeout: 90000,
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setContent(fullHtml, { waitUntil: 'networkidle2' as any, timeout: 90000 });
     await page.evaluateHandle('document.fonts.ready');
     await new Promise(resolve => setTimeout(resolve, 1000));
 

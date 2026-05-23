@@ -1321,6 +1321,28 @@ registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {
         await ctx.answerCallbackQuery({ text: '🛠️ هذه الخدمة مغلقة مؤقتاً للصيانة', show_alert: true });
         return;
     }
+    // TASK 3: Show mode selection before existing flow
+    await ctx.answerCallbackQuery().catch(() => { });
+    await ctx.reply('🆓 Ai Free PDF — اختر النوع:\n\n' +
+        '1️⃣ تلقائي — البوت يولّد المستند فوراً بدون صور مخصصة\n' +
+        '2️⃣ احترافي ✨ — أنت ترفع صورك وتتحكم بكل صفحة\n' +
+        '(النسخة الاحترافية متاحة مرة واحدة فقط مجاناً)', {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '⚡ تلقائي', callback_data: 'free_pdf_auto' }],
+                [{ text: '✨ احترافي', callback_data: 'free_pdf_pro' }],
+                [{ text: '❌ إلغاء', callback_data: 'cancel' }],
+            ],
+        },
+    });
+});
+// â”€â”€â”€ free_pdf_auto: run EXISTING free PDF flow unchanged â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+registerDocCallback('free_pdf_auto', 'free_pdf_auto', async (ctx) => {
+    const adminId = Number(process.env.ADMIN_ID);
+    if (docWelcomeLocked && ctx.from?.id !== adminId) {
+        await ctx.answerCallbackQuery({ text: '🛠️ هذه الخدمة مغلقة مؤقتاً للصيانة', show_alert: true });
+        return;
+    }
     const userId = ctx.from?.id;
     if (!userId)
         return;
@@ -1571,6 +1593,28 @@ registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
         await ctx.answerCallbackQuery({ text: '🛠️ هذه الخدمة مغلقة مؤقتاً للصيانة', show_alert: true });
         return;
     }
+    // TASK 3: Show mode selection before existing flow
+    await ctx.answerCallbackQuery().catch(() => { });
+    await ctx.reply('🤖 NizoAI PDF — اختر النوع:\n\n' +
+        '1️⃣ تلقائي — البوت يولّد المستند فوراً بدون صور مخصصة\n' +
+        '2️⃣ احترافي ✨ — أنت ترفع صورك وتتحكم بكل صفحة\n' +
+        '(النسخة الاحترافية متاحة مرة واحدة فقط مجاناً)', {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '⚡ تلقائي', callback_data: 'nizo_pdf_auto' }],
+                [{ text: '✨ احترافي', callback_data: 'nizo_pdf_pro' }],
+                [{ text: '❌ إلغاء', callback_data: 'cancel' }],
+            ],
+        },
+    });
+});
+// ─── nizo_pdf_auto: run EXISTING NizoAI PDF flow unchanged ───────────────────
+registerDocCallback('nizo_pdf_auto', 'nizo_pdf_auto', async (ctx) => {
+    const adminId = Number(process.env.ADMIN_ID);
+    if (docWelcomeLocked && ctx.from?.id !== adminId) {
+        await ctx.answerCallbackQuery({ text: '🛠️ هذه الخدمة مغلقة مؤقتاً للصيانة', show_alert: true });
+        return;
+    }
     // Reset all related state
     ctx.session.awaitingPremiumImage = false;
     ctx.session.awaitingMoreText = false;
@@ -1585,7 +1629,6 @@ registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
     ctx.session.totalWords = 0;
     ctx.session.estimatedPages = 0;
     ctx.session.aiDocStyle = undefined;
-    // FIX 3: Show style selection FIRST (6 styles in 3 rows, then cancel)
     await ctx.reply(`🤖 <b>NizoAI PDF</b> — اختر طراز المستند:`, {
         parse_mode: 'HTML',
         reply_markup: {
@@ -1610,7 +1653,7 @@ registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
                 ],
                 [
                     // @ts-ignore
-                    { text: 'إلغاء ❌', callback_data: 'premium_cancel_flow', style: 'danger' }
+                    { text: 'ط¥ظ„ط؛ط§ط، â‌Œ', callback_data: 'premium_cancel_flow', style: 'danger' }
                 ]
             ]
         }
@@ -1802,6 +1845,225 @@ registerDocCallback('tpl_cancel_collect', 'tpl_cancel_collect', async (ctx) => {
     ctx.session.isGenerating = false;
     await ctx.reply('✅ تم إلغاء العملية.').catch(() => { });
 });
+// â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+// TASK 4 â€” Professional Image Collection Flow
+// â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+// â”€â”€â”€ cancel: simple cancel handler for pro mode menu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+registerDocCallback('cancel', 'cancel', async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => { });
+    await ctx.editMessageText('❌ تم الإلغاء.').catch(() => { });
+    // Clear any pro session state
+    ctx.session.proImageMode = false;
+    ctx.session.proImageData = [];
+    ctx.session.proImageCurrentPage = null;
+    ctx.session.proOriginalTopic = undefined;
+    ctx.session.proModeType = undefined;
+});
+// â”€â”€â”€ Helper: build page-selection keyboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function buildProPageKeyboard(completedPages = []) {
+    const activeRow = [1, 2, 3, 4, 5].map(n => ({
+        text: completedPages.includes(n) ? `✅ ${n}` : `${n}`,
+        callback_data: `pro_page_${n}`
+    }));
+    const lockedRow = [6, 7, 8, 9, 10].map(n => ({
+        text: `🔒 ${n}`,
+        callback_data: 'pro_page_locked'
+    }));
+    return {
+        inline_keyboard: [
+            activeRow,
+            lockedRow,
+            [
+                // @ts-ignore
+                { text: '✅ موافق', callback_data: 'pro_confirm', style: 'success' },
+                // @ts-ignore
+                { text: '❌ إلغاء', callback_data: 'cancel', style: 'danger' }
+            ]
+        ]
+    };
+}
+// â”€â”€â”€ free_pdf_pro: entry point for Free PDF Professional Mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+registerDocCallback('free_pdf_pro', 'free_pdf_pro', async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId)
+        return;
+    // STEP A: Check usage limit
+    const user = await User_1.User.findOne({ telegramId: userId });
+    if (user?.usedProMode) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await ctx.reply('⚠️ لقد استخدمت النسخة الاحترافية مرة واحدة بالفعل.\n' +
+            'للاستخدام غير المحدود، تواصل مع المطور.');
+        return;
+    }
+    await ctx.answerCallbackQuery().catch(() => { });
+    // STEP B: Ask for topic
+    ctx.session.proImageMode = true;
+    ctx.session.proImageData = [];
+    ctx.session.proImageCurrentPage = null;
+    ctx.session.proOriginalTopic = undefined;
+    ctx.session.proModeType = 'free';
+    ctx.session.awaitingFreeAiTopic = true; // reuse existing topic interceptor flag
+    await ctx.reply('✍️ أرسل لي موضوع المستند الذي تريده:');
+});
+// â”€â”€â”€ nizo_pdf_pro: entry point for NizoAI PDF Professional Mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+registerDocCallback('nizo_pdf_pro', 'nizo_pdf_pro', async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId)
+        return;
+    // STEP A: Check usage limit
+    const user = await User_1.User.findOne({ telegramId: userId });
+    if (user?.usedProMode) {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await ctx.reply('⚠️ لقد استخدمت النسخة الاحترافية مرة واحدة بالفعل.\n' +
+            'للاستخدام غير المحدود، تواصل مع المطور.');
+        return;
+    }
+    await ctx.answerCallbackQuery().catch(() => { });
+    // STEP B: Ask for topic
+    ctx.session.proImageMode = true;
+    ctx.session.proImageData = [];
+    ctx.session.proImageCurrentPage = null;
+    ctx.session.proOriginalTopic = undefined;
+    ctx.session.proModeType = 'nizo';
+    ctx.session.awaitingFreeAiTopic = true; // reuse existing interceptor for topic
+    await ctx.reply('✍️ أرسل لي موضوع المستند الذي تريده:');
+});
+// â”€â”€â”€ pro_page_locked: locked page pressed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+registerDocCallback('pro_page_locked', 'pro_page_locked', async (ctx) => {
+    await ctx.answerCallbackQuery({
+        text: '🔒 هذه الميزة للمشتركين المميزين. تواصل مع المطور للتفعيل.',
+        show_alert: true
+    }).catch(() => { });
+    // Do NOT send a new message.
+});
+// â”€â”€â”€ pro_page_1..5: active page pressed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+for (let pageN = 1; pageN <= 5; pageN++) {
+    const N = pageN;
+    registerDocCallback(`pro_page_${N}`, `pro_page_${N}`, async (ctx) => {
+        await ctx.answerCallbackQuery().catch(() => { });
+        ctx.session.proImageCurrentPage = N;
+        await ctx.reply(`📸 الصفحة ${N}\n` +
+            `أرسل صورة أو أكثر (الحد الأقصى 5 صور)\n` +
+            `✏️ يمكنك إرسال تعليق مع الصورة ليظهر تحتها في المستند\n` +
+            `✅ عند الانتهاء اضغط الزر أدناه`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: `✅ تم الصفحة ${N}`, callback_data: `pro_page_done_${N}` }],
+                    [{ text: '↩️ تراجع', callback_data: 'pro_page_back' }],
+                ],
+            },
+        });
+    });
+}
+// â”€â”€â”€ pro_page_done_1..5: page done pressed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+for (let pageN = 1; pageN <= 5; pageN++) {
+    const N = pageN;
+    registerDocCallback(`pro_page_done_${N}`, `pro_page_done_${N}`, async (ctx) => {
+        await ctx.answerCallbackQuery().catch(() => { });
+        // FIX: State Trap â€” clear page lock immediately
+        ctx.session.proImageCurrentPage = null;
+        // Mark this page as completed in the data array
+        if (!ctx.session.proImageData)
+            ctx.session.proImageData = [];
+        const existingPage = ctx.session.proImageData.find((p) => p.page === N);
+        if (!existingPage) {
+            ctx.session.proImageData.push({ page: N, photos: [] });
+        }
+        // Compute completed pages for keyboard update
+        const completedPages = (ctx.session.proImageData || [])
+            .filter((p) => p.photos && p.photos.length > 0)
+            .map((p) => p.page);
+        // Edit page-selection message if we have its ID
+        if (ctx.session.proImageMessageId && ctx.chat?.id) {
+            await ctx.api.editMessageReplyMarkup(ctx.chat.id, ctx.session.proImageMessageId, { reply_markup: buildProPageKeyboard(completedPages) }).catch(() => { });
+        }
+        await ctx.reply(`✅ تم حفظ صور الصفحة ${N}! اختر صفحة أخرى أو اضغط موافق.`);
+    });
+}
+// â”€â”€â”€ pro_page_back: go back to page selection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+registerDocCallback('pro_page_back', 'pro_page_back', async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => { });
+    ctx.session.proImageCurrentPage = null;
+    await ctx.reply('↩️ تم الرجوع. اختر صفحة من القائمة أعلاه.');
+});
+// â”€â”€â”€ pro_confirm: user finished uploading, generate PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+registerDocCallback('pro_confirm', 'pro_confirm', async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => { });
+    const proData = ctx.session.proImageData || [];
+    const pagesWithPhotos = proData.filter((p) => p.photos && p.photos.length > 0);
+    if (pagesWithPhotos.length === 0) {
+        await ctx.reply('⚠️ لم ترفع أي صور بعد! ارفع صورة واحدة على الأقل.');
+        return;
+    }
+    const topic = ctx.session.proOriginalTopic || 'مستند احترافي';
+    const userId = ctx.from?.id;
+    if (!userId)
+        return;
+    await ctx.reply('⏳ جاري إنشاء مستندك الاحترافي... يرجى الانتظار');
+    try {
+        const { generateProImagePDF } = await Promise.resolve().then(() => __importStar(require('./services/aiPdfService')));
+        const pdfPath = await generateProImagePDF({
+            topic,
+            images: proData,
+            botToken: process.env.DOC_BOT_TOKEN || process.env.BOT_TOKEN || '',
+        });
+        await ctx.replyWithDocument(new grammy_1.InputFile(pdfPath, `ProDoc_${Date.now()}.pdf`), { caption: '✅ مستندك الاحترافي جاهز! 📄✨' });
+        // Mark pro mode as used
+        await User_1.User.findOneAndUpdate({ telegramId: userId }, { usedProMode: true });
+        // Clear all pro session fields
+        ctx.session.proImageMode = false;
+        ctx.session.proImageData = [];
+        ctx.session.proImageCurrentPage = null;
+        ctx.session.proOriginalTopic = undefined;
+        ctx.session.proImageMessageId = undefined;
+        ctx.session.proModeType = undefined;
+        ctx.session.proModeUsed = true;
+    }
+    catch (err) {
+        console.error('[ProMode PDF Error]', err);
+        await ctx.reply(`❌ فشل إنشاء المستند: ${err?.message || 'خطأ غير معروف'}`);
+    }
+});
+// â”€â”€â”€ Pro Mode: photo handler (STEP F) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+docBot.on(['message:photo', 'message:document'], withDocBotHandler('pro_image_collector', async (ctx, next) => {
+    // Only handle if in pro mode AND a page is selected
+    if (!ctx.session.proImageMode)
+        return next();
+    const pageN = ctx.session.proImageCurrentPage;
+    // FIX: State Trap â€” ignore photos if no page is selected
+    if (pageN === null || pageN === undefined) {
+        return next();
+    }
+    let fileId;
+    if (ctx.message?.photo) {
+        fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+    }
+    else if (ctx.message?.document && ctx.message.document.mime_type?.startsWith('image/')) {
+        fileId = ctx.message.document.file_id;
+    }
+    if (!fileId)
+        return next();
+    // Init page data if needed
+    if (!ctx.session.proImageData)
+        ctx.session.proImageData = [];
+    let pageData = ctx.session.proImageData.find((p) => p.page === pageN);
+    if (!pageData) {
+        pageData = { page: pageN, photos: [] };
+        ctx.session.proImageData.push(pageData);
+    }
+    const count = pageData.photos.length;
+    if (count >= 5) {
+        await ctx.reply(`⚠️ الحد الأقصى 5 صور لكل صفحة. اضغط 'تم الصفحة' للمتابعة.`);
+        return;
+    }
+    // Save file_id and caption
+    pageData.photos.push(fileId);
+    const caption = ctx.message?.caption || ctx.message?.text || undefined;
+    if (caption && !pageData.caption) {
+        pageData.caption = caption;
+    }
+    await ctx.reply(`✅ تم استلام الصورة ${count + 1}/5`);
+}));
 // ─── docBot: Premium Image Upload Handler ───────────────────────────────────────
 docBot.on(['message:photo', 'message:document'], withDocBotHandler('premium_image_upload', async (ctx, next) => {
     if (ctx.session.awaitingPremiumImage) {

@@ -222,6 +222,10 @@ const UserSchema = new mongoose_1.Schema({
     },
     freePdfsGeneratedToday: { type: Number, default: 0 },
     freePdfsLastResetDate: { type: String, default: '' },
+    usedProMode: {
+        type: Boolean,
+        default: false,
+    },
 }, {
     timestamps: false,
     versionKey: false,

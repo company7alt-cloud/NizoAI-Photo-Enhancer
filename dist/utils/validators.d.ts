@@ -129,6 +129,18 @@ export interface SessionData {
     awaitingEditRequest?: boolean;
     isAwaitingImage?: boolean;
     currentService?: string | null;
+    proImageMode?: boolean;
+    proImagePageCount?: number;
+    proImageData?: {
+        page: number;
+        photos: string[];
+        caption?: string;
+    }[];
+    proImageCurrentPage?: number | null;
+    proImageMessageId?: number;
+    proOriginalTopic?: string;
+    proModeUsed?: boolean;
+    proModeType?: 'free' | 'nizo';
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

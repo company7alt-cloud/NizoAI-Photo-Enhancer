@@ -149,6 +149,20 @@ export interface SessionData {
   // Image Bot
   isAwaitingImage?: boolean;
   currentService?: string | null;
+
+  // Professional Mode — Image Collection
+  proImageMode?: boolean;
+  proImagePageCount?: number;
+  proImageData?: {
+    page: number;
+    photos: string[];       // Telegram file_ids
+    caption?: string;
+  }[];
+  proImageCurrentPage?: number | null;
+  proImageMessageId?: number;
+  proOriginalTopic?: string;
+  proModeUsed?: boolean;    // usage limit flag (session level)
+  proModeType?: 'free' | 'nizo'; // which flow triggered pro mode
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;
