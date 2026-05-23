@@ -118,9 +118,20 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   if (data.startsWith('filter_')) {
     await ctx.answerCallbackQuery().catch(() => {});
 
+    const filterType = data.replace('filter_', '');
+    const cost = ['anime', 'ghibli'].includes(filterType) ? 3 : 2;
+
+    // @ts-ignore -- filterNames used as reference; actual lookup done in imageHandler
     const filterNames: Record<string, string> = {
       'filter_restore': '🪄 ترميم الصور القديمة',
       'filter_face': '👤 تصفية الوجه',
+      'filter_color': '🎨 تلوين الصور',
+      'filter_anime': '🌸 تحويل أنمي',
+      'filter_ghibli': ' تأثير جيبلي',
+    };
+
+    if (ctx.session) ctx.session.awaitingFilterAction = data;
+
     await ctx.editMessageText(
       `🖼️ <b>أرسل الصورة الآن</b>\n\n` +
       `سيتم تطبيق الفلتر خلال 30-60 ثانية \n` +

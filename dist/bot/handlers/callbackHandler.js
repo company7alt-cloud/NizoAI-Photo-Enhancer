@@ -137,6 +137,9 @@ async function callbackHandler(ctx) {
     // ── Handle filter button press — ALL filters use unified awaitingFilterAction flow ──
     if (data.startsWith('filter_')) {
         await ctx.answerCallbackQuery().catch(() => { });
+        const filterType = data.replace('filter_', '');
+        const cost = ['anime', 'ghibli'].includes(filterType) ? 3 : 2;
+        // @ts-ignore -- filterNames used as reference; actual lookup done in imageHandler
         const filterNames = {
             'filter_restore': '🪄 ترميم الصور القديمة',
             'filter_face': '👤 تصفية الوجه',
@@ -144,38 +147,8 @@ async function callbackHandler(ctx) {
             'filter_anime': '🌸 تحويل أنمي',
             'filter_ghibli': ' تأثير جيبلي',
         };
-        const fName = filterNames[data] || 'هذا الفلتر';
-        // Set unified awaiting state — imageHandler interceptor handles processing
-        ctx.session.awaitingFilterAction = data;
-        ctx.session.inFiltersMenu = false;
-        await ctx.editMessageText(`📎 <b>أرسل الصورة الآن:</b>\n\nقم بإرسال الصورة التي تريد تطبيق ( <b>${fName}</b> ) عليها ليتم معالجتها فوراً.`, { parse_mode: 'HTML' }).catch(() => { });
-        return;
-    }
-    // ── Handle filter selection ───────────────────────────────────────────────────
-    if (['filter_face', 'filter_color', 'filter_anime', 'filter_ghibli'].includes(data)) {
-        await ctx.answerCallbackQuery().catch(() => { });
-        const costMap = {
-            face: 2, color: 2, anime: 3, ghibli: 3
-        };
-        const filterType = data.replace('filter_', '');
-        const cost = costMap[filterType];
-        const filterUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });
-        if (!filterUser)
-            return;
-        const filterAdminIds = (process.env.ADMIN_IDS || '').split(',');
-        const isFilterAdmin = filterAdminIds.includes(ctx.from.id.toString());
-        if (!isFilterAdmin && filterUser.dailyQuota < cost) {
-            await ctx.reply(`⚠️ رصيدك غير كافٍ!\nتحتاج <b>${cost} محاولات</b> لهذا الفلتر.\nرصيدك الحالي: <b>${filterUser.dailyQuota}</b>`, { parse_mode: 'HTML' });
-            return;
-        }
-        await User_1.User.updateOne({ telegramId: ctx.from.id.toString() }, { $set: {
-                awaitingFilterImage: true,
-                selectedFilterType: filterType,
-                awaitingCustomEraserImage: false,
-                awaitingCustomEraserZone: false,
-                awaitingNanoBananaImage: false,
-                awaitingAutoEraserImage: false
-            } });
+        if (ctx.session)
+            ctx.session.awaitingFilterAction = data;
         await ctx.editMessageText(`🖼️ <b>أرسل الصورة الآن</b>\n\n` +
             `سيتم تطبيق الفلتر خلال 30-60 ثانية \n` +
             `⚡ <b>التكلفة: ${cost} محاولات</b>\n` +
