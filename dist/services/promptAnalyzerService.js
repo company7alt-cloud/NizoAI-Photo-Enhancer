@@ -112,8 +112,8 @@ function analyzeAndEnhancePrompt(userRawPrompt) {
 }
 function buildPageLimitGuardMessage(pageLimit) {
     return (`⚠️ *الحد الأقصى المسموح به هو ${pageLimit} صفحات.*\n\n` +
-        'إذا كنت تحتاج وثيقة أطول، تواصل مع المطور لفتح ' +
-        'صلاحية الاشتراك الممتد:\n👉 @NizarDeveloper');
+        'إذا كنت تحتاج وثيقة أطول، يمكنك التواصل مع المطور لفتح ' +
+        'صلاحية الاشتراك الممتد.');
 }
 function detectDocumentType(prompt) {
     const normalized = normalizeArabic(prompt).toLowerCase();

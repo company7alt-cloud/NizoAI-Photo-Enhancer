@@ -104,6 +104,7 @@ export interface SessionData {
   awaitingFreeAiTopic?: boolean;
   awaitingPremiumAiTopic?: boolean;
   premiumAutoMode?: boolean;
+  isAutoMode?: boolean;
   awaitingPremiumImage?: boolean;
   awaitingPremiumText?: boolean;
   awaitingCustomPages?: boolean;
@@ -172,6 +173,7 @@ export interface SessionData {
   editCount?: number;
   lastImageCount?: number;
   lastImageCountPerPage?: number[];   // images per markdown section/page (Task 8 Fix)
+  lastPageCount?: number;
   proEditMenuMessageId?: number;      // message ID for in-place button ✅ updates (Task 8 Fix)
 
   // ── Task 2: Edit State Machine (prevents TypeScript errors) ──────────────

@@ -1379,9 +1379,9 @@ registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {
         reply_markup: {
             inline_keyboard: [
                 // @ts-ignore
-                [{ text: 'تلقائي', callback_data: 'free_pdf_auto', style: 'primary' }],
+                [{ text: '✏️ تلقائي', callback_data: 'free_pdf_auto', style: 'primary' }],
                 // @ts-ignore
-                [{ text: 'احترافي', callback_data: 'free_pdf_pro', style: 'primary' }],
+                [{ text: '🖼✏️ احترافي', callback_data: 'free_pdf_pro', style: 'primary' }],
                 // @ts-ignore
                 [{ text: 'إلغاء', callback_data: 'cancel', style: 'danger' }],
             ],
@@ -1654,9 +1654,9 @@ registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
         reply_markup: {
             inline_keyboard: [
                 // @ts-ignore
-                [{ text: 'تلقائي', callback_data: 'nizo_pdf_auto', style: 'primary' }],
+                [{ text: '✏️ تلقائي', callback_data: 'nizo_pdf_auto', style: 'primary' }],
                 // @ts-ignore
-                [{ text: 'احترافي', callback_data: 'nizo_pdf_pro', style: 'primary' }],
+                [{ text: '🖼✏️ احترافي', callback_data: 'nizo_pdf_pro', style: 'primary' }],
                 // @ts-ignore
                 [{ text: 'إلغاء', callback_data: 'cancel', style: 'danger' }],
             ],
@@ -1775,7 +1775,15 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
         if (targetPages > pageLimit) {
             if (!isAuto)
                 await User_1.User.updateOne({ _id: user._id }, { $inc: { dailyQuota: manualCost } }); // refund
-            await ctx.reply((0, promptAnalyzerService_1.buildPageLimitGuardMessage)(pageLimit), { parse_mode: 'Markdown' });
+            await ctx.reply((0, promptAnalyzerService_1.buildPageLimitGuardMessage)(pageLimit), {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[
+                            // @ts-ignore
+                            { text: '💬 تواصل مع المطور', url: 'https://t.me/NizarDeveloper', style: 'primary' }
+                        ]]
+                }
+            });
             return;
         }
         await ctx.answerCallbackQuery();
@@ -1807,22 +1815,25 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
                 }
                 await User_1.User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -finalCost } });
             }
-            const pdfPath = await (0, aiPdfService_1.generateAiPDF)(cleanMarkdown, template);
+            ctx.session.isAutoMode = isAuto;
+            const pdfPath = await (0, aiPdfService_1.generateAiPDF)(cleanMarkdown, template, isAuto);
             await loadingState.stop();
+            const actualPageCount = (0, aiPdfService_1.getHtmlPageCount)(cleanMarkdown);
+            ctx.session.lastPageCount = actualPageCount;
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfPath, `NizoAI_Doc_${Date.now()}.pdf`), {
                 caption: `✅ <b>تم إنشاء مستندك الاحترافي!</b>\n` +
                     `🎨 القالب: ${template.toUpperCase()}\n` +
                     `💳 التكلفة: ${finalCost} نقاط\n` +
-                    `📄 الصفحات الفعّالة: ${finalPages}`,
+                    `📄 الصفحات الفعّالة: ${ctx.session.lastPageCount}`,
                 parse_mode: 'HTML'
             });
             ctx.session.lastGeneratedDoc = {
                 text: cleanMarkdown,
-                pageCount: finalPages,
+                pageCount: ctx.session.lastPageCount,
                 originalCost: finalCost
             };
             ctx.session.lastAiGeneratedText = cleanMarkdown;
-            ctx.session.lastAiDocPages = finalPages;
+            ctx.session.lastAiDocPages = ctx.session.lastPageCount;
             // Task 4: Store generation context for edit routing
             ctx.session.lastOriginalPrompt = systemPrompt + '\n\n' + collectedText;
             ctx.session.lastGeneratedTopic = collectedText;
@@ -2253,6 +2264,42 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
     // ── Paid PDF Text Loop ──────────────────────────────
     if (ctx.session.awaitingMoreText && ctx.message?.text) {
         const incoming = ctx.message.text.trim();
+        const _lowerIncoming = incoming.toLowerCase();
+        const _nizoImageKeywords = [
+            'صورة', 'صور', 'صوره', 'صوري', 'صورتي', 'الصورة', 'الصور',
+            'صورك', 'اضف صورة', 'ضف صورة', 'أضف صورة',
+            'مع صورة', 'فيه صورة', 'يحتوي صورة', 'تضمين صورة',
+            'صور احترافية', 'صور توضيحية', 'صور للمستند',
+            'ادرج صورة', 'أدرج صورة', 'ارفق صورة',
+            'حط صورة', 'خلي فيه صورة', 'ابغا صورة',
+            'image', 'images', 'photo', 'photos', 'picture', 'pictures',
+            'img', 'add image', 'with image', 'include image',
+            'صورة لكل', 'صور لكل', 'صورة في كل'
+        ];
+        const _foundNizoKw = _nizoImageKeywords.find(kw => _lowerIncoming.includes(kw.toLowerCase()));
+        if (_foundNizoKw && incoming !== 'تم' && incoming !== 'تم.' && incoming !== 'انتهيت') {
+            await ctx.reply(`⚠️ <b>تنبيه بخصوص الصور</b>\n\n` +
+                `لقد قمت بطلب يتضمن صورًا باستخدام الكلمة: <b>"${_foundNizoKw}"</b>.\n\n` +
+                `⚠️ <b>الوضع التلقائي (✏️ تلقائي) مخصص للنصوص فقط ولا يدعم إضافة الصور تلقائيًا.</b>\n\n` +
+                `للحصول على مستند احترافي يحتوي على صورك الخاصة وتنسيقها بشكل كامل، يرجى استخدام <b>الوضع الاحترافي (🖼✏️ احترافي)</b>.`, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            // @ts-ignore
+                            { text: '🤖 NizoAI PDF', callback_data: 'start_premium_ai', style: 'primary' },
+                            // @ts-ignore
+                            { text: '🆓 Ai Free PDF', callback_data: 'start_free_ai', style: 'primary' }
+                        ],
+                        [
+                            // @ts-ignore
+                            { text: '❌ إلغاء', callback_data: 'cancel', style: 'danger' }
+                        ]
+                    ]
+                }
+            });
+            return;
+        }
         if (incoming === 'تم' || incoming === 'تم.' || incoming === 'انتهيت') {
             // Style already chosen upfront — go DIRECTLY to page selection
             ctx.session.awaitingMoreText = false;
@@ -2444,6 +2491,44 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
         }
         // ── Short Prompt Guard ──────────────────────────
         const _userText = ctx.message?.text?.trim() ?? '';
+        if (!ctx.session.proImageMode) {
+            const _lowerText = _userText.toLowerCase();
+            const _imageKeywords = [
+                'صورة', 'صور', 'صوره', 'صوري', 'صورتي', 'الصورة', 'الصور',
+                'صورك', 'اضف صورة', 'ضف صورة', 'أضف صورة',
+                'مع صورة', 'فيه صورة', 'يحتوي صورة', 'تضمين صورة',
+                'صور احترافية', 'صور توضيحية', 'صور للمستند',
+                'ادرج صورة', 'أدرج صورة', 'ارفق صورة',
+                'حط صورة', 'خلي فيه صورة', 'ابغا صورة',
+                'image', 'images', 'photo', 'photos', 'picture', 'pictures',
+                'img', 'add image', 'with image', 'include image',
+                'صورة لكل', 'صور لكل', 'صورة في كل'
+            ];
+            const _foundKw = _imageKeywords.find(kw => _lowerText.includes(kw.toLowerCase()));
+            if (_foundKw) {
+                await ctx.reply(`⚠️ <b>تنبيه بخصوص الصور</b>\n\n` +
+                    `لقد قمت بطلب يتضمن صورًا باستخدام الكلمة: <b>"${_foundKw}"</b>.\n\n` +
+                    `⚠️ <b>الوضع التلقائي (✏️ تلقائي) مخصص للنصوص فقط ولا يدعم إضافة الصور تلقائيًا.</b>\n\n` +
+                    `للحصول على مستند احترافي يحتوي على صورك الخاصة وتنسيقها بشكل كامل، يرجى استخدام <b>الوضع الاحترافي (🖼✏️ احترافي)</b>.`, {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                // @ts-ignore
+                                { text: '🤖 NizoAI PDF', callback_data: 'start_premium_ai', style: 'primary' },
+                                // @ts-ignore
+                                { text: '🆓 Ai Free PDF', callback_data: 'start_free_ai', style: 'primary' }
+                            ],
+                            [
+                                // @ts-ignore
+                                { text: '❌ إلغاء', callback_data: 'cancel', style: 'danger' }
+                            ]
+                        ]
+                    }
+                });
+                return;
+            }
+        }
         const _charCount = _userText.length;
         const _wordCount = _userText.split(/\s+/).filter(Boolean).length;
         if (_charCount < 100 || _wordCount < 20) {
@@ -2458,7 +2543,15 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
         const detectedPages = promptAnalysis.detectedPages;
         const pageLimit = await getUserPageLimit(userId);
         if (detectedPages > pageLimit) {
-            await ctx.reply((0, promptAnalyzerService_1.buildPageLimitGuardMessage)(pageLimit), { parse_mode: 'Markdown' });
+            await ctx.reply((0, promptAnalyzerService_1.buildPageLimitGuardMessage)(pageLimit), {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[
+                            // @ts-ignore
+                            { text: '💬 تواصل مع المطور', url: 'https://t.me/NizarDeveloper', style: 'primary' }
+                        ]]
+                }
+            });
             return;
         }
         const loadingState = await (0, loading_1.showDynamicLoading)(ctx, '⏳ جاري الكتابة بالذكاء الاصطناعي');
@@ -2476,15 +2569,19 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
             if (!aiResponse.trim())
                 throw new Error('AI returned empty content');
             const cleanMarkdown = aiResponse.replace(/^```[a-z]*\n?/gm, '').replace(/```$/gm, '');
-            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(cleanMarkdown);
+            ctx.session.isAutoMode = true;
+            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(cleanMarkdown, 'default', true);
+            ctx.session.isAutoMode = false;
             const fileName = `nizoai_free_${Date.now()}.pdf`;
             await loadingState.stop();
-            await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), { caption: '✅ مستندك المجاني جاهز! 📄\n\nمدعوم بـ AI Free PDF ⚡' });
+            const actualPageCount = (0, aiPdfService_1.getHtmlPageCount)(cleanMarkdown);
+            ctx.session.lastPageCount = actualPageCount;
+            await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), { caption: `✅ مستندك المجاني جاهز! 📄\n\n📄 عدد الصفحات الفعّالة: ${ctx.session.lastPageCount}\n\nمدعوم بـ AI Free PDF ⚡` });
             ctx.session.lastAiGeneratedText = cleanMarkdown;
-            ctx.session.lastAiDocPages = detectedPages;
+            ctx.session.lastAiDocPages = ctx.session.lastPageCount;
             ctx.session.lastGeneratedDoc = {
                 text: cleanMarkdown,
-                pageCount: detectedPages,
+                pageCount: ctx.session.lastPageCount,
                 originalCost: 0
             }; // Adding back compatibility for edit Workflow
             // Task 4: Store generation context for edit routing

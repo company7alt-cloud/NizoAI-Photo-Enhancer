@@ -120,12 +120,25 @@ export function analyzeAndEnhancePrompt(userRawPrompt: string): PromptAnalysisRe
   };
 }
 
-export function buildPageLimitGuardMessage(pageLimit: number): string {
-  return (
-    `⚠️ *الحد الأقصى المسموح به هو ${pageLimit} صفحات.*\n\n` +
-    'إذا كنت تحتاج وثيقة أطول، تواصل مع المطور لفتح ' +
-    'صلاحية الاشتراك الممتد:\n👉 @NizarDeveloper'
-  );
+export function buildPageLimitGuardMessage(pageLimit: number): {
+  text: string;
+  reply_markup: object;
+} {
+  return {
+    text:
+      `⚠️ الحد الأقصى المسموح به هو ${pageLimit} صفحات.\n\n` +
+      'إذا كنت تحتاج وثيقة أطول، تواصل مع المطور لفتح صلاحية الاشتراك الممتد.',
+    reply_markup: {
+      inline_keyboard: [[
+        // @ts-ignore
+        {
+          text: '💬 تواصل مع المطور',
+          url: 'https://t.me/NizarDeveloper',
+          style: 'primary' as any,
+        }
+      ]]
+    }
+  };
 }
 
 function detectDocumentType(prompt: string): DocumentType {

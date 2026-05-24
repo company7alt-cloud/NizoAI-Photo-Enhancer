@@ -1,4 +1,4 @@
-﻿import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer';
 import { marked } from 'marked';
 import fs from 'fs';
 import path from 'path';
@@ -149,7 +149,12 @@ function buildHtml(bodyContent: string, template: string): string {
 </html>`;
 }
 
-async function processImages(text: string): Promise<string> {
+async function processImages(text: string, isAutoMode?: boolean): Promise<string> {
+  if (isAutoMode === true) {
+    // AUTO MODE: skip ALL image fetching
+    // AND remove all [IMAGE:] tags to keep PDF text clean
+    return text.replace(/\[IMAGE:\s*(.*?)\]/ig, '');
+  }
   // ── DISABLED: Old Pollinations URL interceptor (replaced by [IMAGE: keyword] system) ──
   // Fix 1: Convert markdown images to base64
   // Fix 2: Fix broken HTML img tags (RTL reversal causes src to appear wrong)
@@ -238,12 +243,12 @@ function getFallbackImage(query: string): string {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export async function generateAiPDF(rawMarkdown: string, template: string = 'default'): Promise<string> {
+export async function generateAiPDF(rawMarkdown: string, template: string = 'default', isAutoMode?: boolean): Promise<string> {
   // 1. Sanitize
   const cleanMarkdown = sanitizeForPdf(rawMarkdown);
 
   // 1.5. Process Images
-  const processedText = await processImages(cleanMarkdown);
+  const processedText = await processImages(cleanMarkdown, isAutoMode);
 
   // 2. Markdown → HTML
   const bodyHtml = await Promise.resolve(marked.parse(processedText));
@@ -323,10 +328,34 @@ export async function generateAiPDFFromHtml(fullHtml: string): Promise<string> {
   return pdfPath;
 }
 
+export function getHtmlPageCount(rawMarkdown: string): number {
+  const clean = rawMarkdown
+    .replace(/[\u2028\u2029]/g, '\n')
+    .replace(/[\u0000-\u0008]/g, '')
+    .replace(/[\u000B\u000C]/g, '\n')
+    .replace(/[\u000E-\u001F]/g, '')
+    .replace(/[\uFFFD]/g, '')
+    .replace(/^```[a-z]*\n?/gm, '')
+    .replace(/^```$/gm, '');
+
+  const bodyHtml = String(marked.parse(clean));
+  const hrMatches = bodyHtml.match(/<hr\b[^>]*>/gi);
+  const classMatches = bodyHtml.match(/class="page"/gi);
+  const pbMatches = bodyHtml.match(/page-break-after|page-break-before/gi);
+  
+  const hrCount = hrMatches ? hrMatches.length : 0;
+  const classCount = classMatches ? classMatches.length : 0;
+  const pbCount = pbMatches ? pbMatches.length : 0;
+  
+  const totalBreaks = Math.max(hrCount, classCount, pbCount);
+  return totalBreaks > 0 ? totalBreaks + 1 : 1;
+}
+
+
 // ─── Generate PDF + return HTML for caching (BUG 3) ──────────────────────────
-export async function generateAiPDFAndHtml(rawMarkdown: string, template: string = 'default'): Promise<{ pdfPath: string; html: string }> {
+export async function generateAiPDFAndHtml(rawMarkdown: string, template: string = 'default', isAutoMode?: boolean): Promise<{ pdfPath: string; html: string }> {
   const cleanMarkdown = sanitizeForPdf(rawMarkdown);
-  const processedText = await processImages(cleanMarkdown);
+  const processedText = await processImages(cleanMarkdown, isAutoMode);
   const bodyHtml = await Promise.resolve(marked.parse(processedText));
   const fullHtml = buildHtml(bodyHtml, template);
   const pdfPath = await generateAiPDFFromHtml(fullHtml);

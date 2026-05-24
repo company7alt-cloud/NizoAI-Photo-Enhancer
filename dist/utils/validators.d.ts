@@ -94,6 +94,7 @@ export interface SessionData {
     awaitingFreeAiTopic?: boolean;
     awaitingPremiumAiTopic?: boolean;
     premiumAutoMode?: boolean;
+    isAutoMode?: boolean;
     awaitingPremiumImage?: boolean;
     awaitingPremiumText?: boolean;
     awaitingCustomPages?: boolean;
@@ -148,6 +149,7 @@ export interface SessionData {
     editCount?: number;
     lastImageCount?: number;
     lastImageCountPerPage?: number[];
+    lastPageCount?: number;
     proEditMenuMessageId?: number;
     awaitingAutoEdit?: boolean;
     awaitingProEditText?: boolean;
