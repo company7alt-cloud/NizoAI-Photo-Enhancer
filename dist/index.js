@@ -1775,18 +1775,50 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
         if (targetPages > pageLimit) {
             if (!isAuto)
                 await User_1.User.updateOne({ _id: user._id }, { $inc: { dailyQuota: manualCost } }); // refund
-            await ctx.reply((0, promptAnalyzerService_1.buildPageLimitGuardMessage)(pageLimit), {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [[
-                            // @ts-ignore
-                            { text: '💬 تواصل مع المطور', url: 'https://t.me/NizarDeveloper', style: 'primary' }
-                        ]]
-                }
-            });
+            const _plg1 = (0, promptAnalyzerService_1.buildPageLimitGuardMessage)(pageLimit);
+            await ctx.reply(_plg1.text, { reply_markup: _plg1.reply_markup });
             return;
         }
         await ctx.answerCallbackQuery();
+        // ── Premium Image Guard v2 ────────────────────────
+        function _detectImgKw4(t) {
+            const kws = [
+                'صورة', 'صور', 'صوره', 'صورتي', 'الصورة', 'الصور',
+                'اضف صورة', 'ضف صورة', 'أضف صورة', 'ادرج صورة',
+                'أدرج صورة', 'ارفق صورة', 'حط صورة', 'خلي فيه صورة',
+                'ابغا صورة', 'مع صورة', 'فيه صورة', 'يحتوي صورة',
+                'تضمين صورة', 'صور احترافية', 'صور توضيحية',
+                'صور للمستند', 'صورة لكل', 'صور لكل', 'صورة في كل',
+                'image', 'images', 'photo', 'photos', 'picture', 'pictures',
+                'img', 'add image', 'with image', 'include image',
+            ];
+            const out = [];
+            t.split('\n').forEach((line, i) => {
+                const low = line.toLowerCase().trim();
+                if (!low)
+                    return;
+                const hits = Array.from(new Set(kws.filter(k => low.includes(k.toLowerCase()))));
+                if (hits.length)
+                    out.push(`• السطر ${i + 1}: [ ${hits.join('، ')} ]`);
+            });
+            return out;
+        }
+        const _fix4Issues = _detectImgKw4(ctx.session.collectedText || '');
+        if (_fix4Issues.length > 0) {
+            ctx.session.awaitingMoreText = true;
+            ctx.session.collectedText = '';
+            ctx.session.totalWords = 0;
+            await ctx.answerCallbackQuery().catch(() => { });
+            await ctx.reply('⚠️ <b>تنبيه — المحتوى يحتوي على طلب صور</b>\n\n' +
+                'تم اكتشاف كلمات متعلقة بالصور في المواضع التالية:\n' +
+                _fix4Issues.join('\n') + '\n\n' +
+                '✏️ يرجى إعادة إرسال المحتوى بدون كلمات الصور.\n\n' +
+                '📌 <b>يرجى اتباع الخطوات التالية:</b>\n' +
+                '١. احذف جميع الكلمات المذكورة أعلاه من نصك\n' +
+                '٢. أرسل النص كاملاً من جديد ثم أرسل "تم"', { parse_mode: 'HTML' });
+            return;
+        }
+        // ─────────────────────────────────────────────────
         const loadingState = await (0, loading_1.showDynamicLoading)(ctx, '⏳ جاري إنشاء مستندك بالذكاء الاصطناعي');
         try {
             const { systemPrompt, userContent } = (0, promptAnalyzerService_1.buildEnterprisePrompt)(collectedText, targetPages, template, imageBase64);
@@ -2478,6 +2510,42 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
     // ── Free AI Topic Interceptor ───────────────────────────────────────────────
     if (ctx.session.awaitingFreeAiTopic) {
         ctx.session.awaitingFreeAiTopic = false;
+        // ── Free AI Image Guard v2 ────────────────────────
+        function _detectImgKw3(t) {
+            const kws = [
+                'صورة', 'صور', 'صوره', 'صورتي', 'الصورة', 'الصور',
+                'اضف صورة', 'ضف صورة', 'أضف صورة', 'ادرج صورة',
+                'أدرج صورة', 'ارفق صورة', 'حط صورة', 'خلي فيه صورة',
+                'ابغا صورة', 'مع صورة', 'فيه صورة', 'يحتوي صورة',
+                'تضمين صورة', 'صور احترافية', 'صور توضيحية',
+                'صور للمستند', 'صورة لكل', 'صور لكل', 'صورة في كل',
+                'image', 'images', 'photo', 'photos', 'picture', 'pictures',
+                'img', 'add image', 'with image', 'include image',
+            ];
+            const out = [];
+            t.split('\n').forEach((line, i) => {
+                const low = line.toLowerCase().trim();
+                if (!low)
+                    return;
+                const hits = Array.from(new Set(kws.filter(k => low.includes(k.toLowerCase()))));
+                if (hits.length)
+                    out.push(`• السطر ${i + 1}: [ ${hits.join('، ')} ]`);
+            });
+            return out;
+        }
+        const _fix3Issues = _detectImgKw3(text);
+        if (_fix3Issues.length > 0) {
+            ctx.session.awaitingFreeAiTopic = true;
+            await ctx.reply('⚠️ <b>تنبيه — رسالتك تحتوي على طلب صور</b>\n\n' +
+                'تم اكتشاف كلمات متعلقة بالصور في المواضع التالية:\n' +
+                _fix3Issues.join('\n') + '\n\n' +
+                '✏️ الزر المختار مخصص للنصوص فقط ولا يدعم الصور.\n\n' +
+                '📌 <b>يرجى اتباع الخطوات التالية:</b>\n' +
+                '١. احذف جميع الكلمات المذكورة أعلاه من نصك\n' +
+                '٢. أرسل النص بعد التعديل وسيتم إنشاء المستند فوراً', { parse_mode: 'HTML' });
+            return;
+        }
+        // ─────────────────────────────────────────────────
         const user = await User_1.User.findOne({ telegramId: userId });
         if (!user)
             return;
@@ -2489,46 +2557,42 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
                 'استخدم زر [ NizoAI PDF ] المجاور بأسعار رمزية 🚀', { parse_mode: 'HTML' });
             return;
         }
-        // ── Short Prompt Guard ──────────────────────────
         const _userText = ctx.message?.text?.trim() ?? '';
-        if (!ctx.session.proImageMode) {
-            const _lowerText = _userText.toLowerCase();
-            const _imageKeywords = [
-                'صورة', 'صور', 'صوره', 'صوري', 'صورتي', 'الصورة', 'الصور',
-                'صورك', 'اضف صورة', 'ضف صورة', 'أضف صورة',
-                'مع صورة', 'فيه صورة', 'يحتوي صورة', 'تضمين صورة',
-                'صور احترافية', 'صور توضيحية', 'صور للمستند',
-                'ادرج صورة', 'أدرج صورة', 'ارفق صورة',
-                'حط صورة', 'خلي فيه صورة', 'ابغا صورة',
+        // ── Image Request Guard v2 ────────────────────────
+        function _detectImgKw1(t) {
+            const kws = [
+                'صورة', 'صور', 'صوره', 'صورتي', 'الصورة', 'الصور',
+                'اضف صورة', 'ضف صورة', 'أضف صورة', 'ادرج صورة',
+                'أدرج صورة', 'ارفق صورة', 'حط صورة', 'خلي فيه صورة',
+                'ابغا صورة', 'مع صورة', 'فيه صورة', 'يحتوي صورة',
+                'تضمين صورة', 'صور احترافية', 'صور توضيحية',
+                'صور للمستند', 'صورة لكل', 'صور لكل', 'صورة في كل',
                 'image', 'images', 'photo', 'photos', 'picture', 'pictures',
                 'img', 'add image', 'with image', 'include image',
-                'صورة لكل', 'صور لكل', 'صورة في كل'
             ];
-            const _foundKw = _imageKeywords.find(kw => _lowerText.includes(kw.toLowerCase()));
-            if (_foundKw) {
-                await ctx.reply(`⚠️ <b>تنبيه بخصوص الصور</b>\n\n` +
-                    `لقد قمت بطلب يتضمن صورًا باستخدام الكلمة: <b>"${_foundKw}"</b>.\n\n` +
-                    `⚠️ <b>الوضع التلقائي (✏️ تلقائي) مخصص للنصوص فقط ولا يدعم إضافة الصور تلقائيًا.</b>\n\n` +
-                    `للحصول على مستند احترافي يحتوي على صورك الخاصة وتنسيقها بشكل كامل، يرجى استخدام <b>الوضع الاحترافي (🖼✏️ احترافي)</b>.`, {
-                    parse_mode: 'HTML',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                // @ts-ignore
-                                { text: '🤖 NizoAI PDF', callback_data: 'start_premium_ai', style: 'primary' },
-                                // @ts-ignore
-                                { text: '🆓 Ai Free PDF', callback_data: 'start_free_ai', style: 'primary' }
-                            ],
-                            [
-                                // @ts-ignore
-                                { text: '❌ إلغاء', callback_data: 'cancel', style: 'danger' }
-                            ]
-                        ]
-                    }
-                });
-                return;
-            }
+            const out = [];
+            t.split('\n').forEach((line, i) => {
+                const low = line.toLowerCase().trim();
+                if (!low)
+                    return;
+                const hits = Array.from(new Set(kws.filter(k => low.includes(k.toLowerCase()))));
+                if (hits.length)
+                    out.push(`• السطر ${i + 1}: [ ${hits.join('، ')} ]`);
+            });
+            return out;
         }
+        const _fix1Issues = _detectImgKw1(_userText);
+        if (_fix1Issues.length > 0) {
+            await ctx.reply('⚠️ <b>تنبيه — رسالتك تحتوي على طلب صور</b>\n\n' +
+                'تم اكتشاف كلمات متعلقة بالصور في المواضع التالية:\n' +
+                _fix1Issues.join('\n') + '\n\n' +
+                '✏️ زر <b>التلقائي</b> مخصص للنصوص فقط ولا يدعم الصور.\n\n' +
+                '📌 <b>يرجى اتباع الخطوات التالية:</b>\n' +
+                '١. احذف جميع الكلمات المذكورة أعلاه من نصك\n' +
+                '٢. أرسل النص بعد التعديل وسيتم إنشاء المستند فوراً', { parse_mode: 'HTML' });
+            return;
+        }
+        // ─────────────────────────────────────────────────
         const _charCount = _userText.length;
         const _wordCount = _userText.split(/\s+/).filter(Boolean).length;
         if (_charCount < 100 || _wordCount < 20) {
@@ -2543,15 +2607,8 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
         const detectedPages = promptAnalysis.detectedPages;
         const pageLimit = await getUserPageLimit(userId);
         if (detectedPages > pageLimit) {
-            await ctx.reply((0, promptAnalyzerService_1.buildPageLimitGuardMessage)(pageLimit), {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [[
-                            // @ts-ignore
-                            { text: '💬 تواصل مع المطور', url: 'https://t.me/NizarDeveloper', style: 'primary' }
-                        ]]
-                }
-            });
+            const _plg2 = (0, promptAnalyzerService_1.buildPageLimitGuardMessage)(pageLimit);
+            await ctx.reply(_plg2.text, { reply_markup: _plg2.reply_markup });
             return;
         }
         const loadingState = await (0, loading_1.showDynamicLoading)(ctx, '⏳ جاري الكتابة بالذكاء الاصطناعي');

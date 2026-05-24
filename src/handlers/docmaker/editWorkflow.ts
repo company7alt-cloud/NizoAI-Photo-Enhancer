@@ -17,13 +17,13 @@ export async function handleEditPdfDocCallback(ctx: BotContext): Promise<void> {
   const pdfMode = ctx.session?.lastPdfMode ?? 'free_auto';
 
   if (pdfMode === 'free_auto' || pdfMode === 'nizo_auto') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await handleAutoEdit(ctx);
     return;
   }
 
   if (pdfMode === 'free_pro' || pdfMode === 'nizo_pro') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await handleProEdit(ctx);
     return;
   }
@@ -39,7 +39,7 @@ export async function handleEditPdfDocCallback(ctx: BotContext): Promise<void> {
   await ctx.answerCallbackQuery();
   ctx.session.awaitingEditRequest = true;
   ctx.session.workflowState = 'waiting_for_doc_edit'; // keep for backward compat
-  
+
   await ctx.reply('✏️ أرسل التعديلات المطلوبة وسيتم تطبيقها على المستند:');
 }
 
@@ -104,7 +104,7 @@ ${originalText}`
     const cleanMarkdown = editedText.replace(/^```[a-z]*\n?/gm, '').replace(/```$/gm, '');
 
     await loadingState.stop();
-    
+
     // Generate new PDF
     const pdfPath = await generateAiPDF(cleanMarkdown, ctx.session.aiDocStyle || 'default');
 
@@ -130,15 +130,15 @@ ${originalText}`
     ctx.session.workflowState = null;
 
   } catch (err: any) {
-    try { await loadingState.stop(); } catch {}
+    try { await loadingState.stop(); } catch { }
     await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: editCost } }); // refund
     console.error('[EditWorkflow] Error:', err?.message || err);
     const errMsg = err?.message || '';
     const userMsg = errMsg.includes('quota') || errMsg.includes('rate')
       ? '⚠️ الخدمة مشغولة الآن، حاول مرة أخرى بعد دقيقة. تم إعادة نقاطك.'
       : errMsg.includes('empty')
-      ? '⚠️ النموذج لم يُرجع محتوى، حاول مرة أخرى. تم إعادة نقاطك.'
-      : '⚠️ حدث خطأ أثناء التعديل. تم إعادة نقاطك تلقائياً.';
+        ? '⚠️ النموذج لم يُرجع محتوى، حاول مرة أخرى. تم إعادة نقاطك.'
+        : '⚠️ حدث خطأ أثناء التعديل. تم إعادة نقاطك تلقائياً.';
     await ctx.reply(userMsg);
     ctx.session.workflowState = null;
     ctx.session.awaitingEditRequest = false;
@@ -254,7 +254,7 @@ export async function processProEditTextMessage(ctx: BotContext): Promise<void> 
 
   ctx.session.awaitingProEditText = false;
   ctx.session.proEditText = text;
-  
+
   await ctx.reply('✅ تم استلام التعديلات النصية.');
   await showProImageEditMenu(ctx);
 }
@@ -287,7 +287,7 @@ export async function processProEditImageUpload(ctx: BotContext): Promise<boolea
         ctx.chat!.id,
         menuMsgId,
         { reply_markup: { inline_keyboard: updatedRows } }
-      ).catch(() => {}); // Never crash if edit fails
+      ).catch(() => { }); // Never crash if edit fails
     } catch (_) { /* silent */ }
   }
 
@@ -298,7 +298,7 @@ export async function processProEditImageUpload(ctx: BotContext): Promise<boolea
 
 // ── FIX 6: Proper pro_edit_confirm handler ────────────────────────────────────
 export async function handleProEditConfirm(ctx: BotContext): Promise<void> {
-  await ctx.answerCallbackQuery().catch(() => {});
+  await ctx.answerCallbackQuery().catch(() => { });
 
   const editCount = ctx.session.editCount ?? 0;
   if (editCount >= 3) {
@@ -425,7 +425,7 @@ export async function handleProEditConfirm(ctx: BotContext): Promise<void> {
 // BUG 4: No 3-edit limit. Each confirm costs: free_pro→3 dailyQuota, nizo_pro→2 dailyQuota
 // BUG 3: Image-only edits skip AI — replace img tags in stored HTML directly
 export async function handleProEditConfirmV2(ctx: BotContext): Promise<void> {
-  await ctx.answerCallbackQuery().catch(() => {});
+  await ctx.answerCallbackQuery().catch(() => { });
 
   const hasTextEdit = !!(ctx.session.proEditText?.trim());
   const hasImageEdit = Object.keys(ctx.session.proEditImages ?? {}).length > 0;
@@ -635,15 +635,15 @@ export async function handleProEditConfirmV2(ctx: BotContext): Promise<void> {
     const finalPdfPath = await generateAiPDFFromHtml(patchedHtml);
 
     // ── STEP 7: Persist new state ─────────────────────────────────────────────────
-    ctx.session.lastGeneratedHtml    = patchedHtml;
-    ctx.session.lastAiGeneratedText  = cleanMarkdown;
-    ctx.session.lastGeneratedDoc     = { text: cleanMarkdown, pageCount, originalCost: 0 };
-    ctx.session.lastImageCount       = imgCounter; // sync button count with actual rendered images
-    ctx.session.lastGeneratedText    = cleanMarkdown;
-    ctx.session.proEditText          = null;
-    ctx.session.proEditImages        = {};
+    ctx.session.lastGeneratedHtml = patchedHtml;
+    ctx.session.lastAiGeneratedText = cleanMarkdown;
+    ctx.session.lastGeneratedDoc = { text: cleanMarkdown, pageCount, originalCost: 0 };
+    ctx.session.lastImageCount = imgCounter; // sync button count with actual rendered images
+    ctx.session.lastGeneratedText = cleanMarkdown;
+    ctx.session.proEditText = null;
+    ctx.session.proEditImages = {};
     ctx.session.proEditCurrentImgPage = null;
-    ctx.session.awaitingProEditText  = false;
+    ctx.session.awaitingProEditText = false;
 
     // ── STEP 8: Send PDF to user ───────────────────────────────────────────────
     const textPreview = cleanMarkdown

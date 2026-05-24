@@ -218,6 +218,42 @@ async function showProImageEditMenu(ctx) {
 // ── Task 8: Message Handlers for Auto/Pro Edits ──────────────────────────────
 async function processAutoEditMessage(ctx) {
     const text = ctx.message?.text;
+    // ── Edit Image Guard v2 ───────────────────────────
+    function _detectImgKw2(t) {
+        const kws = [
+            'صورة', 'صور', 'صوره', 'صورتي', 'الصورة', 'الصور',
+            'اضف صورة', 'ضف صورة', 'أضف صورة', 'ادرج صورة',
+            'أدرج صورة', 'ارفق صورة', 'حط صورة', 'خلي فيه صورة',
+            'ابغا صورة', 'مع صورة', 'فيه صورة', 'يحتوي صورة',
+            'تضمين صورة', 'صور احترافية', 'صور توضيحية',
+            'صور للمستند', 'صورة لكل', 'صور لكل', 'صورة في كل',
+            'image', 'images', 'photo', 'photos', 'picture', 'pictures',
+            'img', 'add image', 'with image', 'include image',
+        ];
+        const out = [];
+        t.split('\n').forEach((line, i) => {
+            const low = line.toLowerCase().trim();
+            if (!low)
+                return;
+            const hits = Array.from(new Set(kws.filter(k => low.includes(k.toLowerCase()))));
+            if (hits.length)
+                out.push(`• السطر ${i + 1}: [ ${hits.join('، ')} ]`);
+        });
+        return out;
+    }
+    const _fix2Issues = _detectImgKw2(text || '');
+    if (_fix2Issues.length > 0) {
+        ctx.session.awaitingAutoEdit = true;
+        await ctx.reply('⚠️ <b>تنبيه التعديل — تم رفض الطلب</b>\n\n' +
+            'التعديل الذي أرسلته يحتوي على طلب صور في المواضع التالية:\n' +
+            _fix2Issues.join('\n') + '\n\n' +
+            '✏️ هذا المستند (تلقائي) مخصص للنصوص فقط.\n\n' +
+            '📌 <b>يرجى اتباع الخطوات التالية:</b>\n' +
+            '١. احذف الكلمات المذكورة أعلاه من طلب التعديل\n' +
+            '٢. أرسل التعديل مجدداً وسيتم تعديل الملف فوراً', { parse_mode: 'HTML' });
+        return;
+    }
+    // ─────────────────────────────────────────────────
     if (!text)
         return;
     ctx.session.awaitingAutoEdit = false;
