@@ -1701,7 +1701,14 @@ registerDocCallback('free_pdf_auto', 'free_pdf_auto', async (ctx) => {
   }
 
   ctx.session.awaitingFreeAiTopic = true;
-  await ctx.reply('🆓 أرسل لي الموضوع الذي تريد كتابته وسأنشئ لك مستنداً مجاناً:');
+  await ctx.reply('🆓 أرسل لي الموضوع الذي تريد كتابته وسأنشئ لك مستنداً مجاناً:', {
+    reply_markup: {
+      inline_keyboard: [[
+        // @ts-ignore
+        { text: '❌ إلغاء', callback_data: 'cancel', style: 'danger' as const }
+      ]]
+    }
+  });
 });
 
 // ─── docBot: Image-to-Styled-PDF Workflow (New) ─────────────────────────────
@@ -2058,7 +2065,7 @@ registerDocCallback('nizo_pdf_auto', 'nizo_pdf_auto', async (ctx) => {
           ],
           [
             // @ts-ignore
-            { text: 'ط¥ظ„ط؛ط§ط، â‌Œ', callback_data: 'premium_cancel_flow', style: 'danger' as const }
+            { text: '❌ إلغاء', callback_data: 'premium_cancel_flow', style: 'danger' as const }
           ]
         ]
       }
@@ -2364,7 +2371,14 @@ registerDocCallback('free_pdf_pro', 'free_pdf_pro', async (ctx) => {
   ctx.session.proModeType = 'free';
   ctx.session.awaitingFreeAiTopic = true; // reuse existing topic interceptor flag
 
-  await ctx.reply('✍️ أرسل لي موضوع المستند الذي تريده:');
+  await ctx.reply('✍️ أرسل لي موضوع المستند الذي تريده:', {
+    reply_markup: {
+      inline_keyboard: [[
+        // @ts-ignore
+        { text: '❌ إلغاء', callback_data: 'cancel', style: 'danger' as const }
+      ]]
+    }
+  });
 });
 
 // â”€â”€â”€ nizo_pdf_pro: entry point for NizoAI PDF Professional Mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

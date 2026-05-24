@@ -336,20 +336,15 @@ async function processAutoEditMessage(ctx) {
         // Count pages using ## headings (each ## = one page)
         const _h2Count = (cleanMarkdown.match(/^## /gm) ?? []).length;
         const newPageCount = _h2Count > 0 ? _h2Count : originalPageCount;
-        // Deduct extra points if pages increased (1 point per 2 extra pages)
-        const extraPages = Math.max(0, newPageCount - originalPageCount);
-        const extraCost = Math.floor(extraPages / 2);
-        if (extraCost > 0) {
-            if ((user.dailyQuota ?? 0) < extraCost) {
-                await ctx.reply(`⚠️ التعديل أضاف ${extraPages} صفحات إضافية وتحتاج ${extraCost} نقاط إضافية.\n` +
-                    'رصيدك غير كافٍ. يمكنك المحاولة مجدداً بتعديل أقصر.');
-                ctx.session.editCount = Math.max(0, ctx.session.editCount - 1);
-                ctx.session.awaitingAutoEdit = true;
-                return;
-            }
-            await User_1.User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -extraCost } });
-            await ctx.reply(`ℹ️ التعديل أضاف ${extraPages} صفحات إضافية — تم خصم ${extraCost} نقطة إضافية.`);
+        // Fixed edit cost: always 1 point per edit, no page-based deduction
+        const _editFixedCost = 1;
+        if ((user.dailyQuota ?? 0) < _editFixedCost) {
+            await ctx.reply('⚠️ رصيدك غير كافٍ للتعديل. تحتاج نقطة واحدة.');
+            ctx.session.editCount = Math.max(0, ctx.session.editCount - 1);
+            ctx.session.awaitingAutoEdit = true;
+            return;
         }
+        await User_1.User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -_editFixedCost } });
         ctx.session.isAutoMode = true;
         const { generateAiPDF } = await Promise.resolve().then(() => __importStar(require('../../services/aiPdfService')));
         const pdfPath = await generateAiPDF(cleanMarkdown, ctx.session.aiDocStyle || 'default', true);
