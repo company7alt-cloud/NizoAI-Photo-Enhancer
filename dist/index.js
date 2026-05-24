@@ -2233,22 +2233,15 @@ registerDocCallback('nizopdf_done', 'nizopdf_done', async (ctx) => {
             reply_markup: {
                 inline_keyboard: [
                     [
-                        // @ts-ignore
-                        { text: '1 صفحة', callback_data: 'pages_1', style: 'primary' },
-                        // @ts-ignore
-                        { text: '2 صفحة', callback_data: 'pages_2', style: 'primary' },
-                        // @ts-ignore
-                        { text: '3 صفحات', callback_data: 'pages_3', style: 'primary' },
-                        // @ts-ignore
-                        { text: '5 صفحات', callback_data: 'pages_5', style: 'primary' },
+                        { text: '🔒 1 صفحة', callback_data: 'pages_locked' },
+                        { text: '🔒 2 صفحة', callback_data: 'pages_locked' },
+                        { text: '🔒 3 صفحات', callback_data: 'pages_locked' },
+                        { text: '🔒 5 صفحات', callback_data: 'pages_locked' },
                     ],
                     [
-                        // @ts-ignore
-                        { text: '10 صفحات', callback_data: 'pages_10', style: 'primary' },
-                        // @ts-ignore
-                        { text: '15 صفحة', callback_data: 'pages_15', style: 'primary' },
-                        // @ts-ignore
-                        { text: '20 صفحة', callback_data: 'pages_20', style: 'primary' },
+                        { text: '🔒 10 صفحات', callback_data: 'pages_locked' },
+                        { text: '🔒 15 صفحة', callback_data: 'pages_locked' },
+                        { text: '🔒 20 صفحة', callback_data: 'pages_locked' },
                     ],
                     [
                         // @ts-ignore
@@ -2308,22 +2301,15 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            // @ts-ignore
-                            { text: '1 صفحة', callback_data: 'pages_1', style: 'primary' },
-                            // @ts-ignore
-                            { text: '2 صفحة', callback_data: 'pages_2', style: 'primary' },
-                            // @ts-ignore
-                            { text: '3 صفحات', callback_data: 'pages_3', style: 'primary' },
-                            // @ts-ignore
-                            { text: '5 صفحات', callback_data: 'pages_5', style: 'primary' },
+                            { text: '🔒 1 صفحة', callback_data: 'pages_locked' },
+                            { text: '🔒 2 صفحة', callback_data: 'pages_locked' },
+                            { text: '🔒 3 صفحات', callback_data: 'pages_locked' },
+                            { text: '🔒 5 صفحات', callback_data: 'pages_locked' },
                         ],
                         [
-                            // @ts-ignore
-                            { text: '10 صفحات', callback_data: 'pages_10', style: 'primary' },
-                            // @ts-ignore
-                            { text: '15 صفحة', callback_data: 'pages_15', style: 'primary' },
-                            // @ts-ignore
-                            { text: '20 صفحة', callback_data: 'pages_20', style: 'primary' },
+                            { text: '🔒 10 صفحات', callback_data: 'pages_locked' },
+                            { text: '🔒 15 صفحة', callback_data: 'pages_locked' },
+                            { text: '🔒 20 صفحة', callback_data: 'pages_locked' },
                         ],
                         [
                             // @ts-ignore
@@ -2803,5 +2789,11 @@ function parseImageSections(markdown) {
     }
     return counts;
 }
+registerDocCallback('pages_locked', 'pages_locked', async (ctx) => {
+    await ctx.answerCallbackQuery({
+        text: '🔒 هذا الزر مقفل من قبل الادمن — اختر زر تلقائي',
+        show_alert: true
+    }).catch(() => { });
+});
 bootstrap();
 //# sourceMappingURL=index.js.map

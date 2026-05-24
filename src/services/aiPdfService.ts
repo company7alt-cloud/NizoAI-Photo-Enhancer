@@ -243,12 +243,14 @@ function getFallbackImage(query: string): string {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export async function generateAiPDF(rawMarkdown: string, template: string = 'default', isAutoMode?: boolean): Promise<string> {
+export async function generateAiPDF(rawMarkdown: string, template: string = 'default', skipImages: boolean = false): Promise<string> {
   // 1. Sanitize
   const cleanMarkdown = sanitizeForPdf(rawMarkdown);
 
-  // 1.5. Process Images
-  const processedText = await processImages(cleanMarkdown, isAutoMode);
+  // 1.5. Process Images (skip for auto/text-only mode)
+  const processedText = skipImages
+    ? cleanMarkdown.replace(/\[IMAGE:[^\]]*\]/g, '')
+    : await processImages(cleanMarkdown);
 
   // 2. Markdown → HTML
   const bodyHtml = await Promise.resolve(marked.parse(processedText));

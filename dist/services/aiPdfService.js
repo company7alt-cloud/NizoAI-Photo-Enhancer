@@ -242,11 +242,13 @@ function getFallbackImage(query) {
     return `https://picsum.photos/seed/${seed}/800/400`;
 }
 // ─── Main export ──────────────────────────────────────────────────────────────
-async function generateAiPDF(rawMarkdown, template = 'default', isAutoMode) {
+async function generateAiPDF(rawMarkdown, template = 'default', skipImages = false) {
     // 1. Sanitize
     const cleanMarkdown = sanitizeForPdf(rawMarkdown);
-    // 1.5. Process Images
-    const processedText = await processImages(cleanMarkdown, isAutoMode);
+    // 1.5. Process Images (skip for auto/text-only mode)
+    const processedText = skipImages
+        ? cleanMarkdown.replace(/\[IMAGE:[^\]]*\]/g, '')
+        : await processImages(cleanMarkdown);
     // 2. Markdown → HTML
     const bodyHtml = await Promise.resolve(marked_1.marked.parse(processedText));
     // 3. Full HTML document

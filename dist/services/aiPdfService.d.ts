@@ -1,4 +1,4 @@
-export declare function generateAiPDF(rawMarkdown: string, template?: string, isAutoMode?: boolean): Promise<string>;
+export declare function generateAiPDF(rawMarkdown: string, template?: string, skipImages?: boolean): Promise<string>;
 export interface ProImagePageData {
     page: number;
     photos: string[];
