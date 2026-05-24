@@ -246,9 +246,17 @@ async function generateAiPDF(rawMarkdown, template = 'default', skipImages = fal
     // 1. Sanitize
     const cleanMarkdown = sanitizeForPdf(rawMarkdown);
     // 1.5. Process Images (skip for auto/text-only mode)
-    const processedText = skipImages
-        ? cleanMarkdown.replace(/\[IMAGE:[^\]]*\]/g, '')
-        : await processImages(cleanMarkdown);
+    let processedText;
+    if (skipImages) {
+        // Auto mode: strip ALL image tags and any surrounding whitespace/newlines
+        processedText = cleanMarkdown
+            .replace(/\n?\[IMAGE:[^\]]*\]\n?/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+    else {
+        processedText = await processImages(cleanMarkdown);
+    }
     // 2. Markdown → HTML
     const bodyHtml = await Promise.resolve(marked_1.marked.parse(processedText));
     // 3. Full HTML document
