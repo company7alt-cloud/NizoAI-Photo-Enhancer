@@ -1670,7 +1670,7 @@ registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {
           // @ts-ignore
           [{ text: '🖼✏️ احترافي', callback_data: 'free_pdf_pro', style: 'primary' }],
           // @ts-ignore
-          [{ text: 'إلغاء', callback_data: 'cancel', style: 'danger' }],
+          [{ text: 'إلغاء ❌', callback_data: 'cancel', style: 'danger' }],
         ],
       },
     }
@@ -1805,7 +1805,9 @@ docBot.on('message', withDocBotHandler('template_workflow_collection', async (ct
 
     // Non-text media protection
     if (!ctx.message?.text) {
-      await ctx.reply('⚠️ عذراً، لا يمكن استقبال الصور أو الملصقات أو الوسائط في هذه المرحلة. أرسل نصوصاً فقط.');
+      await ctx.reply('⚠️ عذراً، لا يمكن استقبال الصور أو الملصقات أو الوسائط في هذه المرحلة. أرسل نصوصاً فقط.', {
+        reply_markup: { inline_keyboard: [[{ text: 'إلغاء ❌', callback_data: 'tpl_cancel', style: 'danger' as const }]] }
+      });
       return;
     }
 
@@ -1999,7 +2001,7 @@ registerDocCallback('start_premium_ai', 'start_premium_ai', async (ctx) => {
           // @ts-ignore
           [{ text: '🖼✏️ احترافي', callback_data: 'nizo_pdf_pro', style: 'primary' }],
           // @ts-ignore
-          [{ text: 'إلغاء', callback_data: 'cancel', style: 'danger' }],
+          [{ text: 'إلغاء ❌', callback_data: 'cancel', style: 'danger' }],
         ],
       },
     }
@@ -2725,27 +2727,13 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
     const _foundNizoKw = _nizoImageKeywords.find(kw => _lowerIncoming.includes(kw.toLowerCase()));
     if (_foundNizoKw && incoming !== 'تم' && incoming !== 'تم.' && incoming !== 'انتهيت') {
       await ctx.reply(
-        `⚠️ <b>تنبيه بخصوص الصور</b>\n\n` +
-        `لقد قمت بطلب يتضمن صورًا باستخدام الكلمة: <b>"${_foundNizoKw}"</b>.\n\n` +
-        `⚠️ <b>الوضع التلقائي (✏️ تلقائي) مخصص للنصوص فقط ولا يدعم إضافة الصور تلقائيًا.</b>\n\n` +
-        `للحصول على مستند احترافي يحتوي على صورك الخاصة وتنسيقها بشكل كامل، يرجى استخدام <b>الوضع الاحترافي (🖼✏️ احترافي)</b>.`,
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                // @ts-ignore
-                { text: '🤖 NizoAI PDF', callback_data: 'start_premium_ai', style: 'primary' as const },
-                // @ts-ignore
-                { text: '🆓 Ai Free PDF', callback_data: 'start_free_ai', style: 'primary' as const }
-              ],
-              [
-                // @ts-ignore
-                { text: '❌ إلغاء', callback_data: 'cancel', style: 'danger' as const }
-              ]
-            ]
-          }
-        }
+        '⚠️ <b>تنبيه — رسالتك تحتوي على طلب صور</b>\n\n' +
+        'تم اكتشاف كلمات متعلقة بالصور في رسالتك.\n\n' +
+        '✏️ زر <b>التلقائي</b> مخصص للنصوص فقط ولا يدعم الصور.\n\n' +
+        '📌 <b>يرجى اتباع الخطوات التالية:</b>\n' +
+        '١. احذف جميع الكلمات المتعلقة بالصور من نصك\n' +
+        '٢. أرسل النص بعد التعديل وسيتم إنشاء المستند فوراً',
+        { parse_mode: 'HTML' }
       );
       return;
     }
@@ -2983,28 +2971,15 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
       ];
       const _foundKw = _imageKeywords.find(kw => _lowerText.includes(kw.toLowerCase()));
       if (_foundKw) {
+        ctx.session.awaitingFreeAiTopic = true;
         await ctx.reply(
-          `⚠️ <b>تنبيه بخصوص الصور</b>\n\n` +
-          `لقد قمت بطلب يتضمن صورًا باستخدام الكلمة: <b>"${_foundKw}"</b>.\n\n` +
-          `⚠️ <b>الوضع التلقائي (✏️ تلقائي) مخصص للنصوص فقط ولا يدعم إضافة الصور تلقائيًا.</b>\n\n` +
-          `للحصول على مستند احترافي يحتوي على صورك الخاصة وتنسيقها بشكل كامل، يرجى استخدام <b>الوضع الاحترافي (🖼✏️ احترافي)</b>.`,
-          {
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  // @ts-ignore
-                  { text: '🤖 NizoAI PDF', callback_data: 'start_premium_ai', style: 'primary' as const },
-                  // @ts-ignore
-                  { text: '🆓 Ai Free PDF', callback_data: 'start_free_ai', style: 'primary' as const }
-                ],
-                [
-                  // @ts-ignore
-                  { text: '❌ إلغاء', callback_data: 'cancel', style: 'danger' as const }
-                ]
-              ]
-            }
-          }
+          '⚠️ <b>تنبيه — رسالتك تحتوي على طلب صور</b>\n\n' +
+          'تم اكتشاف كلمات متعلقة بالصور في رسالتك.\n\n' +
+          '✏️ زر <b>التلقائي</b> مخصص للنصوص فقط ولا يدعم الصور.\n\n' +
+          '📌 <b>يرجى اتباع الخطوات التالية:</b>\n' +
+          '١. احذف جميع الكلمات المتعلقة بالصور من نصك\n' +
+          '٢. أرسل النص بعد التعديل وسيتم إنشاء المستند فوراً',
+          { parse_mode: 'HTML' }
         );
         return;
       }

@@ -238,14 +238,163 @@ export async function showProImageEditMenu(ctx: BotContext): Promise<void> {
 
 // ── Task 8: Message Handlers for Auto/Pro Edits ──────────────────────────────
 export async function processAutoEditMessage(ctx: BotContext): Promise<void> {
-  const text = ctx.message?.text;
-  if (!text) return;
+  const userEditText = ctx.message?.text?.trim() ?? '';
+  if (!userEditText) return;
+
+  // ── Auto Edit Image Guard ─────────────────────────────────────────────
+  function _detectImgKwAutoEdit(t: string): string[] {
+    const kws = [
+      'صورة','صور','صوره','صورتي','الصورة','الصور',
+      'اضف صورة','ضف صورة','أضف صورة','ادرج صورة',
+      'أدرج صورة','ارفق صورة','حط صورة','خلي فيه صورة',
+      'ابغا صورة','مع صورة','فيه صورة','يحتوي صورة',
+      'تضمين صورة','صور احترافية','صور توضيحية',
+      'صور للمستند','صورة لكل','صور لكل','صورة في كل',
+      'image','images','photo','photos','picture','pictures',
+      'img','add image','with image','include image',
+    ];
+    const out: string[] = [];
+    t.split('\n').forEach((line, i) => {
+      const low = line.toLowerCase().trim();
+      if (!low) return;
+      const hits = Array.from(new Set(
+        kws.filter(k => low.includes(k.toLowerCase()))
+      ));
+      if (hits.length) out.push(`• السطر ${i + 1}: [ ${hits.join('، ')} ]`);
+    });
+    return out;
+  }
+  const _autoEditIssues = _detectImgKwAutoEdit(userEditText);
+  if (_autoEditIssues.length > 0) {
+    ctx.session.awaitingAutoEdit = true;
+    await ctx.reply(
+      '⚠️ <b>تنبيه التعديل — تم رفض الطلب</b>\n\n' +
+      'التعديل الذي أرسلته يحتوي على طلب صور في المواضع التالية:\n' +
+      _autoEditIssues.join('\n') + '\n\n' +
+      '✏️ هذا المستند (تلقائي) مخصص للنصوص فقط.\n\n' +
+      '📌 <b>يرجى اتباع الخطوات التالية:</b>\n' +
+      '١. احذف الكلمات المذكورة أعلاه من طلب التعديل\n' +
+      '٢. أرسل التعديل مجدداً وسيتم تعديل الملف فوراً',
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+  // ─────────────────────────────────────────────────────────────────────
+
+  const originalText = ctx.session.lastAiGeneratedText
+    || ctx.session.lastGeneratedDoc?.text
+    || '';
+  if (!originalText) {
+    ctx.session.awaitingAutoEdit = false;
+    await ctx.reply('⚠️ انتهت صلاحية التعديل، أنشئ مستنداً جديداً.');
+    return;
+  }
+
+  const originalPageCount = ctx.session.lastAiDocPages
+    || ctx.session.lastGeneratedDoc?.pageCount
+    || 1;
+
+  const user = await User.findOne({ telegramId: ctx.from!.id });
+  if (!user) return;
 
   ctx.session.awaitingAutoEdit = false;
-  // Route back to the main edit logic acting as a single text edit
-  ctx.session.workflowState = 'waiting_for_doc_edit';
   ctx.session.editCount = (ctx.session.editCount ?? 0) + 1;
-  await handleEditPdfDocMessage(ctx);
+
+  const loadingState = await showDynamicLoading(ctx, '✏️ جاري تطبيق التعديلات');
+
+  try {
+    const response = await aiClient.chat.completions.create({
+      model: process.env.REPLICATE_AI_MODEL_ID || 'anthropic/claude-3-haiku',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a silent document editor. Apply the user edit request to the original document.\n' +
+            'ABSOLUTE RULES:\n' +
+            '1. Return the COMPLETE edited document in Arabic Markdown ONLY.\n' +
+            '2. Keep EXACTLY ' + originalPageCount + ' page(s). Never add or remove pages.\n' +
+            '3. Keep exact same structure, headings, and sections.\n' +
+            '4. NO images, NO [IMAGE:] tags — this is auto (text-only) mode.\n' +
+            '5. No preamble, no explanation, no questions. Output document only.\n\n' +
+            'ORIGINAL DOCUMENT:\n' + originalText,
+        },
+        { role: 'user', content: userEditText },
+      ],
+      temperature: 0.3,
+    });
+
+    const editedText = response.choices[0]?.message?.content ?? '';
+    if (!editedText.trim()) throw new Error('AI returned empty content.');
+
+    const cleanMarkdown = editedText
+      .replace(/^```[a-z]*\n?/gm, '')
+      .replace(/```$/gm, '')
+      .replace(/\[IMAGE:[^\]]*\]/gi, '');
+
+    await loadingState.stop();
+
+    // Count pages using ## headings (each ## = one page)
+    const _h2Count = (cleanMarkdown.match(/^## /gm) ?? []).length;
+    const newPageCount = _h2Count > 0 ? _h2Count : originalPageCount;
+
+    // Deduct extra points if pages increased (1 point per 2 extra pages)
+    const extraPages = Math.max(0, newPageCount - originalPageCount);
+    const extraCost = Math.floor(extraPages / 2);
+    if (extraCost > 0) {
+      if ((user.dailyQuota ?? 0) < extraCost) {
+        await ctx.reply(
+          `⚠️ التعديل أضاف ${extraPages} صفحات إضافية وتحتاج ${extraCost} نقاط إضافية.\n` +
+          'رصيدك غير كافٍ. يمكنك المحاولة مجدداً بتعديل أقصر.'
+        );
+        ctx.session.editCount = Math.max(0, ctx.session.editCount - 1);
+        ctx.session.awaitingAutoEdit = true;
+        return;
+      }
+      await User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -extraCost } });
+      await ctx.reply(
+        `ℹ️ التعديل أضاف ${extraPages} صفحات إضافية — تم خصم ${extraCost} نقطة إضافية.`
+      );
+    }
+
+    ctx.session.isAutoMode = true;
+    const { generateAiPDF } = await import('../../services/aiPdfService');
+    const pdfPath = await generateAiPDF(
+      cleanMarkdown,
+      ctx.session.aiDocStyle || 'default',
+      true
+    );
+    ctx.session.isAutoMode = false;
+
+    ctx.session.lastPageCount = newPageCount;
+    ctx.session.lastAiDocPages = newPageCount;
+    ctx.session.lastAiGeneratedText = cleanMarkdown;
+    ctx.session.lastGeneratedDoc = {
+      text: cleanMarkdown,
+      pageCount: newPageCount,
+      originalCost: ctx.session.lastGeneratedDoc?.originalCost ?? 0,
+    };
+
+    await ctx.replyWithDocument(
+      new InputFile(pdfPath, `NizoAI_Doc_Edited_${Date.now()}.pdf`),
+      {
+        caption:
+          `✅ <b>تم تطبيق التعديلات بنجاح!</b>\n` +
+          `📄 عدد الصفحات: ${newPageCount}`,
+        parse_mode: 'HTML',
+      }
+    );
+
+    const { sendTextChunksWithEditButton } = await import('./textOutput');
+    await sendTextChunksWithEditButton(ctx, cleanMarkdown);
+
+  } catch (err: any) {
+    try { await loadingState.stop(); } catch { }
+    ctx.session.editCount = Math.max(0, ctx.session.editCount - 1);
+    ctx.session.isAutoMode = false;
+    console.error('[AutoEdit] Error:', err?.message || err);
+    await ctx.reply('⚠️ حدث خطأ أثناء التعديل. يمكنك المحاولة مرة أخرى.');
+    ctx.session.awaitingAutoEdit = true;
+  }
 }
 
 export async function processProEditTextMessage(ctx: BotContext): Promise<void> {

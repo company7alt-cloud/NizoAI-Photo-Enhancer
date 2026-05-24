@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -217,9 +250,11 @@ async function showProImageEditMenu(ctx) {
 }
 // ── Task 8: Message Handlers for Auto/Pro Edits ──────────────────────────────
 async function processAutoEditMessage(ctx) {
-    const text = ctx.message?.text;
-    // ── Edit Image Guard v2 ───────────────────────────
-    function _detectImgKw2(t) {
+    const userEditText = ctx.message?.text?.trim() ?? '';
+    if (!userEditText)
+        return;
+    // ── Auto Edit Image Guard ─────────────────────────────────────────────
+    function _detectImgKwAutoEdit(t) {
         const kws = [
             'صورة', 'صور', 'صوره', 'صورتي', 'الصورة', 'الصور',
             'اضف صورة', 'ضف صورة', 'أضف صورة', 'ادرج صورة',
@@ -241,26 +276,111 @@ async function processAutoEditMessage(ctx) {
         });
         return out;
     }
-    const _fix2Issues = _detectImgKw2(text || '');
-    if (_fix2Issues.length > 0) {
+    const _autoEditIssues = _detectImgKwAutoEdit(userEditText);
+    if (_autoEditIssues.length > 0) {
         ctx.session.awaitingAutoEdit = true;
         await ctx.reply('⚠️ <b>تنبيه التعديل — تم رفض الطلب</b>\n\n' +
             'التعديل الذي أرسلته يحتوي على طلب صور في المواضع التالية:\n' +
-            _fix2Issues.join('\n') + '\n\n' +
+            _autoEditIssues.join('\n') + '\n\n' +
             '✏️ هذا المستند (تلقائي) مخصص للنصوص فقط.\n\n' +
             '📌 <b>يرجى اتباع الخطوات التالية:</b>\n' +
             '١. احذف الكلمات المذكورة أعلاه من طلب التعديل\n' +
             '٢. أرسل التعديل مجدداً وسيتم تعديل الملف فوراً', { parse_mode: 'HTML' });
         return;
     }
-    // ─────────────────────────────────────────────────
-    if (!text)
+    // ─────────────────────────────────────────────────────────────────────
+    const originalText = ctx.session.lastAiGeneratedText
+        || ctx.session.lastGeneratedDoc?.text
+        || '';
+    if (!originalText) {
+        ctx.session.awaitingAutoEdit = false;
+        await ctx.reply('⚠️ انتهت صلاحية التعديل، أنشئ مستنداً جديداً.');
+        return;
+    }
+    const originalPageCount = ctx.session.lastAiDocPages
+        || ctx.session.lastGeneratedDoc?.pageCount
+        || 1;
+    const user = await User_1.User.findOne({ telegramId: ctx.from.id });
+    if (!user)
         return;
     ctx.session.awaitingAutoEdit = false;
-    // Route back to the main edit logic acting as a single text edit
-    ctx.session.workflowState = 'waiting_for_doc_edit';
     ctx.session.editCount = (ctx.session.editCount ?? 0) + 1;
-    await handleEditPdfDocMessage(ctx);
+    const loadingState = await (0, loading_1.showDynamicLoading)(ctx, '✏️ جاري تطبيق التعديلات');
+    try {
+        const response = await aiClient.chat.completions.create({
+            model: process.env.REPLICATE_AI_MODEL_ID || 'anthropic/claude-3-haiku',
+            messages: [
+                {
+                    role: 'system',
+                    content: 'You are a silent document editor. Apply the user edit request to the original document.\n' +
+                        'ABSOLUTE RULES:\n' +
+                        '1. Return the COMPLETE edited document in Arabic Markdown ONLY.\n' +
+                        '2. Keep EXACTLY ' + originalPageCount + ' page(s). Never add or remove pages.\n' +
+                        '3. Keep exact same structure, headings, and sections.\n' +
+                        '4. NO images, NO [IMAGE:] tags — this is auto (text-only) mode.\n' +
+                        '5. No preamble, no explanation, no questions. Output document only.\n\n' +
+                        'ORIGINAL DOCUMENT:\n' + originalText,
+                },
+                { role: 'user', content: userEditText },
+            ],
+            temperature: 0.3,
+        });
+        const editedText = response.choices[0]?.message?.content ?? '';
+        if (!editedText.trim())
+            throw new Error('AI returned empty content.');
+        const cleanMarkdown = editedText
+            .replace(/^```[a-z]*\n?/gm, '')
+            .replace(/```$/gm, '')
+            .replace(/\[IMAGE:[^\]]*\]/gi, '');
+        await loadingState.stop();
+        // Count pages using ## headings (each ## = one page)
+        const _h2Count = (cleanMarkdown.match(/^## /gm) ?? []).length;
+        const newPageCount = _h2Count > 0 ? _h2Count : originalPageCount;
+        // Deduct extra points if pages increased (1 point per 2 extra pages)
+        const extraPages = Math.max(0, newPageCount - originalPageCount);
+        const extraCost = Math.floor(extraPages / 2);
+        if (extraCost > 0) {
+            if ((user.dailyQuota ?? 0) < extraCost) {
+                await ctx.reply(`⚠️ التعديل أضاف ${extraPages} صفحات إضافية وتحتاج ${extraCost} نقاط إضافية.\n` +
+                    'رصيدك غير كافٍ. يمكنك المحاولة مجدداً بتعديل أقصر.');
+                ctx.session.editCount = Math.max(0, ctx.session.editCount - 1);
+                ctx.session.awaitingAutoEdit = true;
+                return;
+            }
+            await User_1.User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -extraCost } });
+            await ctx.reply(`ℹ️ التعديل أضاف ${extraPages} صفحات إضافية — تم خصم ${extraCost} نقطة إضافية.`);
+        }
+        ctx.session.isAutoMode = true;
+        const { generateAiPDF } = await Promise.resolve().then(() => __importStar(require('../../services/aiPdfService')));
+        const pdfPath = await generateAiPDF(cleanMarkdown, ctx.session.aiDocStyle || 'default', true);
+        ctx.session.isAutoMode = false;
+        ctx.session.lastPageCount = newPageCount;
+        ctx.session.lastAiDocPages = newPageCount;
+        ctx.session.lastAiGeneratedText = cleanMarkdown;
+        ctx.session.lastGeneratedDoc = {
+            text: cleanMarkdown,
+            pageCount: newPageCount,
+            originalCost: ctx.session.lastGeneratedDoc?.originalCost ?? 0,
+        };
+        await ctx.replyWithDocument(new grammy_1.InputFile(pdfPath, `NizoAI_Doc_Edited_${Date.now()}.pdf`), {
+            caption: `✅ <b>تم تطبيق التعديلات بنجاح!</b>\n` +
+                `📄 عدد الصفحات: ${newPageCount}`,
+            parse_mode: 'HTML',
+        });
+        const { sendTextChunksWithEditButton } = await Promise.resolve().then(() => __importStar(require('./textOutput')));
+        await sendTextChunksWithEditButton(ctx, cleanMarkdown);
+    }
+    catch (err) {
+        try {
+            await loadingState.stop();
+        }
+        catch { }
+        ctx.session.editCount = Math.max(0, ctx.session.editCount - 1);
+        ctx.session.isAutoMode = false;
+        console.error('[AutoEdit] Error:', err?.message || err);
+        await ctx.reply('⚠️ حدث خطأ أثناء التعديل. يمكنك المحاولة مرة أخرى.');
+        ctx.session.awaitingAutoEdit = true;
+    }
 }
 async function processProEditTextMessage(ctx) {
     const text = ctx.message?.text;
