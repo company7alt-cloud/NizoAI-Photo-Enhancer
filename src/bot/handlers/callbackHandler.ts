@@ -277,6 +277,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     'eraser_start': locks.btn_eraser,
     'remove_watermark_auto': locks.btn_eraser,
     'doc_maker_start': locks.btn_doc_maker,
+    'magic_enhance_start': locks.btn_magic_enhance,
   };
 
   const bypassUser = await User.findOne({ telegramId: ctx.from.id }).select('canBypassLocks');
@@ -1433,6 +1434,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' , style: 'primary' as const}],
         [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' , style: 'primary' as const}],
         // @ts-ignore
+        [{ text: `${l.btn_magic_enhance ? '🔴 مقفول' : '🟢 مفتوح'} — 🪤 تحسين احترافي`, callback_data: 'atoggle_btn_magic_enhance' }],
+        // @ts-ignore
         [{ text: '❌ إغلاق', callback_data: 'admin_close' , style: 'danger' as const}],
       ]
     });
@@ -1492,6 +1495,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         // @ts-ignore
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' , style: 'primary' as const}],
         [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' , style: 'primary' as const}],
+        // @ts-ignore
+        [{ text: `${l.btn_magic_enhance ? '🔴 مقفول' : '🟢 مفتوح'} — 🪤 تحسين احترافي`, callback_data: 'atoggle_btn_magic_enhance' }],
         // @ts-ignore
         [{ text: '❌ إغلاق', callback_data: 'admin_close' , style: 'danger' as const}],
       ]
@@ -1601,6 +1606,99 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       { $set: { awaitingNanoBananaImage: false } }
     );
     await ctx.deleteMessage().catch(() => { });
+    return;
+  }
+
+  // ── magic_enhance_start ──────────────────────────────────────────────────────
+  if (data === 'magic_enhance_start') {
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const magicUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (!magicUser) return;
+    const magicAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isMagicAdmin = magicAdminIds.includes(ctx.from!.id.toString());
+
+    if (!isMagicAdmin && magicUser.dailyQuota < 5) {
+      await ctx.reply(
+        `⚠️ رصيدك غير كافٍ!\n` +
+        `تحتاج 5 محاولات لاستخدام هذه الميزة.\n` +
+        `رصيدك الحالي: ${magicUser.dailyQuota} محاولة`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingMagicEnhanceImage: true } }
+    );
+
+    await ctx.reply(
+      '🪤 تحسين احترافي بالذكاء الاصطناعي\n\n' +
+      '📸 أرسل لي الصورة الآن وسأعيد توليدها بجودة استوديو احترافية مع الحفاظ على كل تفاصيلها الأصلية 🚀\n\n' +
+      '💸 السعر: 5 محاولات\n' +
+      'يمكنك إرسالها كصورة عادية أو كملف للحفاظ على الجودة',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_magic_enhance' }]]
+        }
+      }
+    );
+    return;
+  }
+
+  if (data === 'cancel_magic_enhance') {
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingMagicEnhanceImage: false } }
+    );
+    await ctx.deleteMessage().catch(() => {});
+    return;
+  }
+
+  if (data.startsWith('magic_fmt_')) {
+    await ctx.answerCallbackQuery();
+
+    const magicConvUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (!magicConvUser?.lastMagicEnhanceBuffer) {
+      await ctx.reply('❌ انتهت صلاحية الملف. أرسل الصورة مجدداً.');
+      return;
+    }
+
+    const formatMap: Record<string, string> = {
+      magic_fmt_jpg:  'jpeg',
+      magic_fmt_png:  'png',
+      magic_fmt_webp: 'webp',
+      magic_fmt_avif: 'avif',
+      magic_fmt_tiff: 'tiff',
+    };
+    const targetFormat = formatMap[data];
+    if (!targetFormat) return;
+
+    const processingMsg = await ctx.reply(
+      `⏳ جاري تحويل الصيغة إلى ${data.split('_')[2].toUpperCase()}...`
+    );
+
+    try {
+      const inputBuffer = Buffer.from(magicConvUser.lastMagicEnhanceBuffer, 'base64');
+      const convertedBuffer = await sharp(inputBuffer)
+        .toFormat(targetFormat as any, { quality: 95 })
+        .toBuffer();
+
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+
+      const ext = targetFormat === 'jpeg' ? 'jpg' : targetFormat;
+      await ctx.replyWithDocument(
+        new InputFile(convertedBuffer, `NizoAI_${ext.toUpperCase()}_${Date.now()}.${ext}`),
+        { caption: `✅ تم التحويل إلى ${ext.toUpperCase()} بنجاح` }
+      );
+    } catch (err: any) {
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+      await ctx.reply('❌ فشل التحويل. حاول مرة أخرى.');
+      console.error('[MagicFmt] Error:', err.message);
+    }
     return;
   }
 

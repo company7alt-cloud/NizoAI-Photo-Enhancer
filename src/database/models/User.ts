@@ -38,6 +38,9 @@ export interface IUser extends Document {
   isBlocked: boolean;
   lastSeenAt: Date | null;
   awaitingNanoBananaImage: boolean;
+  awaitingMagicEnhanceImage: boolean;
+  lastMagicEnhanceBuffer: string;
+  lastMagicEnhanceMsgId: number | null;
   awaitingEraserImage?: boolean;
   awaitingEraserOriginal?: boolean;
   awaitingCustomEraserImage?: boolean;
@@ -246,6 +249,9 @@ const UserSchema = new Schema<IUser>(
     isBlocked: { type: Boolean, default: false },
     lastSeenAt: { type: Date, default: null },
     awaitingNanoBananaImage: { type: Boolean, default: false },
+    awaitingMagicEnhanceImage: { type: Boolean, default: false },
+    lastMagicEnhanceBuffer: { type: String, default: '' },
+    lastMagicEnhanceMsgId: { type: Number, default: null },
     awaitingEraserImage: { type: Boolean, default: false },
     awaitingEraserOriginal: { type: Boolean, default: false },
     awaitingCustomEraserImage: { type: Boolean, default: false },

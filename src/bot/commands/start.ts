@@ -248,10 +248,16 @@ export async function startCommand(ctx: BotContext): Promise<void> {
           { text: '🔄 تحويل صيغة الصورة', callback_data: 'convert_format_start', style: 'primary' },
         ],
 
-        // ROW 4 — Auto Eraser + Daily Gift (blue)
+        // ROW 4 — Auto Eraser + Magic Enhance (blue)
         [
           // @ts-ignore
           { text: eraserLocks.btn_eraser ? '🔒 مُزيل النجمة التلقائي — مقفل' : '🧹 مُزيل النجمة التلقائي', callback_data: 'remove_watermark_auto', style: 'primary' },
+          // @ts-ignore
+          { text: nanoLocks.btn_magic_enhance ? '🔒 تحسين احترافي بالذكاء الاصطناعي — مقفل' : '🪤 تحسين احترافي بالذكاء الاصطناعي', callback_data: 'magic_enhance_start', style: 'primary' },
+        ],
+
+        // ROW 5 — Daily Gift (blue)
+        [
           // @ts-ignore
           { text: '🎁 الهدية اليومية', callback_data: 'claim_daily_reward', style: 'primary' },
         ],
