@@ -1,153 +1,83 @@
 const fs = require('fs');
-const path = require('path');
 
-const indexFile = path.join(__dirname, 'src', 'index.ts');
-let indexCode = fs.readFileSync(indexFile, 'utf8');
-
-// 1. Buttons
-indexCode = indexCode.replace(
-  "[{ text: 'تلقائي',  callback_data: 'free_pdf_auto', style: 'primary' }],",
-  "[{ text: '✏️ تلقائي',  callback_data: 'free_pdf_auto', style: 'primary' }],"
-);
-indexCode = indexCode.replace(
-  "[{ text: 'احترافي', callback_data: 'free_pdf_pro',  style: 'primary' }],",
-  "[{ text: '🖼✏️ احترافي', callback_data: 'free_pdf_pro',  style: 'primary' }],"
-);
-indexCode = indexCode.replace(
-  "[{ text: 'تلقائي',  callback_data: 'nizo_pdf_auto', style: 'primary' }],",
-  "[{ text: '✏️ تلقائي',  callback_data: 'nizo_pdf_auto', style: 'primary' }],"
-);
-indexCode = indexCode.replace(
-  "[{ text: 'احترافي', callback_data: 'nizo_pdf_pro',  style: 'primary' }],",
-  "[{ text: '🖼✏️ احترافي', callback_data: 'nizo_pdf_pro',  style: 'primary' }],"
-);
-
-// 2. Limit Message Call Sites
-const limitMsgReplacement = `await ctx.reply(
-        '⚠️ الحد الأقصى المسموح به هو 5 صفحات.\\n' +
-        'إذا كنت تحتاج وثيقة أطول، تواصل مع المطور لفتح صلاحية الاشتراك الممتد.',
-        {
-          reply_markup: {
-            inline_keyboard: [[
-              // @ts-ignore
-              {
-                text: '💬 تواصل مع المطور',
-                url: 'https://t.me/NizarDeveloper',
-                style: 'primary' as any
-              }
-            ]]
-          }
-        }
-      );`;
-
-indexCode = indexCode.replace(
-  "await ctx.reply(buildPageLimitGuardMessage(pageLimit), { parse_mode: 'Markdown' });",
-  limitMsgReplacement
-);
-// replace second occurrence too
-indexCode = indexCode.replace(
-  "await ctx.reply(buildPageLimitGuardMessage(pageLimit), { parse_mode: 'Markdown' });",
-  limitMsgReplacement
-);
-
-
-// 3. nizo_auto generate
-indexCode = indexCode.replace(
-  "const pdfPath = await generateAiPDF(cleanMarkdown, template);",
-  "ctx.session.isAutoMode = true;\n      const pdfPath = await generateAiPDF(cleanMarkdown, template, ctx.session.isAutoMode);\n      ctx.session.isAutoMode = false;"
-);
-
-// 4. free_auto generate
-indexCode = indexCode.replace(
-  "const pdfBuffer = await generateAiPDF(cleanMarkdown);",
-  "ctx.session.isAutoMode = true;\n      const pdfBuffer = await generateAiPDF(cleanMarkdown, undefined, ctx.session.isAutoMode);\n      ctx.session.isAutoMode = false;"
-);
-
-
-// 5. lastPageCount for nizo_auto (around 2200)
-const nizoCaptionOld = "📄 الصفحات الفعّالة: ${finalPages}`";
-const nizoCaptionNew = "📄 عدد الصفحات: ${ctx.session.lastPageCount}`";
-
-indexCode = indexCode.replace(
-  "await ctx.replyWithDocument(\n        new InputFile(pdfPath, `NizoAI_Doc_${Date.now()}.pdf`),",
-  `const _pageBreaks = (cleanMarkdown.match(/page-break-after|page-break-before|class="page"/g) ?? []).length;
-      const _actualPageCount = _pageBreaks > 0 ? _pageBreaks + 1 : 1;
-      ctx.session.lastPageCount = _actualPageCount;
-
-      await ctx.replyWithDocument(
-        new InputFile(pdfPath, \`NizoAI_Doc_\${Date.now()}.pdf\`),`
-);
-
-indexCode = indexCode.replace(nizoCaptionOld, nizoCaptionNew);
-
-
-// 6. lastPageCount for free_auto
-indexCode = indexCode.replace(
-  "ctx.session.lastImageCountPerPage = parseImageSections(cleanMarkdown);",
-  "const _pageBreaksFree = (cleanMarkdown.match(/page-break-after|page-break-before|class=\"page\"/g) ?? []).length;\n      const _actualPageCountFree = _pageBreaksFree > 0 ? _pageBreaksFree + 1 : 1;\n      ctx.session.lastPageCount = _actualPageCountFree;\n      ctx.session.lastImageCountPerPage = parseImageSections(cleanMarkdown);"
-);
-
-indexCode = indexCode.replace(
-  "{ caption: '✅ مستندك المجاني جاهز! 📄\\n\\nمدعوم بـ AI Free PDF ⚡' }",
-  "{ caption: '✅ مستندك المجاني جاهز! 📄\\n\\nعدد الصفحات: ' + ctx.session.lastPageCount + '\\nمدعوم بـ AI Free PDF ⚡' }"
-);
-
-
-// 7. Image guard for free_auto
-const freeAutoGuardRegex = /if\s*\(\s*ctx\.session\.awaitingFreeAiTopic\s*\)\s*\{/g;
-let matchFree = freeAutoGuardRegex.exec(indexCode);
-const guardCode = `
-    // ── Image Request Guard ──────────────────────
-    if (ctx.session.proImageMode !== true) {
-      const _imageKeywords = [
-        'صورة','صور','صوره','صوري','صورتي','الصورة','الصور',
-        'صورك','اضف صورة','ضف صورة','أضف صورة',
-        'مع صورة','فيه صورة','يحتوي صورة','تضمين صورة',
-        'صور احترافية','صور توضيحية','صور للمستند',
-        'ادرج صورة','أدرج صورة','ارفق صورة',
-        'حط صورة','خلي فيه صورة','ابغا صورة',
-        'image','images','photo','photos','picture','pictures',
-        'img','add image','with image','include image',
-        'صورة لكل','صور لكل','صورة في كل',
-      ];
-      const _lowerText = (ctx.message?.text || '').toLowerCase();
-      const _foundKeyword = _imageKeywords.find(kw => _lowerText.includes(kw.toLowerCase()));
-      if (_foundKeyword) {
-        await ctx.reply(
-          '⚠️ تنبيه مهم\\n\\n' +
-          'رسالتك تحتوي على طلب صور: "' + _foundKeyword + '"\\n\\n' +
-          '✏️ زر التلقائي مخصص للنصوص فقط ولا يدعم الصور.\\n\\n' +
-          'لديك خياران:\\n' +
-          '1️⃣ احذف الكلمات المتعلقة بالصور وأعد الإرسال\\n' +
-          '2️⃣ اذهب لأحد هذين الزرين لمستند يدعم الصور:\\n' +
-          '   • 🤖 NizoAI PDF\\n' +
-          '   • FREE Ai Free PDF\\n' +
-          'ثم اختر "🖼✏️ احترافي"',
-          {
-            reply_markup: {
-              inline_keyboard: [
-                // @ts-ignore
-                [{ text: '🤖 NizoAI PDF',    callback_data: 'start_nizo_pdf', style: 'primary' as any }],
-                // @ts-ignore
-                [{ text: 'FREE Ai Free PDF', callback_data: 'start_free_pdf', style: 'primary' as any }],
-                // @ts-ignore
-                [{ text: '❌ إلغاء',          callback_data: 'cancel',         style: 'danger'  as any }],
-              ]
-            }
-          }
-        );
+function replaceStr(file, oldStr, newStr) {
+    let content = fs.readFileSync(file, 'utf8');
+    if (!content.includes(oldStr)) {
+        console.error("NOT FOUND in " + file + ":\\n" + oldStr);
         return;
-      }
     }
-    // ─────────────────────────────────────────────
-`;
-if (matchFree) {
-  indexCode = indexCode.substring(0, matchFree.index + matchFree[0].length) + guardCode + indexCode.substring(matchFree.index + matchFree[0].length);
+    content = content.replace(oldStr, newStr);
+    fs.writeFileSync(file, content, 'utf8');
+    console.log("REPLACED successfully in " + file);
 }
 
-// 8. Image guard for nizo_auto
-const nizoAutoGuardStr = "if (ctx.session.awaitingMoreText && ctx.message?.text) {";
-indexCode = indexCode.replace(nizoAutoGuardStr, nizoAutoGuardStr + guardCode);
+// FIX 1
+const ih_file = 'src/bot/handlers/imageHandler.ts';
+const oldFix1 = `    const processingMsg = await ctx.reply(
+      '⏳ يرجى الانتظار...\\n\\nالذكاء الاصطناعي يعمل الآن على توليد نسختك الاحترافية ✨',
+      { parse_mode: 'HTML' }
+    );
 
-fs.writeFileSync(indexFile, indexCode);
-console.log('done');
+    const animations = [
+      '🔄 جارٍ تحليل الصورة...\\n\\nالذكاء الاصطناعي يدرس التفاصيل الدقيقة ✨',
+      '🎨 جارٍ إعادة التوليد...\\n\\nيتم تحسين الإضاءة والألوان والملمس ✨',
+      '✨ اللمسات الأخيرة...\\n\\nنسختك الاحترافية تكاد تكون جاهزة 🚀',
+    ];
+    let animIdx = 0;
+    const animInterval = setInterval(async () => {
+      if (animIdx < animations.length) {
+        await ctx.api.editMessageText(
+          processingMsg.chat.id,
+          processingMsg.message_id,
+          animations[animIdx++],
+          { parse_mode: 'HTML' }
+        ).catch(() => {});
+      }
+    }, 8000);`;
+
+const newFix1 = `    const processingMsg = await ctx.reply(
+      '⏳ <b>يرجى الانتظار...</b>\\n\\n' +
+      'الذكاء الاصطناعي يعمل الآن على توليد نسختك الاحترافية ✨\\n\\n' +
+      '⚠️ <i>قد تستغرق عملية التحسين 5 دقائق، في حال تعدى هذا الوقت ولم تصلك الصورة، يرجى رفع بلاغ وسيتم تعويضك فوراً.</i>',
+      { parse_mode: 'HTML' }
+    );
+
+    const animations = [
+      '🔍 الصور الآن في المرحلة الأولى: جاري دراسة الملامح والتفاصيل...',
+      '🤖 البوت يدرس الصورة ويحلل الإضاءة والظلال المعقدة...',
+      '✨ البوت يتجهز لتصفية البكسلة ورفع الجودة إلى أقصى حد...',
+      '🎨 يتم الآن دمج الواقعية العالية مع الحفاظ على روح الصورة الأصلية...',
+      '🚀 اللمسات الأخيرة... نسختك الاحترافية تكاد تكون جاهزة!'
+    ];
+    let animIdx = 0;
+    const animInterval = setInterval(async () => {
+      if (animIdx < animations.length) {
+        await ctx.api.editMessageText(
+          processingMsg.chat.id,
+          processingMsg.message_id,
+          animations[animIdx++] + '\\n\\n⚠️ <i>قد تستغرق عملية التحسين 5 دقائق، في حال تعدى هذا الوقت ولم تصلك الصورة، يرجى رفع بلاغ وسيتم تعويضك.</i>',
+          { parse_mode: 'HTML' }
+        ).catch(() => {});
+      }
+    }, 10000); // 10 seconds interval`;
+
+replaceStr(ih_file, oldFix1, newFix1);
+
+// FIX 2
+// The line might have comments or might be 120_000
+let ihContent = fs.readFileSync(ih_file, 'utf8');
+const regexTimeout = /if\s*\(Date\.now\(\)\s*-\s*startTime\s*>\s*(120_000|300_000)\)\s*throw\s*new\s*Error\('timeout'\);[^\n]*/;
+if(regexTimeout.test(ihContent)) {
+    ihContent = ihContent.replace(regexTimeout, "if (Date.now() - startTime > 300_000) throw new Error('timeout');");
+    fs.writeFileSync(ih_file, ihContent, 'utf8');
+    console.log("REPLACED FIX 2 successfully in " + ih_file);
+} else {
+    console.error("FIX 2 target not found in " + ih_file);
+}
+
+// FIX 3
+const ch_file = 'src/bot/handlers/callbackHandler.ts';
+const oldFix3 = "inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_magic_enhance' }]]";
+const newFix3 = "inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_magic_enhance', style: 'danger' as any }]]";
+replaceStr(ch_file, oldFix3, newFix3);
+

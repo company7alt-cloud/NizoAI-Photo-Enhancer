@@ -539,14 +539,18 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     }
 
     const processingMsg = await ctx.reply(
-      '⏳ يرجى الانتظار...\n\nالذكاء الاصطناعي يعمل الآن على توليد نسختك الاحترافية ✨',
+      '⏳ <b>يرجى الانتظار...</b>\n\n' +
+      'الذكاء الاصطناعي يعمل الآن على توليد نسختك الاحترافية ✨\n\n' +
+      '⚠️ <i>قد تستغرق عملية التحسين 5 دقائق، في حال تعدى هذا الوقت ولم تصلك الصورة، يرجى رفع بلاغ وسيتم تعويضك فوراً.</i>',
       { parse_mode: 'HTML' }
     );
 
     const animations = [
-      '🔄 جارٍ تحليل الصورة...\n\nالذكاء الاصطناعي يدرس التفاصيل الدقيقة ✨',
-      '🎨 جارٍ إعادة التوليد...\n\nيتم تحسين الإضاءة والألوان والملمس ✨',
-      '✨ اللمسات الأخيرة...\n\nنسختك الاحترافية تكاد تكون جاهزة 🚀',
+      '🔍 الصور الآن في المرحلة الأولى: جاري دراسة الملامح والتفاصيل...',
+      '🤖 البوت يدرس الصورة ويحلل الإضاءة والظلال المعقدة...',
+      '✨ البوت يتجهز لتصفية البكسلة ورفع الجودة إلى أقصى حد...',
+      '🎨 يتم الآن دمج الواقعية العالية مع الحفاظ على روح الصورة الأصلية...',
+      '🚀 اللمسات الأخيرة... نسختك الاحترافية تكاد تكون جاهزة!'
     ];
     let animIdx = 0;
     const animInterval = setInterval(async () => {
@@ -554,11 +558,11 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         await ctx.api.editMessageText(
           processingMsg.chat.id,
           processingMsg.message_id,
-          animations[animIdx++],
+          animations[animIdx++] + '\n\n⚠️ <i>قد تستغرق عملية التحسين 5 دقائق، في حال تعدى هذا الوقت ولم تصلك الصورة، يرجى رفع بلاغ وسيتم تعويضك.</i>',
           { parse_mode: 'HTML' }
         ).catch(() => {});
       }
-    }, 8000);
+    }, 10000);
 
     try {
       const tgFile = await ctx.api.getFile(fileId);
@@ -597,7 +601,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const startTime = Date.now();
       while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
-        if (Date.now() - startTime > 300_000) throw new Error('timeout'); // Increased to 5 mins for cold boots
+        if (Date.now() - startTime > 300_000) throw new Error('timeout');
         await new Promise(r => setTimeout(r, 2500));
         const pollRes = await fetch(
           `https://api.replicate.com/v1/predictions/${prediction.id}`,

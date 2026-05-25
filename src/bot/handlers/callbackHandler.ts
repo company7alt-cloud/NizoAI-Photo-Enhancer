@@ -1641,7 +1641,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_magic_enhance' }]]
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_magic_enhance', style: 'danger' as any }]]
         }
       }
     );
