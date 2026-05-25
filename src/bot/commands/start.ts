@@ -252,9 +252,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
         [
           // @ts-ignore
           { text: eraserLocks.btn_eraser ? '🔒 مُزيل النجمة التلقائي — مقفل' : '🧹 مُزيل النجمة التلقائي', callback_data: 'remove_watermark_auto', style: 'primary' },
-          // @ts-ignore
-          { text: nanoLocks.btn_magic_enhance ? '🔒 تحسين الصورة (AI) — مقفل' : '🪄 تحسين الصورة (AI)', callback_data: 'magic_enhance_start', style: 'primary' },
-        ],
+],
 
         // ROW 5 — Daily Gift (blue)
         [
