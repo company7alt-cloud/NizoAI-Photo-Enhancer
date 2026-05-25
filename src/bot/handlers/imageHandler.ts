@@ -541,28 +541,31 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     const processingMsg = await ctx.reply(
       '⏳ <b>يرجى الانتظار...</b>\n\n' +
       'الذكاء الاصطناعي يعمل الآن على توليد نسختك الاحترافية ✨\n\n' +
-      '⚠️ <i>قد تستغرق عملية التحسين 5 دقائق، في حال تعدى هذا الوقت ولم تصلك الصورة، يرجى رفع بلاغ وسيتم تعويضك فوراً.</i>',
+      '⚠️ <i>قد تستغرق عملية التحسين حتى 15 دقيقة، في حال تعدى هذا الوقت ولم تصلك الصورة، يرجى رفع بلاغ وسيتم تعويضك فوراً.</i>',
       { parse_mode: 'HTML' }
     );
 
     const animations = [
-      '🔍 الصور الآن في المرحلة الأولى: جاري دراسة الملامح والتفاصيل...',
-      '🤖 البوت يدرس الصورة ويحلل الإضاءة والظلال المعقدة...',
-      '✨ البوت يتجهز لتصفية البكسلة ورفع الجودة إلى أقصى حد...',
-      '🎨 يتم الآن دمج الواقعية العالية مع الحفاظ على روح الصورة الأصلية...',
-      '🚀 اللمسات الأخيرة... نسختك الاحترافية تكاد تكون جاهزة!'
+      '🔍 جاري تهيئة خوادم الذكاء الاصطناعي لاستقبال الصورة .',
+      '🤖 يتم الآن تحليل تفاصيل الصورة بدقة عالية ..',
+      '✨ جاري معالجة الإضاءة والظلال المعقدة ...',
+      '🎨 يتم الآن دمج الواقعية العالية مع الملامح الأصلية .',
+      '⏳ جاري تحسين جودة البكسلات وإبراز الملمس ..',
+      '⚙️ الذكاء الاصطناعي يقوم باللمسات قبل النهائية ...',
+      '🚀 جاري تجهيز نسختك الاحترافية للعرض .',
+      '🌟 اللمسات الأخيرة... يرجى الانتظار قليلاً ..'
     ];
     let animIdx = 0;
     const animInterval = setInterval(async () => {
-      if (animIdx < animations.length) {
-        await ctx.api.editMessageText(
-          processingMsg.chat.id,
-          processingMsg.message_id,
-          animations[animIdx++] + '\n\n⚠️ <i>قد تستغرق عملية التحسين 5 دقائق، في حال تعدى هذا الوقت ولم تصلك الصورة، يرجى رفع بلاغ وسيتم تعويضك.</i>',
-          { parse_mode: 'HTML' }
-        ).catch(() => {});
-      }
-    }, 10000);
+      // Loop through the array infinitely using modulo
+      const currentAnim = animations[animIdx++ % animations.length];
+      await ctx.api.editMessageText(
+        processingMsg.chat.id,
+        processingMsg.message_id,
+        currentAnim + '\n\n⚠️ <i>قد تستغرق عملية التحسين حتى 15 دقيقة، في حال تعدى هذا الوقت ولم تصلك الصورة، يرجى رفع بلاغ وسيتم تعويضك.</i>',
+        { parse_mode: 'HTML' }
+      ).catch(() => {});
+    }, 10000); // 10 seconds interval
 
     try {
       const tgFile = await ctx.api.getFile(fileId);
@@ -601,7 +604,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const startTime = Date.now();
       while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
-        if (Date.now() - startTime > 300_000) throw new Error('timeout');
+        if (Date.now() - startTime > 600_000) throw new Error('timeout'); // 10 minutes timeout for cold boots
         await new Promise(r => setTimeout(r, 2500));
         const pollRes = await fetch(
           `https://api.replicate.com/v1/predictions/${prediction.id}`,
