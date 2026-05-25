@@ -597,7 +597,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const startTime = Date.now();
       while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
-        if (Date.now() - startTime > 120_000) throw new Error('timeout');
+        if (Date.now() - startTime > 300_000) throw new Error('timeout'); // Increased to 5 mins for cold boots
         await new Promise(r => setTimeout(r, 2500));
         const pollRes = await fetch(
           `https://api.replicate.com/v1/predictions/${prediction.id}`,

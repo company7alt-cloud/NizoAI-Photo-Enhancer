@@ -1434,7 +1434,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' , style: 'primary' as const}],
         [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' , style: 'primary' as const}],
         // @ts-ignore
-        [{ text: `${l.btn_magic_enhance ? '🔴 مقفول' : '🟢 مفتوح'} — 🪤 تحسين احترافي`, callback_data: 'atoggle_btn_magic_enhance' }],
+        [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance' }],
         // @ts-ignore
         [{ text: '❌ إغلاق', callback_data: 'admin_close' , style: 'danger' as const}],
       ]
@@ -1496,7 +1496,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' , style: 'primary' as const}],
         [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' , style: 'primary' as const}],
         // @ts-ignore
-        [{ text: `${l.btn_magic_enhance ? '🔴 مقفول' : '🟢 مفتوح'} — 🪤 تحسين احترافي`, callback_data: 'atoggle_btn_magic_enhance' }],
+        [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance' }],
         // @ts-ignore
         [{ text: '❌ إغلاق', callback_data: 'admin_close' , style: 'danger' as const}],
       ]
@@ -1634,7 +1634,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
 
     await ctx.reply(
-      '🪤 تحسين احترافي بالذكاء الاصطناعي\n\n' +
+      '🪄 <b>تحسين الصورة (AI)</b>\n\n' +
       '📸 أرسل لي الصورة الآن وسأعيد توليدها بجودة استوديو احترافية مع الحفاظ على كل تفاصيلها الأصلية 🚀\n\n' +
       '💸 السعر: 5 محاولات\n' +
       'يمكنك إرسالها كصورة عادية أو كملف للحفاظ على الجودة',
