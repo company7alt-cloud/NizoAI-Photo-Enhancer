@@ -577,10 +577,9 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const HIDDEN_PROMPT = "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.";
       const NEGATIVE_PROMPT = "cartoon, 3d render, plastic, over-smoothed, deformed, blurry, bad anatomy, text changes, altered logo, watermark, artificial lighting, oversaturated";
 
-      void inputBuffer;
+      const base64Image = `data:image/jpeg;base64,${inputBuffer.toString('base64')}`;
       const apiKey = process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY || '';
 
-      // Call Replicate via REST API using direct URL to avoid Base64 timeout bottlenecks
       const replicateRes = await fetch('https://api.replicate.com/v1/predictions', {
         method: 'POST',
         headers: {
@@ -590,31 +589,44 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         body: JSON.stringify({
           version: '39ed52f2a78e134af7dc69b8ae843b9fc061116cc375ddec4040ddf5e4140bd1',
           input: {
-            image:               fileUrl, // 💡 CRITICAL: Use direct Telegram URL
+            image:               base64Image,
             prompt:              HIDDEN_PROMPT,
             negative_prompt:     NEGATIVE_PROMPT,
             prompt_strength:     0.30,
             guidance_scale:      7.5,
-            num_inference_steps: 22, // 💡 CRITICAL: Reduced to 22 for faster generation without losing quality
+            num_inference_steps: 22,
           }
         })
       });
 
       let prediction = await replicateRes.json() as any;
-      if (prediction.error) throw new Error(prediction.error);
+
+      // CRITICAL FIX: Catch Replicate rejections instantly — prevents infinite polling loop
+      if (!replicateRes.ok || prediction.error || prediction.detail) {
+        console.error('[MagicEnhance] Replicate rejected:', JSON.stringify(prediction));
+        throw new Error(`api_rejected: ${prediction.detail || prediction.error || replicateRes.status}`);
+      }
+      if (!prediction.id) throw new Error('no_prediction_id');
 
       const startTime = Date.now();
       while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
-        if (Date.now() - startTime > 600_000) throw new Error('timeout'); // 10 minutes timeout for cold boots
+        if (Date.now() - startTime > 600_000) throw new Error('timeout');
         await new Promise(r => setTimeout(r, 2500));
         const pollRes = await fetch(
           `https://api.replicate.com/v1/predictions/${prediction.id}`,
           { headers: { 'Authorization': `Token ${apiKey}` } }
         );
+        if (!pollRes.ok) {
+          console.error('[MagicEnhance] Poll failed:', await pollRes.text());
+          throw new Error('polling_failed');
+        }
         prediction = await pollRes.json() as any;
       }
 
-      if (prediction.status === 'failed') throw new Error('prediction_failed');
+      if (prediction.status === 'failed') {
+        console.error('[MagicEnhance] Failed logs:', prediction.logs || 'none');
+        throw new Error('prediction_failed');
+      }
 
       const outputUrl = Array.isArray(prediction.output)
         ? String(prediction.output[0])
