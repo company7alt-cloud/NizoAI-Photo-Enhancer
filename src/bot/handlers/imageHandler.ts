@@ -577,9 +577,10 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const HIDDEN_PROMPT = "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.";
       const NEGATIVE_PROMPT = "cartoon, 3d render, plastic, over-smoothed, deformed, blurry, bad anatomy, text changes, altered logo, watermark, artificial lighting, oversaturated";
 
-      const base64Image = `data:image/jpeg;base64,${inputBuffer.toString('base64')}`;
+      void inputBuffer;
       const apiKey = process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY || '';
 
+      // Call Replicate via REST API using direct URL to avoid Base64 timeout bottlenecks
       const replicateRes = await fetch('https://api.replicate.com/v1/predictions', {
         method: 'POST',
         headers: {
@@ -589,12 +590,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         body: JSON.stringify({
           version: '39ed52f2a78e134af7dc69b8ae843b9fc061116cc375ddec4040ddf5e4140bd1',
           input: {
-            image:               base64Image,
+            image:               fileUrl, // 💡 CRITICAL: Use direct Telegram URL
             prompt:              HIDDEN_PROMPT,
             negative_prompt:     NEGATIVE_PROMPT,
             prompt_strength:     0.30,
             guidance_scale:      7.5,
-            num_inference_steps: 30,
+            num_inference_steps: 22, // 💡 CRITICAL: Reduced to 22 for faster generation without losing quality
           }
         })
       });
