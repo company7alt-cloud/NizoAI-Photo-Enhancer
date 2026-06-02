@@ -2635,9 +2635,50 @@ async function callbackHandler(ctx) {
             }).catch(() => { });
             return;
         }
-        // Call existing daily gift function directly
-        ctx.callbackQuery.data = 'claim_daily_reward';
-        return callbackHandler(ctx);
+        try {
+            const telegramId = ctx.from?.id.toString();
+            if (!telegramId)
+                return;
+            const user = await User_1.User.findOne({ telegramId });
+            if (!user)
+                return;
+            const now = new Date();
+            const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+            if (user.lastRewardDate) {
+                const timePassed = now.getTime() - new Date(user.lastRewardDate).getTime();
+                if (timePassed < TWENTY_FOUR_HOURS) {
+                    const timeLeft = TWENTY_FOUR_HOURS - timePassed;
+                    const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
+                    const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                    const timeFormatter = new Intl.DateTimeFormat('ar-SA', {
+                        timeZone: 'Asia/Riyadh',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true,
+                    });
+                    const claimTime = timeFormatter.format(new Date(user.lastRewardDate));
+                    await ctx.answerCallbackQuery({
+                        text: `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
+                        show_alert: true
+                    }).catch(() => { });
+                    return;
+                }
+            }
+            // Atomic update — prevents race conditions from double clicks
+            await User_1.User.findOneAndUpdate({ telegramId }, {
+                $inc: { dailyQuota: 5 },
+                $set: { lastRewardDate: now },
+            });
+            await ctx.answerCallbackQuery({
+                text: '🎉 مبروك! تمت إضافة 5 محاولات مجانية لحسابك.\nعُد غداً لاستلام هديتك الجديدة 🎁',
+                show_alert: true
+            }).catch(() => { });
+        }
+        catch (error) {
+            console.error('[DailyReward] Error:', error);
+            await (0, adminAlert_1.sendAdminAlert)(ctx, `Daily Reward Error: ${error.message}`);
+        }
+        return;
     }
     if (data === 'action_referral_sub') {
         await ctx.answerCallbackQuery().catch(() => { });
