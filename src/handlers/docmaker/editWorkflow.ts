@@ -14,7 +14,8 @@ const aiClient = new OpenAI({
 
 export async function handleEditPdfDocCallback(ctx: BotContext): Promise<void> {
   // ── Task 5: Route by PDF mode ──────────────────────────────────────────────
-  const pdfMode = ctx.session?.lastPdfMode ?? 'free_auto';
+  // If session flag is missing but image metadata exists, route to PRO mode, not Auto.
+  const pdfMode = ctx.session?.lastPdfMode ?? (ctx.session.lastImageCount !== undefined ? 'nizo_pro' : 'free_auto');
 
   if (pdfMode === 'free_auto' || pdfMode === 'nizo_auto') {
     await ctx.answerCallbackQuery().catch(() => { });
@@ -243,45 +244,43 @@ export async function processAutoEditMessage(ctx: BotContext): Promise<void> {
   const userEditText = ctx.message?.text?.trim() ?? '';
   if (!userEditText) return;
 
-  // ── Auto Edit Image Guard ─────────────────────────────────────────────
-  function _detectImgKwAutoEdit(t: string): string[] {
-    const kws = [
-      'صورة','صور','صوره','صورتي','الصورة','الصور',
-      'اضف صورة','ضف صورة','أضف صورة','ادرج صورة',
-      'أدرج صورة','ارفق صورة','حط صورة','خلي فيه صورة',
-      'ابغا صورة','مع صورة','فيه صورة','يحتوي صورة',
-      'تضمين صورة','صور احترافية','صور توضيحية',
-      'صور للمستند','صورة لكل','صور لكل','صورة في كل',
-      'image','images','photo','photos','picture','pictures',
-      'img','add image','with image','include image',
-    ];
-    const out: string[] = [];
-    t.split('\n').forEach((line, i) => {
-      const low = line.toLowerCase().trim();
-      if (!low) return;
-      const hits = Array.from(new Set(
-        kws.filter(k => low.includes(k.toLowerCase()))
-      ));
-      if (hits.length) out.push(`• السطر ${i + 1}: [ ${hits.join('، ')} ]`);
-    });
-    return out;
+  // ── STRICT ISOLATION: Auto Mode Guard ONLY ──
+  if (ctx.session.lastPdfMode === 'free_auto' || ctx.session.lastPdfMode === 'nizo_auto') {
+    function _detectImgKwAutoEdit(t: string): string[] {
+      const kws = [
+        'صورة','صور','صوره','صورتي','الصورة','الصور',
+        'اضف صورة','ضف صورة','أضف صورة','ادرج صورة',
+        'أدرج صورة','ارفق صورة','حط صورة','خلي فيه صورة',
+        'ابغا صورة','مع صورة','فيه صورة','يحتوي صورة',
+        'تضمين صورة','صور احترافية','صور توضيحية',
+        'صور للمستند','صورة لكل','صور لكل','صورة في كل',
+        'image','images','photo','photos','picture','pictures',
+        'img','add image','with image','include image',
+      ];
+      const out: string[] = [];
+      t.split('\n').forEach((line, i) => {
+        const low = line.toLowerCase().trim();
+        if (!low) return;
+        const hits = Array.from(new Set(
+          kws.filter(k => low.includes(k.toLowerCase()))
+        ));
+        if (hits.length) out.push(`• السطر ${i + 1}: [ ${hits.join('، ')} ]`);
+      });
+      return out;
+    }
+    const _autoEditIssues = _detectImgKwAutoEdit(userEditText);
+    if (_autoEditIssues.length > 0) {
+      ctx.session.awaitingAutoEdit = true;
+      await ctx.reply(
+        '⚠️ <b>تنبيه التعديل — تم رفض الطلب</b>\n\n' +
+        'التعديل الذي أرسلته يحتوي على طلب صور.\n' +
+        '✏️ هذا المستند مخصص للنصوص فقط.',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
   }
-  const _autoEditIssues = _detectImgKwAutoEdit(userEditText);
-  if (_autoEditIssues.length > 0) {
-    ctx.session.awaitingAutoEdit = true;
-    await ctx.reply(
-      '⚠️ <b>تنبيه التعديل — تم رفض الطلب</b>\n\n' +
-      'التعديل الذي أرسلته يحتوي على طلب صور في المواضع التالية:\n' +
-      _autoEditIssues.join('\n') + '\n\n' +
-      '✏️ هذا المستند (تلقائي) مخصص للنصوص فقط.\n\n' +
-      '📌 <b>يرجى اتباع الخطوات التالية:</b>\n' +
-      '١. احذف الكلمات المذكورة أعلاه من طلب التعديل\n' +
-      '٢. أرسل التعديل مجدداً وسيتم تعديل الملف فوراً',
-      { parse_mode: 'HTML' }
-    );
-    return;
-  }
-  // ─────────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────
 
   // ── Free Mode Edit Amnesia fix: prefer dedicated free fields first ──
   const originalText = ctx.session.freeLastAiGeneratedText
