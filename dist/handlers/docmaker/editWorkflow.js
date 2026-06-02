@@ -176,22 +176,24 @@ ${originalText}`
 }
 // ── Task 6: Auto Mode Edit Handler ────────────────────────────────────────────
 async function handleAutoEdit(ctx) {
-    const user = await User_1.User.findOne({ telegramId: ctx.from.id });
-    const editCount = ctx.session.editCount ?? 0;
-    if (editCount >= 1) {
-        await ctx.reply('⚠️ لقد استخدمت التعديل المتاح لهذا المستند.\n' +
-            'يمكنك إنشاء مستند جديد للحصول على تعديل جديد.');
+    const originalText = ctx.session.freeLastAiGeneratedText
+        || ctx.session.lastAiGeneratedText
+        || ctx.session.lastGeneratedDoc?.text;
+    if (!originalText) {
+        await ctx.reply('⚠️ انتهت صلاحية التعديل، أنشئ مستنداً جديداً.');
         return;
     }
-    if (ctx.session.lastPdfMode === 'nizo_auto') {
-        if ((user?.dailyQuota ?? 0) < 2) {
-            await ctx.reply('⚠️ رصيدك غير كافٍ. تحتاج 2 نقاط للتعديل.');
-            return;
-        }
-    }
-    // FIX Vulnerability 2: set flag BEFORE waiting for user input
+    // Set flag BEFORE waiting for user input
     ctx.session.awaitingAutoEdit = true;
-    await ctx.reply('✏️ أرسل التعديلات المطلوبة وسيتم تطبيقها على المستند:');
+    await ctx.reply('✏️ <b>أرسل تعليمات التعديل المطلوبة:</b>', {
+        parse_mode: 'HTML',
+        reply_markup: {
+            inline_keyboard: [[
+                    // @ts-ignore
+                    { text: '❌ إلغاء', callback_data: 'cancel', style: 'danger' }
+                ]]
+        }
+    });
 }
 // ── Task 7: Pro Mode Edit Handler ─────────────────────────────────────────────
 async function handleProEdit(ctx) {
@@ -314,21 +316,14 @@ async function processAutoEditMessage(ctx) {
             model: process.env.REPLICATE_AI_MODEL_ID || 'anthropic/claude-3-haiku',
             messages: [
                 {
-                    role: 'system',
-                    content: 'You are a silent document editor. Your ONLY job is to apply the user edit to the document below and return it COMPLETE.\n\n' +
-                        'ABSOLUTE RULES:\n' +
-                        '1. Return the FULL edited document in Arabic Markdown ONLY — no greetings, no explanations.\n' +
-                        `2. Keep EXACTLY ${ctx.session.freeLastAiDocPages || ctx.session.lastGeneratedDoc?.pageCount || ctx.session.lastAiDocPages || 1} page(s). Never add or remove pages.\n` +
-                        '3. Keep exact same structure and headings.\n' +
-                        '4. CRITICAL: You MUST write the ENTIRE text from start to finish. DO NOT summarize. DO NOT use placeholders like [باقي المحتوى كما هو] or [نفس المحتوى]. If you omit text, the document will be corrupted.\n' +
-                        '5. NO images, NO [IMAGE:] tags — this is text-only auto mode.\n' +
-                        '6. Never ask questions. Output document only.\n\n' +
-                        '══════════════════════════════════════\n' +
-                        'ORIGINAL DOCUMENT (apply edits to this):\n' +
-                        '══════════════════════════════════════\n' +
-                        originalText,
+                    role: 'user',
+                    content: 'النص الأصلي:\n' +
+                        originalText +
+                        '\n\nتعليمات التعديل:\n' +
+                        userEditText +
+                        '\n\nقم بتطبيق التعديلات المطلوبة على النص الأصلي وأعد كتابته كاملاً.' +
+                        ' لا تستخدم عبارات مثل [باقي المحتوى كما هو]. أعد كتابة المستند بالكامل.',
                 },
-                { role: 'user', content: userEditText },
             ],
             temperature: 0.3,
         });
@@ -343,15 +338,7 @@ async function processAutoEditMessage(ctx) {
         // Count pages using ## headings (each ## = one page)
         const _h2Count = (cleanMarkdown.match(/^## /gm) ?? []).length;
         const newPageCount = _h2Count > 0 ? _h2Count : originalPageCount;
-        // Fixed edit cost: always 1 point per edit, no page-based deduction
-        const _editFixedCost = 1;
-        if ((user.dailyQuota ?? 0) < _editFixedCost) {
-            await ctx.reply('⚠️ رصيدك غير كافٍ للتعديل. تحتاج نقطة واحدة.');
-            ctx.session.editCount = Math.max(0, ctx.session.editCount - 1);
-            ctx.session.awaitingAutoEdit = true;
-            return;
-        }
-        await User_1.User.updateOne({ _id: user._id }, { $inc: { dailyQuota: -_editFixedCost } });
+        // Editing is free — no point deduction
         ctx.session.isAutoMode = true;
         const { generateAiPDF } = await Promise.resolve().then(() => __importStar(require('../../services/aiPdfService')));
         const pdfPath = await generateAiPDF(cleanMarkdown, ctx.session.aiDocStyle || 'default', true);
