@@ -36,6 +36,9 @@ export interface IUser extends Document {
     isBlocked: boolean;
     lastSeenAt: Date | null;
     awaitingNanoBananaImage: boolean;
+    awaitingMagicEnhanceImage: boolean;
+    lastMagicEnhanceBuffer: string;
+    lastMagicEnhanceMsgId: number | null;
     awaitingEraserImage?: boolean;
     awaitingEraserOriginal?: boolean;
     awaitingCustomEraserImage?: boolean;

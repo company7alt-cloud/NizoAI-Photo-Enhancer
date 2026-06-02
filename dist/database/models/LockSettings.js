@@ -46,6 +46,7 @@ const LockSettingsSchema = new mongoose_1.Schema({
         btn_eraser: { type: Boolean, default: false },
         btn_doc_maker: { type: Boolean, default: false },
         btn_filters: { type: Boolean, default: false },
+        btn_magic_enhance: { type: Boolean, default: false },
     }
 }, { collection: 'lock_settings' });
 exports.LockSettings = mongoose_1.default.model('LockSettings', LockSettingsSchema);

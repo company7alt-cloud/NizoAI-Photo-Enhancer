@@ -289,7 +289,7 @@ async function renderActiveSessionInner(ctx) {
     }).join('\n');
     const text = lines.length > 0
         ? `📄 <b>المستند:</b>\n${preview}`
-        : `📄 <b>المستند فارغ.</b>\nأرسل نصاً أو صورة للبدء.`;
+        : `📄 <b>المستند فارغ.</b>\nأرسل نصاً للبدء.`;
     await ctx.reply(text, { parse_mode: 'HTML', reply_markup: controlPanel() });
     await refreshPreview(ctx);
 }
@@ -585,7 +585,6 @@ async function handleDocMakerCallbackInner(ctx) {
         await ctx.reply(`📋 <b>دليل الاستخدام:</b>
 
 ✏️ <b>إضافة نص:</b> أرسل النص مباشرة
-🖼 <b>إضافة صورة:</b> أرسل الصورة مباشرة
 📏 <b>سطر فارغ واحد:</b> أرسل نقطة  .
 📏 <b>سطرين فارغين:</b> أرسل نقطتين  ..
 📏 <b>ثلاثة أسطر:</b> أرسل ثلاث نقاط  ...
@@ -850,7 +849,7 @@ async function handleDocMakerCallbackInner(ctx) {
         try {
             await ctx.editMessageText(`✅ <b>تمت إضافة السطر للمستند!</b>\n\n` +
                 `📄 الأسطر: ${total} | الصفحات: ~${pages}\n\n` +
-                'أرسل نصاً أو صورة، أو اضغط تصدير.', {
+                'أرسل نصاً إضافياً، أو اضغط تصدير.', {
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [
@@ -996,7 +995,7 @@ async function handleDocMakerCallbackInner(ctx) {
     if (data === 'doc_back_to_session_keep') {
         ctx.session.pendingExportCost = undefined;
         ctx.session.pendingExportPages = undefined;
-        await ctx.editMessageText('↩️ <b>عدت للجلسة.</b>\nأرسل نصاً أو صورة، أو اضغط تصدير.', {
+        await ctx.editMessageText('↩️ <b>عدت للجلسة.</b>\nأرسل نصاً، أو اضغط تصدير.', {
             parse_mode: 'HTML',
             reply_markup: controlPanel()
         });
@@ -1292,7 +1291,7 @@ async function handleDocMakerCallbackInner(ctx) {
         ctx.session.tempFormatting = undefined;
         await ctx.answerCallbackQuery('↩️ إلغاء');
         try {
-            await ctx.editMessageText('↩️ <b>تم إلغاء النص.</b>\nأرسل نصاً جديداً أو صورة.', {
+            await ctx.editMessageText('↩️ <b>تم إلغاء النص.</b>\nأرسل نصاً جديداً.', {
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [[
@@ -1723,6 +1722,14 @@ async function handleDocMakerMessage(ctx) {
 async function handleDocMakerMessageInner(ctx) {
     if (!ctx.session || !ctx.from)
         return false;
+    // ── Shield to strictly block images in Automatic (Text) Mode ──
+    if (ctx.message?.photo || ctx.message?.document) {
+        if (ctx.session.docType === 'text') {
+            await ctx.reply('⚠️ <b>عذراً، النسخة التلقائية تدعم إضافة النصوص فقط 📝.</b>\nلإضافة صور وتنسيقها، يرجى إنهاء هذه الجلسة والبدء بمستند جديد واختيار <b>النسخة الاحترافية ✨</b>.', { parse_mode: 'HTML' });
+            return true; // Halt processing
+        }
+        // If it's professional mode (image), let it pass smoothly to the image handler
+    }
     // ── TYPOGRAPHY VALUE INTERCEPTOR ─────────────────────────────────────
     if (ctx.session.awaitingTypographyValue && ctx.message?.text) {
         const val = parseInt(ctx.message.text.trim());

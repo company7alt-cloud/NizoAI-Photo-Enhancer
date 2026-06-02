@@ -60,7 +60,7 @@ const assetGuard_1 = require("./utils/assetGuard");
 const connection_1 = require("./database/connection");
 const Settings_1 = require("./database/models/Settings");
 const User_1 = require("./database/models/User");
-const ForceSubChannel_1 = require("./database/models/ForceSubChannel");
+// ForceSubChannel static import removed — clawback system disabled
 const start_1 = require("./bot/commands/start");
 const admin_1 = require("./bot/commands/admin");
 const imageHandler_1 = require("./bot/handlers/imageHandler");
@@ -1122,59 +1122,30 @@ imageBot.on('chat_member', async (ctx) => {
         const { handleMemberLeft } = await Promise.resolve().then(() => __importStar(require('./services/channelFundService')));
         await handleMemberLeft(userId, channelId, ctx.api);
     }
-    // ── Referral Clawback: user leaves a force-sub channel ──────────────────────
-    try {
-        if (newStatus !== 'left' && newStatus !== 'kicked')
-            return;
-        const isForceSubChannel = await ForceSubChannel_1.ForceSubChannel.findOne({ channelId });
-        if (!isForceSubChannel)
-            return;
-        const fleeingUser = await User_1.User.findOne({ telegramId: userId });
-        if (fleeingUser?.referredBy != null &&
-            fleeingUser.referralRewardClaimed === true) {
-            const REFERRAL_REWARD = 5; // same amount given in start.ts referral block
-            const POINTS_FIELD = 'dailyQuota'; // exact field from User model
-            await User_1.User.findOneAndUpdate({ telegramId: fleeingUser.referredBy }, { $inc: { [POINTS_FIELD]: -REFERRAL_REWARD } });
-            await User_1.User.findOneAndUpdate({ telegramId: userId }, { $set: { referralRewardClaimed: false } });
-            console.log(`[Clawback] ${userId} left force-sub channel. ` +
-                `Clawed back ${REFERRAL_REWARD} pts from referrer ${fleeingUser.referredBy}`);
-            try {
-                await ctx.api.sendMessage(fleeingUser.referredBy, `⚠️ تم خصم ${REFERRAL_REWARD} نقطة من رصيدك لأن ` +
-                    'الشخص الذي دعوته غادر إحدى قنوات البوت الإجبارية.');
-            }
-            catch { /* referrer may have blocked bot */ }
-        }
-    }
-    catch (err) {
-        console.error('[Clawback chat_member]', err);
-    }
+    // ── Referral Clawback: DISABLED — users no longer lose points when referred friends leave ──
+    // try {
+    //   if (newStatus !== 'left' && newStatus !== 'kicked') return;
+    //
+    //   const isForceSubChannel = await ForceSubChannel.findOne({ channelId });
+    //   if (!isForceSubChannel) return;
+    //
+    //   const fleeingUser = await User.findOne({ telegramId: userId });
+    //
+    //   if (fleeingUser?.referredBy != null && fleeingUser.referralRewardClaimed === true) {
+    //     const REFERRAL_REWARD = 5;
+    //     await User.findOneAndUpdate({ telegramId: fleeingUser.referredBy }, { $inc: { dailyQuota: -REFERRAL_REWARD } });
+    //     await User.findOneAndUpdate({ telegramId: userId }, { $set: { referralRewardClaimed: false } });
+    //     // penalty sendMessage suppressed
+    //   }
+    // } catch (err) {
+    //   console.error('[Clawback chat_member]', err);
+    // }
 });
-// ─── my_chat_member: User blocks the bot — Referral Clawback ──────────────────
-imageBot.on('my_chat_member', async (ctx) => {
-    try {
-        const newStatus = ctx.myChatMember.new_chat_member.status;
-        if (newStatus !== 'kicked')
-            return;
-        const fleeingUserId = ctx.from.id;
-        const fleeingUser = await User_1.User.findOne({ telegramId: fleeingUserId });
-        if (fleeingUser?.referredBy != null &&
-            fleeingUser.referralRewardClaimed === true) {
-            const REFERRAL_REWARD = 5; // same amount given in start.ts referral block
-            const POINTS_FIELD = 'dailyQuota'; // exact field from User model
-            await User_1.User.findOneAndUpdate({ telegramId: fleeingUser.referredBy }, { $inc: { [POINTS_FIELD]: -REFERRAL_REWARD } });
-            await User_1.User.findOneAndUpdate({ telegramId: fleeingUserId }, { $set: { referralRewardClaimed: false } });
-            console.log(`[Clawback] ${fleeingUserId} blocked imageBot. ` +
-                `Clawed back ${REFERRAL_REWARD} pts from referrer ${fleeingUser.referredBy}`);
-            try {
-                await ctx.api.sendMessage(fleeingUser.referredBy, `⚠️ تم خصم ${REFERRAL_REWARD} نقطة من رصيدك لأن ` +
-                    'الشخص الذي دعوته قام بحظر البوت.');
-            }
-            catch { /* referrer may have blocked bot */ }
-        }
-    }
-    catch (err) {
-        console.error('[Clawback my_chat_member]', err);
-    }
+// ─── my_chat_member: Referral Clawback — DISABLED ────────────────────────────
+// Referrers will NOT lose points when an invited user blocks the bot.
+// The positive referral reward (+5 pts in start.ts) remains fully active.
+imageBot.on('my_chat_member', async (_ctx) => {
+    // Clawback disabled — no action taken.
 });
 // ─── imageBot Error Handler ────────────────────────────────────────────────────
 imageBot.catch((err) => {
