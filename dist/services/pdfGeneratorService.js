@@ -66,7 +66,11 @@ function registerAllFonts(doc) {
         { name: 'ModernPro', file: 'ModernPro.ttf' },
         { name: 'Thamanya', file: 'Thamanya.ttf' },
         { name: 'Amiri', file: 'Amiri.ttf' },
+        { name: 'Amiri-Regular', file: 'Amiri-Regular.ttf' },
+        { name: 'Amiri-Bold', file: 'Amiri-Bold.ttf' },
         { name: 'Cairo', file: 'Cairo.ttf' },
+        { name: 'Almarai', file: 'Almarai.ttf' },
+        { name: 'NotoNaskh', file: 'NotoNaskh.ttf' },
         { name: 'NotoEmoji', file: 'NotoEmoji.ttf' },
     ];
     let fontsDir = null;
@@ -436,9 +440,23 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
             }
             const doc = new pdfkit_1.default({ autoFirstPage: false, size: safePageSize, margin: 0 });
             const fontStatus = registerAllFonts(doc);
-            const chosenFont = fontStatus === 'Helvetica'
-                ? 'Helvetica'
-                : (selectedFont || 'Amiri');
+            // Map session font names to registered PDF font names
+            const fontMap = {
+                'Almarai': 'Almarai',
+                'almarai': 'Almarai',
+                'NotoNaskh': 'NotoNaskh',
+                'noto': 'NotoNaskh',
+                'Noto': 'NotoNaskh',
+                'ModernPro': 'ModernPro',
+                'AndoPro': 'ModernPro',
+                'ando_pro': 'ModernPro',
+                'Amiri': 'Amiri',
+                'Cairo': 'Cairo',
+                'Omnia': 'Omnia',
+                'Thamanya': 'Thamanya',
+            };
+            const resolvedFont = selectedFont ? (fontMap[selectedFont] ?? selectedFont) : 'Amiri';
+            const chosenFont = fontStatus === 'Helvetica' ? 'Helvetica' : resolvedFont;
             try {
                 doc.font(chosenFont);
                 console.log('[PDF] Using font:', chosenFont);
