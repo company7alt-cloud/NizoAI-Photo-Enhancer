@@ -26,38 +26,73 @@ export function splitSafe(text: string, limit = 4096): string[] {
 }
 
 export async function sendTextChunksWithEditButton(ctx: BotContext, generatedText: string): Promise<void> {
-  const chunks = splitSafe(generatedText);
-  if (chunks.length === 0) return;
+  if (!generatedText?.trim()) return;
 
-  for (let i = 0; i < chunks.length - 1; i++) {
-    await ctx.reply(chunks[i], { parse_mode: 'Markdown' });
+  // ── Fix Edit Amnesia: always persist latest text before sending ──
+  ctx.session.lastAiGeneratedText = generatedText;
+  if (ctx.session.lastGeneratedDoc) {
+    ctx.session.lastGeneratedDoc.text = generatedText;
   }
 
-  const lastChunk = chunks[chunks.length - 1];
-  
-  try {
-    await ctx.reply(lastChunk, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          // @ts-ignore
-          { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' }
-        ]]
-      }
-    });
-  } catch (err: any) {
-    // If grammY still throws even with @ts-ignore, fallback to raw Bot API
-    if (ctx.chat) {
-      await ctx.api.raw.sendMessage({
-        chat_id: ctx.chat.id,
-        text: lastChunk,
-        parse_mode: 'Markdown',
-        reply_markup: JSON.stringify({
+  // ── Escape HTML only — keep markdown symbols so user gets full text ──
+  const escaped = generatedText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const headerMsg =
+    '📄 <b>تم تجهيز نص المستند بالكامل!</b>\n' +
+    '👆 <i>المس النص أدناه لنسخه فوراً</i>';
+
+  const MAX_PRE = 3500;
+
+  if (escaped.length <= MAX_PRE) {
+    // ── Single message: header + pre block + edit button ──
+    await ctx.reply(
+      headerMsg + '\n\n<pre>' + escaped + '</pre>',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
           inline_keyboard: [[
-            { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' }
+            { text: '✏️ تعديل النص', callback_data: 'edit_pdf_doc' }
           ]]
-        }) as any
-      });
+        }
+      }
+    );
+  } else {
+    // ── Split into chunks preserving pre blocks ──
+    const chunks: string[] = [];
+    let remaining = escaped;
+    while (remaining.length > 0) {
+      chunks.push(remaining.slice(0, MAX_PRE));
+      remaining = remaining.slice(MAX_PRE);
     }
+
+    // First chunk with header
+    await ctx.reply(
+      headerMsg + '\n\n<pre>' + chunks[0] + '</pre>',
+      { parse_mode: 'HTML' }
+    );
+
+    // Middle chunks
+    for (let i = 1; i < chunks.length - 1; i++) {
+      await ctx.reply(
+        '<pre>' + chunks[i] + '</pre>',
+        { parse_mode: 'HTML' }
+      );
+    }
+
+    // Last chunk with edit button
+    await ctx.reply(
+      '<pre>' + chunks[chunks.length - 1] + '</pre>',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '✏️ تعديل النص', callback_data: 'edit_pdf_doc' }
+          ]]
+        }
+      }
+    );
   }
 }

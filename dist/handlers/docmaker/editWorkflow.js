@@ -312,14 +312,17 @@ async function processAutoEditMessage(ctx) {
             messages: [
                 {
                     role: 'system',
-                    content: 'You are a silent document editor. Apply the user edit request to the original document.\n' +
+                    content: 'You are a silent document editor. Your ONLY job is to apply the user edit to the document below and return it COMPLETE.\n\n' +
                         'ABSOLUTE RULES:\n' +
-                        '1. Return the COMPLETE edited document in Arabic Markdown ONLY.\n' +
-                        '2. Keep EXACTLY ' + originalPageCount + ' page(s). Never add or remove pages.\n' +
-                        '3. Keep exact same structure, headings, and sections.\n' +
-                        '4. NO images, NO [IMAGE:] tags — this is auto (text-only) mode.\n' +
-                        '5. No preamble, no explanation, no questions. Output document only.\n\n' +
-                        'ORIGINAL DOCUMENT:\n' + originalText,
+                        '1. Return the FULL edited document in Arabic Markdown ONLY — no greetings, no explanations.\n' +
+                        `2. Keep EXACTLY ${ctx.session.lastGeneratedDoc?.pageCount || ctx.session.lastAiDocPages || 1} page(s). Never add or remove pages.\n` +
+                        '3. Keep exact same structure and headings.\n' +
+                        '4. CRITICAL: NO images, NO [IMAGE:] tags — this is text-only auto mode.\n' +
+                        '5. Never ask questions. Never say "here is the document". Output document only.\n\n' +
+                        '══════════════════════════════════════\n' +
+                        'ORIGINAL DOCUMENT (apply edits to this):\n' +
+                        '══════════════════════════════════════\n' +
+                        originalText,
                 },
                 { role: 'user', content: userEditText },
             ],
@@ -362,6 +365,14 @@ async function processAutoEditMessage(ctx) {
                 `📄 عدد الصفحات: ${newPageCount}`,
             parse_mode: 'HTML',
         });
+        // ── Persist updated text BEFORE sending chunks (Edit Amnesia fix) ──
+        ctx.session.lastAiGeneratedText = cleanMarkdown;
+        ctx.session.lastAiDocPages = newPageCount;
+        ctx.session.lastGeneratedDoc = {
+            text: cleanMarkdown,
+            pageCount: newPageCount,
+            originalCost: ctx.session.lastGeneratedDoc?.originalCost ?? 0,
+        };
         const { sendTextChunksWithEditButton } = await Promise.resolve().then(() => __importStar(require('./textOutput')));
         await sendTextChunksWithEditButton(ctx, cleanMarkdown);
     }
