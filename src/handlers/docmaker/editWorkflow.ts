@@ -312,15 +312,23 @@ export async function processAutoEditMessage(ctx: BotContext): Promise<void> {
       model: process.env.REPLICATE_AI_MODEL_ID || 'anthropic/claude-3-haiku',
       messages: [
         {
-          role: 'user',
+          role: 'system',
           content:
-            'النص الأصلي:\n' +
-            originalText +
-            '\n\nتعليمات التعديل:\n' +
-            userEditText +
-            '\n\nقم بتطبيق التعديلات المطلوبة على النص الأصلي وأعد كتابته كاملاً.' +
-            ' لا تستخدم عبارات مثل [باقي المحتوى كما هو]. أعد كتابة المستند بالكامل.',
+            'You are a silent document editor. Your ONLY job is to apply the user edit to the document below and return it COMPLETE.\n\n' +
+            'ABSOLUTE RULES:\n' +
+            '1. Return the FULL edited document in Arabic Markdown ONLY. NO greetings, NO explanations.\n' +
+            `2. Keep EXACTLY ${originalPageCount} page(s). Never add or remove pages.\n` +
+            '3. CRITICAL: You MUST write the ENTIRE text from start to finish. DO NOT summarize. DO NOT use placeholders like [باقي المحتوى كما هو].\n' +
+            '4. NO images, NO [IMAGE:] tags — this is text-only auto mode.\n\n' +
+            '══════════════════════════════════════\n' +
+            'ORIGINAL DOCUMENT (apply edits to this):\n' +
+            '══════════════════════════════════════\n' +
+            originalText,
         },
+        {
+          role: 'user',
+          content: `قم بتطبيق التعديلات التالية على المستند:\n\n${userEditText}`
+        }
       ],
       temperature: 0.3,
     });

@@ -75,7 +75,7 @@ function buildHtml(bodyContent: string, template: string): string {
       font-weight: 600;
       page-break-after: avoid;
     }
-    p { margin: 8px 0; text-align: justify; }
+    p { margin: 8px 0; text-align: justify; page-break-inside: avoid; }
     ul, ol { padding-right: 20px; padding-left: 0; margin: 10px 0; }
     li { margin-bottom: 5px; }
     blockquote {
