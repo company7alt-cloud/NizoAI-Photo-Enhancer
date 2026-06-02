@@ -2521,12 +2521,24 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
             await ctx.reply(_plg2.text, { reply_markup: _plg2.reply_markup });
             return;
         }
+        // ── PRO mode gets its own system prompt with full Unsplash image support ──
+        const _isProMode = ctx.session.proImageMode === true;
+        const _proImageRule = _isProMode
+            ? '\nCRITICAL RULE FOR IMAGES: You are integrated with the Unsplash API.\n' +
+                'To insert an image, you MUST output exactly this format on its own line: [IMAGE: english_search_keyword]\n' +
+                'Example: [IMAGE: modern corporate office] or [IMAGE: apple logo]\n' +
+                'If the request mentions Arabic placeholders like "(\u0623\u062f\u062e\u0644 \u0635\u0648\u0631\u0629 \u0644\u0639\u0644\u0627\u0645\u0629 \u0646\u0627\u064a\u0643)", replace with: [IMAGE: nike logo]\n' +
+                'NEVER output literal Arabic image instructions like "(\u0635\u0648\u0631\u0629)" or "(\u0635\u0648\u0631\u0629: \u0643\u0630\u0627)".\n' +
+                'ONLY use [IMAGE: english_keyword] tags. Use maximum 2 per document.\n'
+            : '';
+        const _systemPrompt = promptAnalysis.enhancedPrompt + _proImageRule;
+        // ─────────────────────────────────────────────────────────────────────
         const loadingState = await (0, loading_1.showDynamicLoading)(ctx, '⏳ جاري الكتابة بالذكاء الاصطناعي');
         try {
             const response = await aiClient.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages: [
-                    { role: 'system', content: promptAnalysis.enhancedPrompt },
+                    { role: 'system', content: _systemPrompt },
                     { role: 'user', content: text } // Sending raw text separately as good practice
                 ],
                 max_tokens: 4000,
@@ -2536,8 +2548,8 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
             if (!aiResponse.trim())
                 throw new Error('AI returned empty content');
             const cleanMarkdown = aiResponse.replace(/^```[a-z]*\n?/gm, '').replace(/```$/gm, '');
-            ctx.session.isAutoMode = true;
-            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(cleanMarkdown, 'default', true);
+            // Pro mode keeps [IMAGE:] tags for Unsplash; Auto mode strips them
+            const pdfBuffer = await (0, aiPdfService_1.generateAiPDF)(cleanMarkdown, 'default', !_isProMode);
             ctx.session.isAutoMode = false;
             const fileName = `nizoai_free_${Date.now()}.pdf`;
             await loadingState.stop();
