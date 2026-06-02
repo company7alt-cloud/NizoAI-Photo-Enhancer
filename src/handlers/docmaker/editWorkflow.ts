@@ -314,20 +314,18 @@ export async function processAutoEditMessage(ctx: BotContext): Promise<void> {
         {
           role: 'system',
           content:
-            'You are a silent document editor. Your ONLY job is to apply the user edit to the document below and return it COMPLETE.\n\n' +
-            'ABSOLUTE RULES:\n' +
-            '1. Return the FULL edited document in Arabic Markdown ONLY. NO greetings, NO explanations.\n' +
-            `2. Keep EXACTLY ${originalPageCount} page(s). Never add or remove pages.\n` +
-            '3. CRITICAL: You MUST write the ENTIRE text from start to finish. DO NOT summarize. DO NOT use placeholders like [باقي المحتوى كما هو].\n' +
-            '4. NO images, NO [IMAGE:] tags — this is text-only auto mode.\n\n' +
-            '══════════════════════════════════════\n' +
-            'ORIGINAL DOCUMENT (apply edits to this):\n' +
-            '══════════════════════════════════════\n' +
-            originalText,
+            'أنت محرر مستندات دقيق جداً. مهمتك هي تطبيق التعديل على المستند الأصلي وإعادته كاملاً.\n\n' +
+            'قواعد صارمة (ABSOLUTE RULES):\n' +
+            '1. أعد كتابة المستند بالكامل (Full Document) بصيغة Markdown العربية.\n' +
+            '2. إياك أن تختصر أو تستخدم عبارات مثل "باقي المحتوى كما هو" أو "نفس المحتوى". إذا اختصرت النص سيفشل النظام.\n' +
+            `3. حافظ على نفس الهيكل وعدد الصفحات (${originalPageCount} صفحة).\n` +
+            '4. هذا وضع تلقائي (نصوص فقط): ممنوع استخدام صور أو [IMAGE:].\n\n' +
+            '════ المستند الأصلي ════\n' +
+            originalText
         },
         {
           role: 'user',
-          content: `قم بتطبيق التعديلات التالية على المستند:\n\n${userEditText}`
+          content: `قم بتطبيق هذا التعديل وأعد كتابة المستند كاملاً بدون أي اختصار:\n${userEditText}`
         }
       ],
       temperature: 0.3,
