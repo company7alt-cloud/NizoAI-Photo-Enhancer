@@ -15,33 +15,9 @@ import https from 'https';
 function prepareArabicText(text: string): string {
   if (!text || typeof text !== 'string' || text.trim() === '') return '';
   try {
-    // Tokenize into words and spaces
-    const tokens = text.split(/(\s+)/);
-
-    // Reshape Arabic tokens only — keep Latin/numbers/brackets untouched
-    const reshaped = tokens.map((token: string) => {
-      if (/[\u0600-\u06FF]/.test(token)) {
-        return arabicReshaper.convertArabic(token);
-      }
-      return token;
-    });
-
-    // Separate words from spaces, preserving structure
-    const wordTokens: string[] = [];
-    const structure = reshaped.map((t: string) => {
-      if (/^\s+$/.test(t)) return { type: 'space', val: t };
-      wordTokens.push(t);
-      return { type: 'word', val: t };
-    });
-
-    // Reverse word order for RTL visual rendering
-    wordTokens.reverse();
-
-    // Rebuild string with spaces in original positions
-    let wi = 0;
-    return structure.map((s: any) =>
-      s.type === 'space' ? s.val : wordTokens[wi++]
-    ).join('');
+    const hasArabic = /[\u0600-\u06FF]/.test(text);
+    if (!hasArabic) return text;
+    return arabicReshaper.convertArabic(text);
   } catch (error) {
     console.error('[PDF] Arabic text preparation failed:', error);
     return text;
@@ -600,17 +576,16 @@ export async function generateDocumentFromLines(
       const addPage = () => {
         doc.addPage();
         drawBackground();
-        // pageCount is incremented by doc.on('pageAdded') — do NOT increment here
         const W = doc.page.width;
         const H = doc.page.height;
-        doc.save().rect(PADDING / 2, PADDING / 2, W - PADDING, H - PADDING)
-           .lineWidth(0.5).stroke('#CCCCCC').restore();
+        // No border box — clean pages only
         return { W, H };
       };
 
       let { W, H } = addPage();
       const contentW = W - PADDING * 2;
-      const maxY     = H - PADDING;
+      const BOTTOM_MARGIN = PADDING + (BASE_SIZE * 1.6 * 2); // 2 extra lines
+      const maxY     = H - BOTTOM_MARGIN;
       let currentY   = PADDING;
 
       try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to set initial font:', error); }

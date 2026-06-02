@@ -23,28 +23,10 @@ function prepareArabicText(text) {
     if (!text || typeof text !== 'string' || text.trim() === '')
         return '';
     try {
-        // Tokenize into words and spaces
-        const tokens = text.split(/(\s+)/);
-        // Reshape Arabic tokens only — keep Latin/numbers/brackets untouched
-        const reshaped = tokens.map((token) => {
-            if (/[\u0600-\u06FF]/.test(token)) {
-                return arabic_reshaper_1.default.convertArabic(token);
-            }
-            return token;
-        });
-        // Separate words from spaces, preserving structure
-        const wordTokens = [];
-        const structure = reshaped.map((t) => {
-            if (/^\s+$/.test(t))
-                return { type: 'space', val: t };
-            wordTokens.push(t);
-            return { type: 'word', val: t };
-        });
-        // Reverse word order for RTL visual rendering
-        wordTokens.reverse();
-        // Rebuild string with spaces in original positions
-        let wi = 0;
-        return structure.map((s) => s.type === 'space' ? s.val : wordTokens[wi++]).join('');
+        const hasArabic = /[\u0600-\u06FF]/.test(text);
+        if (!hasArabic)
+            return text;
+        return arabic_reshaper_1.default.convertArabic(text);
     }
     catch (error) {
         console.error('[PDF] Arabic text preparation failed:', error);
@@ -491,16 +473,15 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
             const addPage = () => {
                 doc.addPage();
                 drawBackground();
-                // pageCount is incremented by doc.on('pageAdded') — do NOT increment here
                 const W = doc.page.width;
                 const H = doc.page.height;
-                doc.save().rect(PADDING / 2, PADDING / 2, W - PADDING, H - PADDING)
-                    .lineWidth(0.5).stroke('#CCCCCC').restore();
+                // No border box — clean pages only
                 return { W, H };
             };
             let { W, H } = addPage();
             const contentW = W - PADDING * 2;
-            const maxY = H - PADDING;
+            const BOTTOM_MARGIN = PADDING + (BASE_SIZE * 1.6 * 2); // 2 extra lines
+            const maxY = H - BOTTOM_MARGIN;
             let currentY = PADDING;
             try {
                 doc.font(chosenFont);

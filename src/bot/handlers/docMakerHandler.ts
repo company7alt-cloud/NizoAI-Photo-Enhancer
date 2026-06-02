@@ -171,32 +171,15 @@ export function smartWrap(text: string, pageSize: string): string[] {
 }
 
 
-function estimatePageCount(
-  lines: any[],
-  _pageSize: string = 'A4'
-): number {
-  const LINES_PER_PAGE = 40;
-
-  let totalLines = 0;
+function estimateWordCount(lines: any[]): number {
+  let totalChars = 0;
   for (const line of lines) {
-    if (line.type === 'image' || line.type === 'image_row') {
-      totalLines += (line.imageLines || 5);
-    } else if (line.type === 'text') {
-      if (!line.text || line.text.trim() === '') {
-        totalLines += 1;
-      } else if (line.size === 'large') {
-        totalLines += 2;
-      } else {
-        totalLines += 1;
-      }
-    } else if (line.style === 'divider') {
-      totalLines += 1;
-    } else {
-      totalLines += 1;
-    }
+    if (!line || line.type === 'image' || line.type === 'image_row' || line.type === 'image_cover') continue;
+    const text = line.text || '';
+    if (text.trim()) totalChars += text.trim().length;
   }
-
-  return Math.max(1, Math.ceil(totalLines / LINES_PER_PAGE));
+  // Every 7 characters = 1 word
+  return Math.max(1, Math.ceil(totalChars / 7));
 }
 
 const COMPILE_KB = {
@@ -630,8 +613,7 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
 
     await ctx.deleteMessage().catch(logDocMakerCleanup('[DocMaker] delete cover prompt failed:'));
     const total = ctx.session.documentLines.length;
-    const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
-    await ctx.reply(`✅ تمت إضافة الغلاف للمستند!\n📄 الأسطر: ${total} | الصفحات: ~${pages}`);
+    await ctx.reply(`✅ تمت إضافة الغلاف للمستند!\n📄 الأسطر: ${total} | الكلمات: ~${estimateWordCount(ctx.session.documentLines)}`);
     await renderActiveSession(ctx);
     return true;
   }
@@ -897,9 +879,8 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
     } as any);
 
     const total = ctx.session.documentLines.length;
-    const pages = estimatePageCount(
-      ctx.session.documentLines,
-      ctx.session.pageSize
+    const pages = estimateWordCount(
+      ctx.session.documentLines
     );
 
     ctx.session.tempLine = undefined;
@@ -909,7 +890,7 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
     try {
       await ctx.editMessageText(
         `✅ <b>تمت إضافة السطر للمستند!</b>\n\n` +
-        `📄 الأسطر: ${total} | الصفحات: ~${pages}\n\n` +
+        `📄 الأسطر: ${total} | الكلمات: ~${pages}\n\n` +
         'أرسل نصاً إضافياً، أو اضغط تصدير.',
         {
           parse_mode: 'HTML',
@@ -942,19 +923,18 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
   if (data === 'doc_export_pdf') {
     const lines = ctx.session.documentLines || [];
 
-    const estimatedPages = estimatePageCount(lines, ctx.session.pageSize);
+    const estimatedWords = estimateWordCount(lines);
 
-    if (estimatedPages > 40) {
+    if (estimatedWords > 4000) {
       await ctx.editMessageText(
         '🚫 <b>المستند كبير جداً!</b>\n\n' +
-        `📄 عدد الصفحات المتوقع: <b>${estimatedPages} صفحة</b>\n\n` +
-        'الحد المسموح به هو 40 صفحة.\n' +
-        'للحصول على صلاحية تصدير حتى 1000 صفحة تواصل مع المطور.',
+        `📝 عدد الكلمات المتوقع: <b>${estimatedWords} كلمة</b>\n\n` +
+        'الحد المسموح به هو 4000 كلمة.\n' +
+        'للحصول على صلاحية تصدير أكثر تواصل مع المطور.',
         {
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [[
-              // @ts-ignore
               { text: '🔙 العودة للجلسة', callback_data: 'doc_back_to_session_keep', style: 'primary' as const }
             ]]
           }
@@ -964,18 +944,15 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
     }
 
     let cost: number;
-    if (estimatedPages <= 3)       cost = 1;
-    else if (estimatedPages <= 5)  cost = 2;
-    else if (estimatedPages <= 10) cost = 3;
-    else if (estimatedPages <= 20) cost = 4;
-    else                           cost = 5;
+    if (estimatedWords <= 100)      cost = 1;
+    else                            cost = 2;
 
     ctx.session.pendingExportCost = cost;
-    ctx.session.pendingExportPages = estimatedPages;
+    ctx.session.pendingExportPages = estimatedWords;
 
     await ctx.editMessageText(
       '📤 <b>تأكيد التصدير</b>\n\n' +
-      `📄 مستندك مكوّن من <b>~${estimatedPages} صفحة</b>\n` +
+      `📝 مستندك يحتوي على <b>~${estimatedWords} كلمة</b>\n` +
       `💳 سيتم خصم <b>${cost} محاولة</b> من رصيدك\n\n` +
       'هل أنت موافق على المتابعة؟',
       {
@@ -1132,12 +1109,12 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
       ? '[صورة]'
       : (removed?.text?.substring(0, 30) || '[فارغ]');
 
-    const pages = estimatePageCount(lines, ctx.session.pageSize);
+    const pages = estimateWordCount(lines);
 
     await ctx.answerCallbackQuery('✅ تم الحذف');
     await ctx.editMessageText(
       `↩️ <b>تم حذف السطر الأخير:</b>\n<i>${preview}</i>\n\n` +
-      `📄 الأسطر الآن: ${lines.length} | الصفحات: ~${pages}`,
+      `📄 الأسطر الآن: ${lines.length} | الكلمات: ~${pages}`,
       {
         parse_mode: 'HTML',
         reply_markup: {
@@ -1170,8 +1147,8 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
     ctx.session.tempLine = null;
     ctx.session.tempFormatting = null;
     const total = ctx.session.documentLines.length;
-    const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
-    await ctx.reply(`✅ تم حفظ الصفحة. ابدأ كتابة الصفحة التالية:\n📄 الأسطر: ${total} | الصفحات: ~${pages}`, { reply_markup: controlPanel() });
+    const pages = estimateWordCount(ctx.session.documentLines);
+    await ctx.reply(`✅ تم حفظ الصفحة. ابدأ كتابة الصفحة التالية:\n📄 الأسطر: ${total} | الكلمات: ~${pages}`, { reply_markup: controlPanel() });
     await refreshPreview(ctx);
     return true;
   }
@@ -1998,11 +1975,10 @@ async function handleDocMakerMessageInner(ctx: BotContext): Promise<boolean> {
     }
 
     const total = ctx.session.documentLines.length;
-    const pages = estimatePageCount(ctx.session.documentLines, ctx.session.pageSize);
 
     await ctx.reply(
       `✅ <b>تمت إضافة ${count} سطر فارغ</b>\n` +
-      `📄 إجمالي الأسطر: ${total} | الصفحات: ~${pages}\n\n` +
+      `📄 إجمالي الأسطر: ${total} | الكلمات: ~${estimateWordCount(ctx.session.documentLines)}\n\n` +
       'أرسل المزيد أو اضغط تصدير.',
       {
         parse_mode: 'HTML',
