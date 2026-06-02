@@ -23,10 +23,18 @@ function prepareArabicText(text) {
     if (!text || typeof text !== 'string' || text.trim() === '')
         return '';
     try {
-        const hasArabic = /[\u0600-\u06FF]/.test(text);
+        // ── Strip invisible/broken Unicode characters that render as □ boxes ──
+        const cleaned = text
+            .replace(/[\uFFFD\uFFFC\uFFFB\uFFFA]/g, '') // replacement chars
+            .replace(/[\u200B\u200C\u200D\u200E\u200F]/g, '') // zero-width chars
+            .replace(/[\u202A\u202B\u202C\u202D\u202E]/g, '') // bidi override chars
+            .replace(/[\uFEFF]/g, '') // BOM
+            .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '') // control chars
+            .trim();
+        const hasArabic = /[\u0600-\u06FF]/.test(cleaned);
         if (!hasArabic)
-            return text;
-        return arabic_reshaper_1.default.convertArabic(text);
+            return cleaned;
+        return arabic_reshaper_1.default.convertArabic(cleaned);
     }
     catch (error) {
         console.error('[PDF] Arabic text preparation failed:', error);
@@ -686,7 +694,13 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                     currentY += LINE_H;
                     continue;
                 }
-                // Render rich line
+                // Restore chosen font before each line render
+                // This ensures formatting applies to ALL lines in the batch
+                try {
+                    doc.font(chosenFont);
+                }
+                catch (_) { }
+                doc.fontSize(BASE_SIZE);
                 let advance = BASE_SIZE * 1.6;
                 try {
                     advance = renderRichLine(doc, richLine, PADDING, currentY, contentW, BASE_SIZE, txtColor);
@@ -694,6 +708,12 @@ async function generateDocumentFromLines(lines, pageSize = 'A4', selectedFont, d
                 catch (e) {
                     console.error('[PDF] renderRichLine crash, skipping line:', e);
                 }
+                // Reset font and color after each line to prevent bleed-through
+                try {
+                    doc.font(chosenFont);
+                }
+                catch (_) { }
+                doc.fontSize(BASE_SIZE).fillColor(txtColor);
                 currentY += advance;
             }
             await new Promise((res, rej) => {

@@ -944,8 +944,10 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
     }
 
     let cost: number;
-    if (estimatedWords <= 100)      cost = 1;
-    else                            cost = 2;
+    if (estimatedWords <= 250)       cost = 1;
+    else if (estimatedWords <= 500)  cost = 2;
+    else if (estimatedWords <= 750)  cost = 3;
+    else                             cost = 4;
 
     ctx.session.pendingExportCost = cost;
     ctx.session.pendingExportPages = estimatedWords;

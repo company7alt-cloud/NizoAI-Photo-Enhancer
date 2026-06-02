@@ -894,10 +894,14 @@ async function handleDocMakerCallbackInner(ctx) {
             return true;
         }
         let cost;
-        if (estimatedWords <= 100)
+        if (estimatedWords <= 250)
             cost = 1;
-        else
+        else if (estimatedWords <= 500)
             cost = 2;
+        else if (estimatedWords <= 750)
+            cost = 3;
+        else
+            cost = 4;
         ctx.session.pendingExportCost = cost;
         ctx.session.pendingExportPages = estimatedWords;
         await ctx.editMessageText('📤 <b>تأكيد التصدير</b>\n\n' +
