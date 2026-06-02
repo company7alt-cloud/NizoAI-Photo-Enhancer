@@ -1584,6 +1584,21 @@ docBot.callbackQuery('start_doc_maker', async (ctx, next) => {
 // ─── docBot: Edit Workflow ───────────────────────────────────────────────────────
 registerDocCallback('edit_pdf_doc', 'edit_pdf_doc', handleEditPdfDocCallback);
 
+// ─── docBot: Copy Generated Text ─────────────────────────────────────────────
+registerDocCallback('copy_generated_text', 'copy_generated_text', async (ctx) => {
+  await ctx.answerCallbackQuery().catch(() => {});
+  const text = ctx.session?.lastAiGeneratedText || ctx.session?.lastGeneratedDoc?.text;
+  if (!text) {
+    await ctx.reply('❌ النص غير متاح، يرجى إعادة إنشاء المستند.');
+    return;
+  }
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  await ctx.reply(`<pre>${escaped}</pre>`, { parse_mode: 'HTML' });
+});
+
 // ─── docBot: Free AI Flow ──────────────────────────────────────────────────────
 
 registerDocCallback('start_free_ai', 'start_free_ai', async (ctx) => {

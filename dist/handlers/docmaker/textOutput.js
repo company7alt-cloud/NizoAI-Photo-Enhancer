@@ -39,20 +39,20 @@ async function sendTextChunksWithEditButton(ctx, generatedText) {
         ctx.session.lastGeneratedDoc.text = generatedText;
     }
     const headerMsg = '📄 <b>تم تجهيز نص المستند بالكامل!</b>\n\n' +
-        '👇 <i>المس النص أدناه لنسخه فوراً.</i>';
-    // Send text in <pre> block — Telegram renders it as tap-to-copy monospace
-    const escaped = generatedText
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    await ctx.reply(`${headerMsg}\n\n<pre>${escaped}</pre>`, { parse_mode: 'HTML' });
-    // Edit button in a separate message so it always appears below the text
-    await ctx.reply('✏️ هل تريد تعديل المستند؟', {
+        '👇 <i>اضغط الزر الأزرق لنسخ النص، أو الأخضر لتعديله.</i>';
+    await ctx.reply(headerMsg, {
+        parse_mode: 'HTML',
         reply_markup: {
-            inline_keyboard: [[
+            inline_keyboard: [
+                [
+                    // @ts-ignore
+                    { text: '📋 نسخ النص', callback_data: 'copy_generated_text', style: 'primary' }
+                ],
+                [
                     // @ts-ignore
                     { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' }
-                ]]
+                ]
+            ]
         }
     });
 }
