@@ -39,22 +39,20 @@ async function sendTextChunksWithEditButton(ctx, generatedText) {
         ctx.session.lastGeneratedDoc.text = generatedText;
     }
     const headerMsg = '📄 <b>تم تجهيز نص المستند بالكامل!</b>\n\n' +
-        '👇 <i>اضغط على الزر الأزرق لنسخ النص كاملاً، أو الأخضر لتعديله.</i>';
-    // Telegram allows up to ~4096 chars per copy_text button. Safe slice just in case.
-    const safeTextToCopy = generatedText.length > 4000 ? generatedText.slice(0, 4000) : generatedText;
-    await ctx.reply(headerMsg, {
-        parse_mode: 'HTML',
+        '👇 <i>المس النص أدناه لنسخه فوراً.</i>';
+    // Send text in <pre> block — Telegram renders it as tap-to-copy monospace
+    const escaped = generatedText
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    await ctx.reply(`${headerMsg}\n\n<pre>${escaped}</pre>`, { parse_mode: 'HTML' });
+    // Edit button in a separate message so it always appears below the text
+    await ctx.reply('✏️ هل تريد تعديل المستند؟', {
         reply_markup: {
-            inline_keyboard: [
-                [
-                    // @ts-ignore - Using standard Telegram copy_text API feature
-                    { text: '📋 نسخ النص بالكامل', copy_text: { text: safeTextToCopy }, style: 'primary' }
-                ],
-                [
+            inline_keyboard: [[
                     // @ts-ignore
                     { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' }
-                ]
-            ]
+                ]]
         }
     });
 }
