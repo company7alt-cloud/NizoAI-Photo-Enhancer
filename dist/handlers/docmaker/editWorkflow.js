@@ -320,8 +320,9 @@ async function processAutoEditMessage(ctx) {
                         '1. Return the FULL edited document in Arabic Markdown ONLY — no greetings, no explanations.\n' +
                         `2. Keep EXACTLY ${ctx.session.freeLastAiDocPages || ctx.session.lastGeneratedDoc?.pageCount || ctx.session.lastAiDocPages || 1} page(s). Never add or remove pages.\n` +
                         '3. Keep exact same structure and headings.\n' +
-                        '4. CRITICAL: NO images, NO [IMAGE:] tags — this is text-only auto mode.\n' +
-                        '5. Never ask questions. Never say "here is the document". Output document only.\n\n' +
+                        '4. CRITICAL: You MUST write the ENTIRE text from start to finish. DO NOT summarize. DO NOT use placeholders like [باقي المحتوى كما هو] or [نفس المحتوى]. If you omit text, the document will be corrupted.\n' +
+                        '5. NO images, NO [IMAGE:] tags — this is text-only auto mode.\n' +
+                        '6. Never ask questions. Output document only.\n\n' +
                         '══════════════════════════════════════\n' +
                         'ORIGINAL DOCUMENT (apply edits to this):\n' +
                         '══════════════════════════════════════\n' +

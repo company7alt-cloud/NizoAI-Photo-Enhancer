@@ -38,48 +38,24 @@ async function sendTextChunksWithEditButton(ctx, generatedText) {
     if (ctx.session.lastGeneratedDoc) {
         ctx.session.lastGeneratedDoc.text = generatedText;
     }
-    // ── Escape HTML only — keep markdown symbols so user gets full text ──
-    const escaped = generatedText
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    const headerMsg = '📄 <b>تم تجهيز نص المستند بالكامل!</b>\n' +
-        '👆 <i>المس النص أدناه لنسخه فوراً</i>';
-    const MAX_PRE = 3500;
-    if (escaped.length <= MAX_PRE) {
-        // ── Single message: header + pre block + edit button ──
-        await ctx.reply(headerMsg + '\n\n<pre>' + escaped + '</pre>', {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [[
-                        { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' }
-                    ]]
-            }
-        });
-    }
-    else {
-        // ── Split into chunks preserving pre blocks ──
-        const chunks = [];
-        let remaining = escaped;
-        while (remaining.length > 0) {
-            chunks.push(remaining.slice(0, MAX_PRE));
-            remaining = remaining.slice(MAX_PRE);
+    const headerMsg = '📄 <b>تم تجهيز نص المستند بالكامل!</b>\n\n' +
+        '👇 <i>اضغط على الزر الأزرق لنسخ النص كاملاً، أو الأخضر لتعديله.</i>';
+    // Telegram allows up to ~4096 chars per copy_text button. Safe slice just in case.
+    const safeTextToCopy = generatedText.length > 4000 ? generatedText.slice(0, 4000) : generatedText;
+    await ctx.reply(headerMsg, {
+        parse_mode: 'HTML',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    // @ts-ignore - Using standard Telegram copy_text API feature
+                    { text: '📋 نسخ النص بالكامل', copy_text: { text: safeTextToCopy }, style: 'primary' }
+                ],
+                [
+                    // @ts-ignore
+                    { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' }
+                ]
+            ]
         }
-        // First chunk with header
-        await ctx.reply(headerMsg + '\n\n<pre>' + chunks[0] + '</pre>', { parse_mode: 'HTML' });
-        // Middle chunks
-        for (let i = 1; i < chunks.length - 1; i++) {
-            await ctx.reply('<pre>' + chunks[i] + '</pre>', { parse_mode: 'HTML' });
-        }
-        // Last chunk with edit button
-        await ctx.reply('<pre>' + chunks[chunks.length - 1] + '</pre>', {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [[
-                        { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' }
-                    ]]
-            }
-        });
-    }
+    });
 }
 //# sourceMappingURL=textOutput.js.map
