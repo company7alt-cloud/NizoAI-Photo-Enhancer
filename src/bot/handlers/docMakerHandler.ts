@@ -1,4 +1,4 @@
-﻿// src/bot/handlers/docMakerHandler.ts
+// src/bot/handlers/docMakerHandler.ts
 import { BotContext } from '../../utils/validators';
 import { User } from '../../database/models/User';
 import { InputFile } from 'grammy';
@@ -535,7 +535,7 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
           [{ text: 'قلم عريض احترافي (Almarai)', callback_data: 'doc_font_almarai', style: 'primary' as const }],
           [{ text: 'الخط الرسمي الشامل (Noto Naskh)', callback_data: 'doc_font_noto', style: 'primary' as const }],
           // @ts-ignore
-          [{ text: 'خط أندو برو (Ando Pro)', callback_data: 'doc_font_ando_warn', style: 'primary' as const }],
+          [{ text: '🎨 Modern Pro (مودرن برو)', callback_data: 'doc_font_ando_warn', style: 'primary' as const }],
           [{ text: '❌ إلغاء', callback_data: 'doc_cancel_end', style: 'danger' as const }],
         ],
       },
@@ -557,8 +557,8 @@ async function handleDocMakerCallbackInner(ctx: BotContext): Promise<boolean> {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '✅ مواصلة بخط أندو برو', callback_data: 'doc_font_ando_pro' }],
-            [{ text: '📜 اختيار الخط الرسمي بدلاً منه', callback_data: 'doc_font_noto' }],
+            [{ text: '✅ مواصلة بخط مودرن برو', callback_data: 'doc_font_ando_pro', style: 'success' as const }],
+            [{ text: '🔙 اختيار خط آخر', callback_data: 'doc_tpl_confirm', style: 'danger' as const }],
           ],
         },
       }).catch(logDocMakerCleanup('[DocMaker] edit ando_warn caption failed:'));
@@ -2203,7 +2203,8 @@ async function handleDocMakerMessageInner(ctx: BotContext): Promise<boolean> {
   const emojiRegex = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}]/gu;
   const foundEmojis = [...new Set(text.match(emojiRegex) ?? [])];
 
-  if (foundEmojis.length > 0) {
+  const isModernProFont = ctx.session.selectedFont === 'AndoPro' || ctx.session.selectedFont === 'ando_pro' || ctx.session.selectedFont === 'Ando Pro' || ctx.session.selectedFont?.toLowerCase().includes('ando');
+  if (foundEmojis.length > 0 && isModernProFont) {
     // ── STEP 3a: Clean — remove emojis but preserve \n and spacing ──────────
     const cleanedText = text.replace(emojiRegex, '').replace(/  +/g, ' ').trim();
 
