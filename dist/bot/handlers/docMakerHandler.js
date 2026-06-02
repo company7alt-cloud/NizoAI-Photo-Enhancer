@@ -352,7 +352,8 @@ async function handleDocMakerCallbackInner(ctx) {
         'doc_colored_approve', 'doc_colored_back',
         'color_red', 'color_yellow', 'color_blue', 'color_default',
         'color_custom', 'color_custom_cancel', 'fmt_apply',
-        'typo_letter', 'typo_line', 'typo_cancel'
+        'typo_letter', 'typo_line', 'typo_cancel',
+        'doc_font_ando_warn'
     ];
     const isDoc = docCallbacks.includes(data) ||
         data.startsWith('doc_bg_') ||
@@ -537,14 +538,10 @@ async function handleDocMakerCallbackInner(ctx) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
+                    [{ text: 'قلم عريض احترافي (Almarai)', callback_data: 'doc_font_almarai', style: 'primary' }],
+                    [{ text: 'الخط الرسمي الشامل (Noto Naskh)', callback_data: 'doc_font_noto', style: 'primary' }],
                     // @ts-ignore
-                    [{ text: '✒️ Omnia Serif', callback_data: 'doc_font_Omnia', style: 'primary' }],
-                    [{ text: ' Modern Pro 2024', callback_data: 'doc_font_ModernPro', style: 'primary' }],
-                    // @ts-ignore
-                    [{ text: '🎙 خط إذاعة ثمانية', callback_data: 'doc_font_Thamanya', style: 'primary' }],
-                    [{ text: '📜 الخط الرسمي — Amiri', callback_data: 'doc_font_Amiri', style: 'primary' }],
-                    // @ts-ignore
-                    [{ text: '📱 Cairo العصري', callback_data: 'doc_font_Cairo', style: 'primary' }],
+                    [{ text: 'خط أندو برو (Ando Pro)', callback_data: 'doc_font_ando_warn', style: 'primary' }],
                     [{ text: '❌ إلغاء', callback_data: 'doc_cancel_end', style: 'danger' }],
                 ],
             },
@@ -553,6 +550,25 @@ async function handleDocMakerCallbackInner(ctx) {
     }
     // ── Font Selected → Start Session ────────────────────────────────────
     if (data.startsWith('doc_font_')) {
+        // ── STRICT WARNING FOR ANDO PRO FONT ──
+        if (data === 'doc_font_ando_warn') {
+            await ctx.answerCallbackQuery().catch(() => { });
+            await ctx.editMessageCaption({
+                caption: '⚠️ <b>تنبيه هام بخصوص خط (أندو برو):</b>\n\n' +
+                    'هذا الخط يدعم <b>النص العربي فقط</b> ولا يدعم أي رموز، أرقام، أو أحرف إنجليزية.\n\n' +
+                    '• إذا كان مشروعك <b>لا يحتوي</b> على أي من هذه الرموز، يمكنك المواصلة.\n' +
+                    '• إذا كان يحتوي عليها، <b>ننصحك باختيار الخط الرسمي</b> لتجنب تشوه المستند.',
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '✅ مواصلة بخط أندو برو', callback_data: 'doc_font_ando_pro' }],
+                        [{ text: '📜 اختيار الخط الرسمي بدلاً منه', callback_data: 'doc_font_noto' }],
+                    ],
+                },
+            }).catch(logDocMakerCleanup('[DocMaker] edit ando_warn caption failed:'));
+            return true;
+        }
+        // ────────────────────────────────────────────
         await ctx.answerCallbackQuery();
         ctx.session.selectedFont = data.replace('doc_font_', '');
         ctx.session.docState = 'active';
