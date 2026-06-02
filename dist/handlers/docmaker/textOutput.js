@@ -52,7 +52,7 @@ async function sendTextChunksWithEditButton(ctx, generatedText) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [[
-                        { text: '✏️ تعديل النص', callback_data: 'edit_pdf_doc' }
+                        { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' }
                     ]]
             }
         });
@@ -76,7 +76,7 @@ async function sendTextChunksWithEditButton(ctx, generatedText) {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [[
-                        { text: '✏️ تعديل النص', callback_data: 'edit_pdf_doc' }
+                        { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' }
                     ]]
             }
         });

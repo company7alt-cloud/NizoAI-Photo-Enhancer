@@ -127,6 +127,8 @@ export interface SessionData {
     } | null;
     lastAiGeneratedText?: string;
     lastAiDocPages?: number;
+    freeLastAiGeneratedText?: string;
+    freeLastAiDocPages?: number;
     awaitingEditRequest?: boolean;
     isAwaitingImage?: boolean;
     currentService?: string | null;

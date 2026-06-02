@@ -145,6 +145,9 @@ export interface SessionData {
   } | null;
   lastAiGeneratedText?: string;
   lastAiDocPages?: number;
+  // Free Mode — dedicated amnesia-fix fields
+  freeLastAiGeneratedText?: string;
+  freeLastAiDocPages?: number;
   awaitingEditRequest?: boolean;
 
   // Image Bot

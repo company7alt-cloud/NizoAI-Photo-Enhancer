@@ -281,7 +281,9 @@ export async function processAutoEditMessage(ctx: BotContext): Promise<void> {
   }
   // ─────────────────────────────────────────────────────────────────────
 
-  const originalText = ctx.session.lastAiGeneratedText
+  // ── Free Mode Edit Amnesia fix: prefer dedicated free fields first ──
+  const originalText = ctx.session.freeLastAiGeneratedText
+    || ctx.session.lastAiGeneratedText
     || ctx.session.lastGeneratedDoc?.text
     || '';
   if (!originalText) {
@@ -290,7 +292,8 @@ export async function processAutoEditMessage(ctx: BotContext): Promise<void> {
     return;
   }
 
-  const originalPageCount = ctx.session.lastAiDocPages
+  const originalPageCount = ctx.session.freeLastAiDocPages
+    || ctx.session.lastAiDocPages
     || ctx.session.lastGeneratedDoc?.pageCount
     || 1;
 
@@ -312,7 +315,7 @@ export async function processAutoEditMessage(ctx: BotContext): Promise<void> {
             'You are a silent document editor. Your ONLY job is to apply the user edit to the document below and return it COMPLETE.\n\n' +
             'ABSOLUTE RULES:\n' +
             '1. Return the FULL edited document in Arabic Markdown ONLY — no greetings, no explanations.\n' +
-            `2. Keep EXACTLY ${ctx.session.lastGeneratedDoc?.pageCount || ctx.session.lastAiDocPages || 1} page(s). Never add or remove pages.\n` +
+            `2. Keep EXACTLY ${ctx.session.freeLastAiDocPages || ctx.session.lastGeneratedDoc?.pageCount || ctx.session.lastAiDocPages || 1} page(s). Never add or remove pages.\n` +
             '3. Keep exact same structure and headings.\n' +
             '4. CRITICAL: NO images, NO [IMAGE:] tags — this is text-only auto mode.\n' +
             '5. Never ask questions. Never say "here is the document". Output document only.\n\n' +

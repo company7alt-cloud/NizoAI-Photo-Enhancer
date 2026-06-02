@@ -54,7 +54,7 @@ export async function sendTextChunksWithEditButton(ctx: BotContext, generatedTex
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [[
-            { text: '✏️ تعديل النص', callback_data: 'edit_pdf_doc' }
+            { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' as const }
           ]]
         }
       }
@@ -89,7 +89,7 @@ export async function sendTextChunksWithEditButton(ctx: BotContext, generatedTex
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [[
-            { text: '✏️ تعديل النص', callback_data: 'edit_pdf_doc' }
+            { text: 'تعديل ✏️', callback_data: 'edit_pdf_doc', style: 'success' as const }
           ]]
         }
       }

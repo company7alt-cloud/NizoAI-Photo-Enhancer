@@ -2532,6 +2532,9 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
             await ctx.replyWithDocument(new grammy_1.InputFile(pdfBuffer, fileName), { caption: `✅ مستندك المجاني جاهز! 📄\n\n📄 عدد الصفحات الفعّالة: ${ctx.session.lastPageCount}\n\nمدعوم بـ AI Free PDF ⚡` });
             ctx.session.lastAiGeneratedText = cleanMarkdown;
             ctx.session.lastAiDocPages = ctx.session.lastPageCount;
+            // ── Free Mode Edit Amnesia fix — dedicated free session fields ──
+            ctx.session.freeLastAiGeneratedText = cleanMarkdown;
+            ctx.session.freeLastAiDocPages = ctx.session.lastPageCount;
             ctx.session.lastGeneratedDoc = {
                 text: cleanMarkdown,
                 pageCount: ctx.session.lastPageCount,
