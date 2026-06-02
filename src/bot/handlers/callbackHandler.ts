@@ -3341,5 +3341,96 @@ function buildCellKeyboard(
     }
     return;
   }
+
+  // ══════════════════════════════════════
+  // 🎁 تجميع المحاولات (Collect Attempts Flow)
+  // ══════════════════════════════════════
+  if (data === 'menu_collect_attempts') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.editMessageCaption({
+      caption: '🎁 <b>تجميع المحاولات</b>\n\nاختر إحدى الطرق لزيادة رصيدك:',
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          // @ts-ignore
+          [{ text: '🎁 الهدية اليومية', callback_data: 'action_daily_gift_sub', style: 'primary' }],
+          // @ts-ignore
+          [{ text: '🔗 رابط الدعوة', callback_data: 'action_referral_sub', style: 'primary' }],
+          // @ts-ignore
+          [{ text: '🔙 رجوع', callback_data: 'back_to_main_menu', style: 'danger' }]
+        ]
+      }
+    }).catch(() => {});
+    return;
+  }
+
+  if (data === 'action_daily_gift_sub') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const invites = await User.countDocuments({
+      referredBy: ctx.from!.id.toString(),
+      referralRewardClaimed: true
+    });
+
+    if (invites < 3) {
+      await ctx.editMessageCaption({
+        caption:
+          `🥺 <b>لا يمكنك استلام الهدية بعد!</b>\n\n` +
+          `لاستلام الهدية اليومية تحتاج إلى دعوة <b>3 أصدقاء</b> على الأقل.\n\n` +
+          `📊 <b>دعوتك الحالية:</b> ${invites} من 3 أصدقاء\n\n` +
+          `شارك رابطك وادعُ أصدقاءك للحصول على الهدية! 🎁`,
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            // @ts-ignore
+            [{ text: '🔗 احصل على رابط الدعوة', callback_data: 'action_referral_sub', style: 'primary' }],
+            // @ts-ignore
+            [{ text: '🔙 رجوع', callback_data: 'menu_collect_attempts', style: 'danger' }]
+          ]
+        }
+      }).catch(() => {});
+      return;
+    }
+
+    // Call existing daily gift function directly
+    ctx.callbackQuery!.data = 'claim_daily_reward';
+    return callbackHandler(ctx);
+  }
+
+  if (data === 'action_referral_sub') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const invites = await User.countDocuments({
+      referredBy: ctx.from!.id.toString(),
+      referralRewardClaimed: true
+    });
+    const botUsername = (await ctx.api.getMe()).username;
+    const referralLink = `https://t.me/${botUsername}?start=${ctx.from!.id}`;
+
+    await ctx.editMessageCaption({
+      caption:
+        `🔗 <b>رابط الدعوة الخاص بك</b>\n\n` +
+        `📊 <b>عدد من دعوتهم:</b> ${invites} صديق\n\n` +
+        `<b>كيف تشارك الرابط؟</b>\n` +
+        `1️⃣ انسخ الرابط أدناه\n` +
+        `2️⃣ أرسله لأصدقائك على واتساب أو تيليجرام\n` +
+        `3️⃣ لكل صديق يسجل عبر رابطك تحصل على محاولات إضافية!\n\n` +
+        `🔗 <b>رابطك:</b>\n<code>${referralLink}</code>`,
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          // @ts-ignore
+          [{ text: '🔙 رجوع', callback_data: 'menu_collect_attempts', style: 'danger' }]
+        ]
+      }
+    }).catch(() => {});
+    return;
+  }
+
+  if (data === 'back_to_main_menu') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.deleteMessage().catch(() => {});
+    const { startCommand } = await import('../commands/start');
+    await startCommand(ctx);
+    return;
+  }
 }
 

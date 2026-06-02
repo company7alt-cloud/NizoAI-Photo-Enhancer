@@ -188,31 +188,31 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     const freshUser = (await User.findOne({ telegramId })) ?? user;
 
     // ── 7. Build greeting ──────────────────────────────────────────────────────
-    const botUsername = ctx.me.username;
+    // const botUsername = ctx.me.username;
 
-    let quotaLine: string;
-    if (freshUser.dailyQuota < 0) {
-      quotaLine =
-        `⚠️ رصيدك: ${freshUser.dailyQuota} محاولة ` +
-        `(دين متراكم — يُخصم من مكافآتك القادمة)`;
-    } else {
-      quotaLine = `🎁 محاولاتك اليومية: ${freshUser.dailyQuota}`;
-    }
+    // let quotaLine: string;
+    // if (freshUser.dailyQuota < 0) {
+    //   quotaLine =
+    //     `⚠️ رصيدك: ${freshUser.dailyQuota} محاولة ` +
+    //     `(دين متراكم — يُخصم من مكافآتك القادمة)`;
+    // } else {
+    //   quotaLine = `🎁 محاولاتك اليومية: ${freshUser.dailyQuota}`;
+    // }
 
-    const joinDate = freshUser.joinedAt
-      ? new Date(freshUser.joinedAt).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' })
-      : 'غير محدد';
+    // const joinDate = freshUser.joinedAt
+    //   ? new Date(freshUser.joinedAt).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' })
+    //   : 'غير محدد';
 
-    const greeting =
-      `- مرحباً ( ${firstName} ) 🎃\n\n` +
-      `📅 تاريخ انضمامك: ${joinDate}\n\n` +
-      `• هل ترغب في تحسين جودة الصور القديمة الى . 2k - 4k - 8k ؟\n\n` +
-      `• من خلال بوت رفع جودة الصور يمكنك تحقيق ذالك بكل سهولة وتحسين جودة الصورة بذكاء الاصطناعي دون الحاجة لتطبيق او موقع 🙂🤍\n\n` +
-      `👇👇👇\n\n` +
-      `► فقط قم بإرسال الصورة واترك الباقي علينا 🤍 ◄\n\n` +
-      `🔗 رابط الإحالة الخاص بك:\n` +
-      `https://t.me/${botUsername}?start=${telegramId}\n\n` +
-      quotaLine;
+    // const greeting =
+    //   `- مرحباً ( ${firstName} ) 🎃\n\n` +
+    //   `📅 تاريخ انضمامك: ${joinDate}\n\n` +
+    //   `• هل ترغب في تحسين جودة الصور القديمة الى . 2k - 4k - 8k ؟\n\n` +
+    //   `• من خلال بوت رفع جودة الصور يمكنك تحقيق ذالك بكل سهولة وتحسين جودة الصورة بذكاء الاصطناعي دون الحاجة لتطبيق او موقع 🙂🤍\n\n` +
+    //   `👇👇👇\n\n` +
+    //   `► فقط قم بإرسال الصورة واترك الباقي علينا 🤍 ◄\n\n` +
+    //   `🔗 رابط الإحالة الخاص بك:\n` +
+    //   `https://t.me/${botUsername}?start=${telegramId}\n\n` +
+    //   quotaLine;
 
     // ── 8. Inline keyboard (developer / channel links) ─────────────────────────
     const devLink = (await Settings.get('developerLink')) as string | null;
@@ -248,16 +248,12 @@ export async function startCommand(ctx: BotContext): Promise<void> {
           { text: '🔄 تحويل صيغة الصورة', callback_data: 'convert_format_start', style: 'primary' },
         ],
 
-        // ROW 4 — Auto Eraser + Magic Enhance (blue)
+        // ROW 4 — Collect Attempts + Auto Eraser
         [
+          // @ts-ignore
+          { text: '🎁 تجميع محاولات', callback_data: 'menu_collect_attempts', style: 'primary' },
           // @ts-ignore
           { text: eraserLocks.btn_eraser ? '🔒 مُزيل النجمة التلقائي — مقفل' : '🧹 مُزيل النجمة التلقائي', callback_data: 'remove_watermark_auto', style: 'primary' },
-],
-
-        // ROW 5 — Daily Gift (blue)
-        [
-          // @ts-ignore
-          { text: '🎁 الهدية اليومية', callback_data: 'claim_daily_reward', style: 'primary' },
         ],
 
         // ROW 5 — Channel link (if present)
@@ -285,8 +281,20 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     // Files only on the server will be wiped by git reset --hard.
     const welcomeImagePath = path.join(process.cwd(), 'assets', 'welcome_image.jpg');
 
+    const caption = 
+      `أهلاً بك صديقي <b>${ctx.from?.first_name || 'العزيز'}</b>! 🤍\n` +
+      `أنا بوت تحسين الصور بالذكاء الاصطناعي، مهمتي هي تحويل صورك العادية إلى تحف فنية عالية الدقة وخالية من الشوائب.\n\n` +
+      `<b>🛠️ خدماتي المتاحة لك:</b>\n` +
+      `• تحسين جودة الصور إلى 2K - 4K - 8K\n` +
+      `• فلاتر ذكية وتعديل صيغ الصور بسهولة تامة.\n` +
+      `• إزالة العلامة المائية وإزالة نجمة Gemini باحترافية\n\n` +
+      `👇 اختر أحد الأزرار الي في الأسفل!\n` +
+      `━━━━━━━━━━━━━━\n` +
+      `💎 رصيدك: <b>${freshUser.dailyQuota}</b> محاولة  🆔 <code>${ctx.from?.id}</code>\n` +
+      `📁 صور معدّلة: <b>${freshUser.totalEnhancements || 0}</b>`;
+
     await safeReplyWithPhoto(ctx, welcomeImagePath, {
-      caption: greeting,
+      caption: caption,
       parse_mode: 'HTML',
       reply_markup: keyboard as any,
     });
