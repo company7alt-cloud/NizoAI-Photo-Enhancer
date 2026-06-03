@@ -1508,12 +1508,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' , style: 'primary' as const}],
         [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' , style: 'primary' as const}],
         // @ts-ignore
-        [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance' }],
+        [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance', style: 'primary' as const }],
+        // @ts-ignore
         [{
           text: _panelOn
             ? '🟢 تحميل الإنترنت: مفعّل — اضغط لإيقافه'
             : '🔴 تحميل الإنترنت: موقوف — اضغط لتفعيله',
           callback_data: 'admin_toggle_internet_fetcher',
+          style: 'primary' as const,
         }],
         // @ts-ignore
         [{ text: '❌ إغلاق', callback_data: 'admin_close' , style: 'danger' as const}],
@@ -1578,7 +1580,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' , style: 'primary' as const}],
         [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' , style: 'primary' as const}],
         // @ts-ignore
-        [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance' }],
+        [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance', style: 'primary' as const }],
         // @ts-ignore
         [{ text: '❌ إغلاق', callback_data: 'admin_close' , style: 'danger' as const}],
       ]
