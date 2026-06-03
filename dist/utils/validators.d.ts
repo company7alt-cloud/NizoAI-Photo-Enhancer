@@ -160,6 +160,7 @@ export interface SessionData {
     proEditCurrentImgPage?: number | null;
     lastGeneratedHtml?: string;
     lastGeneratedText?: string;
+    awaitingInternetLink?: boolean;
 }
 export type BotContext = Context & SessionFlavor<SessionData>;
 export declare function validateEnv(): void;

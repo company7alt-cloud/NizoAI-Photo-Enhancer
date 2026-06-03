@@ -1327,7 +1327,55 @@ async function callbackHandler(ctx) {
         await ctx.deleteMessage().catch(() => { });
         return;
     }
-    // ── magic_enhance_start ──────────────────────────────────────────────────────
+    // ── Internet Image Fetcher Handlers ──────────────────────────────────────────
+    if (data === 'menu_internet_download') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        await ctx.reply('🧞‍♂️ <b>تحميل صورة من الإنترنت</b>\n\nاختر ما تريد:', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '📥 تحميل صورة من رابط', callback_data: 'ask_internet_link', style: 'primary' }],
+                    [{ text: '🔍 بحث عن صورة 🔒', callback_data: 'locked_search_feature', style: 'primary' }],
+                    [{ text: '🔙 رجوع', callback_data: 'show_welcome', style: 'danger' }],
+                ]
+            }
+        });
+        return;
+    }
+    if (data === 'locked_search_feature') {
+        await ctx.answerCallbackQuery({
+            text: 'هذه الميزة قيد التطوير حالياً ⏳',
+            show_alert: true,
+        }).catch(() => { });
+        return;
+    }
+    if (data === 'ask_internet_link') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        if (ctx.session)
+            ctx.session.awaitingInternetLink = true;
+        const replyOpts = {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[
+                        { text: '❌ إلغاء', callback_data: 'cancel_internet_download', style: 'danger' }
+                    ]]
+            }
+        };
+        const replyText = '🔗 <b>أرسل رابط الصورة الآن</b>\n\n' +
+            'أرسل لي رابط الصورة وسأقوم بسحبها بأعلى دقة ممكنة 🧞‍♂️\n\n' +
+            '<i>مثال: https://example.com/image.jpg</i>';
+        await ctx.editMessageText(replyText, replyOpts).catch(async () => {
+            await ctx.reply(replyText, replyOpts);
+        });
+        return;
+    }
+    if (data === 'cancel_internet_download') {
+        await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
+        if (ctx.session)
+            ctx.session.awaitingInternetLink = false;
+        await ctx.deleteMessage().catch(() => { });
+        return;
+    }
     if (data === 'magic_enhance_start') {
         await ctx.answerCallbackQuery().catch(() => { });
         const magicUser = await User_1.User.findOne({ telegramId: ctx.from.id.toString() });

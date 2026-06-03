@@ -1143,6 +1143,91 @@ imageBot.on('message:text', async (ctx, next) => {
     return; // Stop — don't process as standard message
   }
 
+  // ── Internet Link Interceptor ──────────────────────────────────────────────
+  if (ctx.session?.awaitingInternetLink) {
+    ctx.session.awaitingInternetLink = false;
+    const link = ctx.message?.text?.trim();
+
+    if (!link || !link.startsWith('http')) {
+      await ctx.reply('❌ يرجى إرسال رابط صحيح يبدأ بـ http');
+      return;
+    }
+
+    const processingMsg = await ctx.reply(
+      '🧞‍♂️ <b>جاري استدعاء العفريت...</b>\n\n' +
+      '⏳ يتم الآن سحب الصورة بأعلى دقة ممكنة، يرجى الانتظار...',
+      { parse_mode: 'HTML' }
+    );
+
+    try {
+      const { fetchHighResImage } = await import('./services/imageFetcherService');
+      const imageBuffer = await fetchHighResImage(link);
+
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+
+      const fileName = `Nizo_HighRes_${Date.now()}.jpg`;
+
+      const { incrementGlobalCounter } = await import('./services/statsService');
+      await incrementGlobalCounter();
+
+      const { InputFile, InlineKeyboard } = await import('grammy');
+
+      await ctx.replyWithDocument(
+        new InputFile(imageBuffer, fileName),
+        {
+          caption:
+            '🧞‍♂️ <b>تم سحب الصورة بنجاح!</b>\n\n' +
+            '✅ الصورة الأصلية بأعلى دقة متاحة\n' +
+            '💎 تم الإرسال كملف للحفاظ على الجودة الكاملة',
+          parse_mode: 'HTML',
+          reply_markup: new InlineKeyboard()
+            .text('🖼 JPG',  'magic_fmt_jpg')
+            .text('🖼 PNG',  'magic_fmt_png')
+            .text('🖼 WEBP', 'magic_fmt_webp')
+            .row()
+            .text('🖼 AVIF', 'magic_fmt_avif')
+            .text('🖼 TIFF', 'magic_fmt_tiff')
+        }
+      );
+
+      await User.findOneAndUpdate(
+        { telegramId: ctx.from!.id.toString() },
+        { $set: { lastMagicEnhanceBuffer: imageBuffer.toString('base64') } }
+      );
+
+      const BACKUP = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+      if (BACKUP) {
+        const actionUser = ctx.from!;
+        const userLink = actionUser.username
+          ? `@${actionUser.username}`
+          : `${actionUser.first_name || 'مجهول'}`;
+        ctx.api.sendDocument(BACKUP, new InputFile(imageBuffer, fileName), {
+          caption:
+            `📦 <b>أرشيف — تحميل من الإنترنت</b>\n` +
+            `━━━━━━━━━━━━━━\n` +
+            `🆔 <b>User ID:</b> <code>${actionUser.id}</code>\n` +
+            `👤 <b>Username:</b> ${userLink}\n` +
+            `🔗 <b>الرابط:</b> ${link.substring(0, 100)}\n` +
+            `📅 <b>الوقت:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+            `━━━━━━━━━━━━━━`,
+          parse_mode: 'HTML',
+          disable_notification: true,
+        }).catch((e: any) => console.error('[JinnArchive]:', e));
+      }
+
+    } catch (err: any) {
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      console.error('[ImageFetcher] Error:', err?.message);
+      await ctx.reply(
+        '❌ <b>لم أتمكن من سحب الصورة.</b>\n\n' +
+        'تأكد من صحة الرابط وأنه رابط صورة مباشر 🔗\n' +
+        'مثال: https://example.com/image.jpg',
+        { parse_mode: 'HTML' }
+      );
+    }
+    return;
+  }
+
   // ── Report interceptor for text messages ──
   if (user?.awaitingReport) {
     await User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });

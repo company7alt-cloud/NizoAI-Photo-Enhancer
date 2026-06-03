@@ -187,6 +187,9 @@ export interface SessionData {
   proEditCurrentImgPage?: number | null;
   lastGeneratedHtml?: string; // BUG 3: stored HTML for image-only edits
   lastGeneratedText?: string; // BUG 3: stored AI text for success message caption
+
+  // ── Internet Image Fetcher ────────────────────────────────────────────────
+  awaitingInternetLink?: boolean;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

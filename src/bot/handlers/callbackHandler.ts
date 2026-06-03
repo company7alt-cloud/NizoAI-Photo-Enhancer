@@ -1632,7 +1632,63 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  // ── magic_enhance_start ──────────────────────────────────────────────────────
+  // ── Internet Image Fetcher Handlers ──────────────────────────────────────────
+
+  if (data === 'menu_internet_download') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.reply(
+      '🧞‍♂️ <b>تحميل صورة من الإنترنت</b>\n\nاختر ما تريد:',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📥 تحميل صورة من رابط', callback_data: 'ask_internet_link', style: 'primary' as any }],
+            [{ text: '🔍 بحث عن صورة 🔒',    callback_data: 'locked_search_feature', style: 'primary' as any }],
+            [{ text: '🔙 رجوع',               callback_data: 'show_welcome', style: 'danger' as any }],
+          ]
+        }
+      }
+    );
+    return;
+  }
+
+  if (data === 'locked_search_feature') {
+    await ctx.answerCallbackQuery({
+      text: 'هذه الميزة قيد التطوير حالياً ⏳',
+      show_alert: true,
+    }).catch(() => {});
+    return;
+  }
+
+  if (data === 'ask_internet_link') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    if (ctx.session) ctx.session.awaitingInternetLink = true;
+    const replyOpts = {
+      parse_mode: 'HTML' as const,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '❌ إلغاء', callback_data: 'cancel_internet_download', style: 'danger' as any }
+        ]]
+      }
+    };
+    const replyText =
+      '🔗 <b>أرسل رابط الصورة الآن</b>\n\n' +
+      'أرسل لي رابط الصورة وسأقوم بسحبها بأعلى دقة ممكنة 🧞‍♂️\n\n' +
+      '<i>مثال: https://example.com/image.jpg</i>';
+    await ctx.editMessageText(replyText, replyOpts).catch(async () => {
+      await ctx.reply(replyText, replyOpts);
+    });
+    return;
+  }
+
+  if (data === 'cancel_internet_download') {
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    if (ctx.session) ctx.session.awaitingInternetLink = false;
+    await ctx.deleteMessage().catch(() => {});
+    return;
+  }
+
+
   if (data === 'magic_enhance_start') {
     await ctx.answerCallbackQuery().catch(() => {});
 

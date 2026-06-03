@@ -239,7 +239,12 @@ async function startCommand(ctx) {
                         // @ts-ignore
                         { text: 'القناة', url: chanLink, style: 'primary' }
                     ]] : []),
-                // ROW 6 — Statistics (green)
+                // ROW 6 — Internet Image Downloader (blue)
+                [
+                    // @ts-ignore
+                    { text: '🧞‍♂️ تحميل صورة من الإنترنت', callback_data: 'menu_internet_download', style: 'primary' },
+                ],
+                // ROW 7 — Statistics (green)
                 [
                     // @ts-ignore
                     { text: `📈 إحصائيات المعالجة (${totalStats})`, callback_data: 'show_global_stats', style: 'success' },
