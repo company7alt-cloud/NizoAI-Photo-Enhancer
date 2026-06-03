@@ -11,9 +11,7 @@ interface ImageCandidate { type: string;  url: string; }
 interface EngineState    { layer: string; success: boolean; }
 
 const UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
-  'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-  'Chrome/122.0.0.0 Safari/537.36';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const MIN_SIZE       = 40_000;
 const RETRY_MAX      = 2;
@@ -175,17 +173,32 @@ async function huntButton(page: Page): Promise<boolean> {
     'button[class*="download"]', 'button[class*="submit"]',
     'a[class*="download"]', 'button:not([disabled])',
   ];
+
   for (const sel of candidates) {
     try {
-      const clicked: boolean = await page.evaluate((s: string): boolean => {
-        const el = document.querySelector(s) as HTMLElement | null;
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return false;
-        el.click();
-        return true;
-      }, sel);
-      if (clicked) { console.log(`🎯 [BTN] ${sel}`); return true; }
+      const element = await page.$(sel);
+      if (!element) continue;
+
+      await page.evaluate((el: Element) => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, element);
+      await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
+
+      const box = await element.boundingBox();
+      if (!box || box.width === 0 || box.height === 0) continue;
+
+      const targetX = box.x + box.width  / 2 + (Math.random() * 10 - 5);
+      const targetY = box.y + box.height / 2 + (Math.random() * 10 - 5);
+
+      await page.mouse.move(targetX, targetY, { steps: 15 + Math.floor(Math.random() * 10) });
+      await new Promise(r => setTimeout(r, 100 + Math.random() * 150));
+
+      await page.mouse.down();
+      await new Promise(r => setTimeout(r, 40 + Math.random() * 60));
+      await page.mouse.up();
+
+      console.log(`🎯 [PHANTOM-BTN] Stealth-clicked: ${sel}`);
+      return true;
     } catch { continue; }
   }
   return false;
@@ -501,40 +514,90 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
     let result  = await layerDirectFetch(targetUrl);
     if (result) { state.success = true; return result; }
 
+    const viewportWidth  = 1900 + Math.floor(Math.random() * 21);
+    const viewportHeight = 1040 + Math.floor(Math.random() * 41);
+
     browser = await puppeteer.launch({
       headless: true,
       args: [
-        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-        '--disable-gpu', '--disable-software-rasterizer', '--disable-extensions',
-        '--disable-background-networking', '--disable-default-apps', '--no-first-run',
-        '--js-flags=--max-old-space-size=256', '--window-size=1920,1080',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-infobars',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--no-default-browser-check',
+        `--window-size=${viewportWidth},${viewportHeight}`,
       ],
-      timeout: 55_000,
     });
 
     const page = await browser.newPage();
-    await page.setUserAgent(UA);
-    await page.setViewport({ width: 1920, height: 1080 });
-    await page.setExtraHTTPHeaders({
-      'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
-    });
-    await page.evaluateOnNewDocument((): void => {
-      Object.defineProperty(navigator, 'webdriver', { get: (): boolean => false, configurable: true });
+    await page.setViewport({ width: viewportWidth, height: viewportHeight });
+
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+
       Object.defineProperty(navigator, 'plugins', {
-        get: (): unknown[] => [
-          { name: 'Chrome PDF Plugin' }, { name: 'Chrome PDF Viewer' }, { name: 'Native Client' },
-        ], configurable: true,
+        get: () => {
+          const arr: Plugin[] = [
+            { name: 'Chrome PDF Plugin',  filename: 'internal-pdf-viewer'             } as unknown as Plugin,
+            { name: 'Chrome PDF Viewer',  filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' } as unknown as Plugin,
+            { name: 'Native Client',      filename: 'internal-nacl-plugin'             } as unknown as Plugin,
+          ];
+          Object.setPrototypeOf(arr, PluginArray.prototype);
+          return arr;
+        },
       });
-      Object.defineProperty(navigator, 'languages', { get: (): string[] => ['en-US', 'en', 'ar'], configurable: true });
-      (window as unknown as Record<string, unknown>)['chrome'] = { runtime: {}, loadTimes: (): void => {}, csi: (): void => {}, app: {} };
-      const oq = window.navigator.permissions?.query?.bind(window.navigator.permissions);
-      if (oq) {
-        window.navigator.permissions.query = (p: PermissionDescriptor): Promise<PermissionStatus> =>
-          p.name === 'notifications' ? Promise.resolve({ state: 'denied' } as PermissionStatus) : oq(p);
-      }
+
+      Object.defineProperty(navigator, 'languages',           { get: () => ['en-US', 'en', 'ar'] });
+      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+      Object.defineProperty(navigator, 'deviceMemory',        { get: () => 8 });
+
+      const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function(type?: string, quality?: unknown): string {
+        const ctx2d = this.getContext('2d');
+        if (ctx2d) {
+          const imageData = ctx2d.getImageData(0, 0, this.width, this.height);
+          for (let i = 0; i < 8; i++) {
+            imageData.data[Math.floor(Math.random() * imageData.data.length)] ^= 1;
+          }
+          ctx2d.putImageData(imageData, 0, 0);
+        }
+        return origToDataURL.call(this, type, quality as number | undefined);
+      };
+
+      const getParam = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function(parameter: number): unknown {
+        if (parameter === 37445) return 'Intel Inc.';
+        if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+        return getParam.call(this, parameter);
+      };
+
+      (window as unknown as Record<string, unknown>)['chrome'] = { runtime: {}, loadTimes: () => ({}), csi: () => ({}) };
+
+      const origQuery = window.navigator.permissions.query.bind(window.navigator.permissions);
+      (window.navigator.permissions as unknown as Record<string, unknown>)['query'] =
+        (parameters: PermissionDescriptor): Promise<PermissionStatus> =>
+          parameters.name === 'notifications'
+            ? Promise.resolve({ state: Notification.permission } as PermissionStatus)
+            : origQuery(parameters);
+    });
+
+    await page.setUserAgent(UA);
+
+    await page.setExtraHTTPHeaders({
+      'Accept-Language':           'en-US,en;q=0.9,ar;q=0.8',
+      'Accept':                    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Sec-Fetch-Dest':            'document',
+      'Sec-Fetch-Mode':            'navigate',
+      'Sec-Fetch-Site':            'none',
+      'Sec-Fetch-User':            '?1',
+      'Upgrade-Insecure-Requests': '1',
+      'Referer':                   'https://www.google.com/',
+      'Cache-Control':             'max-age=0',
+      'sec-ch-ua':                 '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+      'sec-ch-ua-mobile':          '?0',
+      'sec-ch-ua-platform':        '"Windows"',
     });
 
     state.layer = 'L2'; result = await layerVipRouter(targetUrl, page); if (result) { state.success = true; return result; }
