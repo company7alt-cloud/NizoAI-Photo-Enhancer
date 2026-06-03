@@ -681,59 +681,78 @@ async function callbackHandler(ctx) {
             const telegramId = ctx.from?.id.toString();
             if (!telegramId)
                 return;
-            const user = await User_1.User.findOne({ telegramId });
-            if (!user)
+            const claimUser = await User_1.User.findOne({ telegramId });
+            if (!claimUser)
                 return;
-            // ── Referral Gate: must have 2 successful referrals ──────────
-            const referralCount = await User_1.User.countDocuments({
-                referredBy: ctx.from.id.toString(),
-                referralRewardClaimed: true
-            });
-            const REQUIRED_REFERRALS = 2;
+            // ── GATE 1: Check referral count ──
+            const referralCount = claimUser.referralCount ?? 0;
+            const REQUIRED_REFERRALS = 3;
             if (referralCount < REQUIRED_REFERRALS) {
-                const botUsername = (await ctx.api.getMe()).username;
-                const referralLink = `https://t.me/${botUsername}?start=${ctx.from.id}`;
+                const remaining = REQUIRED_REFERRALS - referralCount;
                 await ctx.answerCallbackQuery({
-                    text: `تحتاج دعوة ${REQUIRED_REFERRALS - referralCount} شخص إضافي للحصول على الهدية`,
-                    show_alert: true
+                    text: `🍯 يا صديقي العسل!\n\n` +
+                        `الهدية اليومية محجوزة لك بس تحتاج تدعو أصدقاء أولاً 💙\n\n` +
+                        `👥 أصدقاؤك الحاليون: ${referralCount} / ${REQUIRED_REFERRALS}\n` +
+                        `📨 تحتاج دعوة ${remaining} صديق إضافي\n\n` +
+                        `شارك رابطك الآن واجمع محاولاتك! 🚀`,
+                    show_alert: true,
                 }).catch(() => { });
-                await ctx.reply(`🎁 <b>الهدية اليومية</b>\n\n` +
-                    `للحصول على هديتك اليومية، يجب أن تكون قد دعوت صديقين عبر رابطك الخاص أولاً.\n\n` +
-                    `📊 <b>تقدمك:</b> ${referralCount} / ${REQUIRED_REFERRALS} دعوات ✅\n\n` +
-                    `🔗 <b>رابط دعوتك:</b>\n<code>${referralLink}</code>\n\n` +
-                    `شارك هذا الرابط مع صديقين، وبمجرد انضمامهم للبوت ستتمكن من استلام هديتك اليومية 🚀`, { parse_mode: 'HTML' });
                 return;
             }
+            // ── GATE 2: Check 24h cooldown ──
             const now = new Date();
             const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-            if (user.lastRewardDate) {
-                const timePassed = now.getTime() - new Date(user.lastRewardDate).getTime();
+            if (claimUser.lastRewardDate) {
+                const timePassed = now.getTime() - new Date(claimUser.lastRewardDate).getTime();
                 if (timePassed < TWENTY_FOUR_HOURS) {
                     const timeLeft = TWENTY_FOUR_HOURS - timePassed;
                     const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
                     const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-                    const timeFormatter = new Intl.DateTimeFormat('ar-SA', {
+                    const claimTime = new Intl.DateTimeFormat('ar-SA', {
                         timeZone: 'Asia/Riyadh',
                         hour: '2-digit',
                         minute: '2-digit',
                         hour12: true,
-                    });
-                    const claimTime = timeFormatter.format(new Date(user.lastRewardDate));
+                    }).format(new Date(claimUser.lastRewardDate));
                     await ctx.answerCallbackQuery({
-                        text: `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
-                        show_alert: true
+                        text: `❌ عزيزي، هديتك لم تكتمل بعد!\n\n` +
+                            `⏰ استلمت هديتك الساعة: ${claimTime}\n\n` +
+                            `⏳ الوقت المتبقي:\n` +
+                            `${hoursLeft} ساعة و ${minutesLeft} دقيقة\n\n` +
+                            `انتظر انتهاء الوقت لفتح الهدية من جديد 🎁`,
+                        show_alert: true,
                     }).catch(() => { });
                     return;
                 }
             }
-            // Atomic update — prevents race conditions from double clicks
-            await User_1.User.findOneAndUpdate({ telegramId }, {
+            // ── SUCCESS: Add 5 attempts atomically ──
+            const updated = await User_1.User.findOneAndUpdate({ telegramId }, {
                 $inc: { dailyQuota: 5 },
                 $set: { lastRewardDate: now },
-            });
+            }, { new: true });
+            if (!updated)
+                return;
+            const newBalance = updated.dailyQuota;
+            const claimTimeDisplay = new Intl.DateTimeFormat('ar-SA', {
+                timeZone: 'Asia/Riyadh',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+            }).format(now);
+            const nextClaimTime = new Intl.DateTimeFormat('ar-SA', {
+                timeZone: 'Asia/Riyadh',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+            }).format(new Date(now.getTime() + TWENTY_FOUR_HOURS));
             await ctx.answerCallbackQuery({
-                text: '🎉 مبروك! تمت إضافة 5 محاولات مجانية لحسابك.\nعُد غداً لاستلام هديتك الجديدة 🎁',
-                show_alert: true
+                text: `🎉 تم! هديتك وصلت!\n\n` +
+                    `✅ تمت إضافة 5 محاولات مجانية\n` +
+                    `💎 رصيدك الآن: ${newBalance} محاولة\n\n` +
+                    `🕐 استلمت الهدية: ${claimTimeDisplay}\n` +
+                    `🔓 الهدية القادمة: ${nextClaimTime}\n\n` +
+                    `استمتع بتحسين صورك! 🚀`,
+                show_alert: true,
             }).catch(() => { });
         }
         catch (error) {
@@ -2612,71 +2631,86 @@ async function callbackHandler(ctx) {
         return;
     }
     if (data === 'action_daily_gift_sub') {
-        await ctx.answerCallbackQuery().catch(() => { });
-        const invites = await User_1.User.countDocuments({
-            referredBy: ctx.from.id.toString(),
-            referralRewardClaimed: true
-        });
-        if (invites < 3) {
-            await ctx.editMessageCaption({
-                caption: `🥺 <b>لا يمكنك استلام الهدية بعد!</b>\n\n` +
-                    `لاستلام الهدية اليومية تحتاج إلى دعوة <b>3 أصدقاء</b> على الأقل.\n\n` +
-                    `📊 <b>دعوتك الحالية:</b> ${invites} من 3 أصدقاء\n\n` +
-                    `شارك رابطك وادعُ أصدقاءك للحصول على الهدية! 🎁`,
-                parse_mode: 'HTML',
-                reply_markup: {
-                    inline_keyboard: [
-                        // @ts-ignore
-                        [{ text: '🔗 احصل على رابط الدعوة', callback_data: 'action_referral_sub', style: 'primary' }],
-                        // @ts-ignore
-                        [{ text: '🔙 رجوع', callback_data: 'menu_collect_attempts', style: 'danger' }]
-                    ]
-                }
-            }).catch(() => { });
-            return;
-        }
         try {
             const telegramId = ctx.from?.id.toString();
             if (!telegramId)
                 return;
-            const user = await User_1.User.findOne({ telegramId });
-            if (!user)
+            const claimUser = await User_1.User.findOne({ telegramId });
+            if (!claimUser)
                 return;
+            // GATE 1: Check referral count
+            const referralCount = claimUser.referralCount ?? 0;
+            const REQUIRED_REFERRALS = 3;
+            if (referralCount < REQUIRED_REFERRALS) {
+                const remaining = REQUIRED_REFERRALS - referralCount;
+                await ctx.answerCallbackQuery({
+                    text: `🍯 يا صديقي!\n\n` +
+                        `الهدية اليومية محجوزة لك بس تحتاج تدعو أصدقاء أولاً 💙\n\n` +
+                        `👥 أصدقاؤك الحاليون: ${referralCount} / ${REQUIRED_REFERRALS}\n` +
+                        `📨 تحتاج دعوة ${remaining} صديق إضافي\n\n` +
+                        `شارك رابطك الآن واجمع محاولاتك! 🚀`,
+                    show_alert: true,
+                }).catch(() => { });
+                return;
+            }
+            // GATE 2: Check 24h cooldown
             const now = new Date();
             const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-            if (user.lastRewardDate) {
-                const timePassed = now.getTime() - new Date(user.lastRewardDate).getTime();
+            if (claimUser.lastRewardDate) {
+                const timePassed = now.getTime() - new Date(claimUser.lastRewardDate).getTime();
                 if (timePassed < TWENTY_FOUR_HOURS) {
                     const timeLeft = TWENTY_FOUR_HOURS - timePassed;
                     const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
                     const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-                    const timeFormatter = new Intl.DateTimeFormat('ar-SA', {
+                    const claimTime = new Intl.DateTimeFormat('ar-SA', {
                         timeZone: 'Asia/Riyadh',
                         hour: '2-digit',
                         minute: '2-digit',
                         hour12: true,
-                    });
-                    const claimTime = timeFormatter.format(new Date(user.lastRewardDate));
+                    }).format(new Date(claimUser.lastRewardDate));
                     await ctx.answerCallbackQuery({
-                        text: `عذراً 🌹\nاستلمت هديتك اليومية الساعة ${claimTime}\nباقي لك: ${hoursLeft} ساعة و ${minutesLeft} دقيقة للاستلام القادم 🕐`,
-                        show_alert: true
+                        text: `❌ عزيزي، انتظر قليلاً!\n\n` +
+                            `⏰ استلمت هديتك الساعة: ${claimTime}\n\n` +
+                            `⏳ الوقت المتبقي:\n` +
+                            `${hoursLeft} ساعة و ${minutesLeft} دقيقة\n\n` +
+                            `انتظر انتهاء الوقت لفتح الهدية من جديد 🎁`,
+                        show_alert: true,
                     }).catch(() => { });
                     return;
                 }
             }
-            // Atomic update — prevents race conditions from double clicks
-            await User_1.User.findOneAndUpdate({ telegramId }, {
+            // SUCCESS: Add 5 attempts
+            const updated = await User_1.User.findOneAndUpdate({ telegramId }, {
                 $inc: { dailyQuota: 5 },
                 $set: { lastRewardDate: now },
-            });
+            }, { new: true });
+            if (!updated)
+                return;
+            const newBalance = updated.dailyQuota;
+            const claimTimeDisplay = new Intl.DateTimeFormat('ar-SA', {
+                timeZone: 'Asia/Riyadh',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+            }).format(now);
+            const nextClaimTime = new Intl.DateTimeFormat('ar-SA', {
+                timeZone: 'Asia/Riyadh',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+            }).format(new Date(now.getTime() + TWENTY_FOUR_HOURS));
             await ctx.answerCallbackQuery({
-                text: '🎉 مبروك! تمت إضافة 5 محاولات مجانية لحسابك.\nعُد غداً لاستلام هديتك الجديدة 🎁',
-                show_alert: true
+                text: `🎉 تم! هديتك وصلت!\n\n` +
+                    `✅ تمت إضافة 5 محاولات مجانية\n` +
+                    `💎 رصيدك الآن: ${newBalance} محاولة\n\n` +
+                    `🕐 استلمت الهدية: ${claimTimeDisplay}\n` +
+                    `🔓 الهدية القادمة: ${nextClaimTime}\n\n` +
+                    `استمتع بتحسين صورك! 🚀`,
+                show_alert: true,
             }).catch(() => { });
         }
         catch (error) {
-            console.error('[DailyReward] Error:', error);
-            await (0, adminAlert_1.sendAdminAlert)(ctx, `Daily Reward Error: ${error.message}`);
+            console.error('[DailyGift] Error:', error);
         }
         return;
     }
