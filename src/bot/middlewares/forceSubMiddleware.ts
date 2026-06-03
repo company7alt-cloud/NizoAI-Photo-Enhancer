@@ -104,6 +104,6 @@ export async function forceSubMiddleware(
 
   } catch (err) {
     console.error('[ForceSubMiddleware] Unexpected error:', err);
-    return await next(); // On unexpected error, allow through
+    return;
   }
 }
