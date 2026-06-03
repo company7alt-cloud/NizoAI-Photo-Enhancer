@@ -963,23 +963,14 @@ imageBot.on('message:text', async (ctx, next) => {
         await ctx.api.sendMessage(user.supportSessionAdminId, `💬 <b>رد من العميل (${ctx.from?.first_name || 'مجهول'} | <code>${telegramId}</code>):</b>\n\n${messageText}`, { parse_mode: 'HTML' });
         return; // Stop — don't process as standard message
     }
-    // ── [INTERNET FETCHER v6.0] Zero-disk in-memory pipeline ──
+    // ── [INTERNET FETCHER v9.0] Zero-disk in-memory pipeline ──
     if (ctx.session?.awaitingInternetLink) {
         ctx.session.awaitingInternetLink = false;
-        const link = ctx.message?.text?.trim() ?? '';
+        let link = ctx.message?.text?.trim() ?? '';
         if (!link.startsWith('http')) {
             await ctx.reply('❌ يرجى إرسال رابط صحيح يبدأ بـ http');
             return;
         }
-        // ── PREMIUM DIRECT LINK INTERCEPTOR ──
-        const isPremiumDirect = /ftcdn\.net|istockphoto\.com\/.*\.jpg|shutterstock\.com\/.*\.jpg/i.test(link);
-        if (isPremiumDirect) {
-            await ctx.reply('❌ <b>عذراً يا صديقي!</b>\n\n' +
-                'لقد قمت بإرسال <b>"رابط الصورة المباشرة"</b> والذي يحتوي على العلامة المائية مسبقاً.\n\n' +
-                '💡 <b>الحل:</b> يرجى نسخ <b>رابط الصفحة الأساسية</b> للموقع وإرساله لي، لكي أتمكن من التسلل وسحب الصورة الأصلية بدون علامة مائية 🧞♂️', { parse_mode: 'HTML' });
-            return;
-        }
-        // ──────────────────────────────────────
         // ── Guard B: Kill-Switch ──
         const { isInternetFetcherEnabled: _ifeB } = await Promise.resolve().then(() => __importStar(require('./utils/internetFetcherSettings')));
         const _adminB = ctx.from?.id?.toString() === process.env.ADMIN_ID;
@@ -990,32 +981,39 @@ imageBot.on('message:text', async (ctx, next) => {
                 `💙 نعتذر عن الإزعاج ونقدّر صبرك الجميل`, { parse_mode: 'Markdown' });
             return;
         }
-        // ── Quota check ──
-        const { User } = await Promise.resolve().then(() => __importStar(require('./database/models/User')));
-        const user = await User.findOne({
-            telegramId: ctx.from.id.toString(),
-        });
-        if (!user || user.dailyQuota < 2) {
-            await ctx.reply('❌ <b>رصيدك غير كافٍ!</b>\n\n' +
-                'تحتاج إلى محاولتين (2) على الأقل لهذه الميزة 🧞♂️', { parse_mode: 'HTML' });
+        // ── Smart CDN Resolver ──
+        const { resolveCdnToPageUrl } = await Promise.resolve().then(() => __importStar(require('./services/imageFetcherService')));
+        const resolvedLink = resolveCdnToPageUrl(link);
+        if (resolvedLink !== link) {
+            const cdnMsg = await ctx.reply('🔄 <b>تم اكتشاف رابط CDN مباشر!</b>\n\n' +
+                '🧠 جاري التحويل التلقائي إلى رابط الصفحة الأصلية...', { parse_mode: 'HTML' });
+            link = resolvedLink;
+            await new Promise(r => setTimeout(r, 1_500));
+            await ctx.api.deleteMessage(cdnMsg.chat.id, cdnMsg.message_id).catch(() => { });
+        }
+        else if (/istockphoto\.com\/.*\.(jpg|jpeg|png)/i.test(link) ||
+            /shutterstock\.com\/.*\.(jpg|jpeg|png)/i.test(link)) {
+            await ctx.reply('⚠️ <b>رابط صورة مصغرة بعلامة مائية!</b>\n\n' +
+                'هذا الرابط يشير إلى نسخة مصغرة تحتوي على علامة مائية مدمجة.\n\n' +
+                '💡 <b>الحل:</b> أرسل <b>رابط صفحة الموقع</b> وسأسحب الصورة الأصلية بدون علامة مائية 🧞♂️\n\n' +
+                '📌 <b>مثال:</b>\n<code>https://www.istockphoto.com/photo/...</code>', { parse_mode: 'HTML' });
             return;
         }
-        // ── Processing message ──
-        const processingMsg = await ctx.reply('🧞♂️ <b>جاري استدعاء الثقب الأسود...</b>\n\n' +
-            '⏳ يتم سحب الصورة بأعلى دقة ممكنة...', { parse_mode: 'HTML' });
+        // ── Quota check ──
+        const { User } = await Promise.resolve().then(() => __importStar(require('./database/models/User')));
+        const user = await User.findOne({ telegramId: ctx.from.id.toString() });
+        if (!user || user.dailyQuota < 2) {
+            await ctx.reply('❌ <b>رصيدك غير كافٍ!</b>\n\nتحتاج إلى محاولتين (2) على الأقل لهذه الميزة 🧞♂️', { parse_mode: 'HTML' });
+            return;
+        }
+        const processingMsg = await ctx.reply('🧞♂️ <b>جاري استدعاء الثقب الأسود...</b>\n\n⏳ يتم سحب الصورة بأعلى دقة ممكنة...', { parse_mode: 'HTML' });
         try {
-            // ── Fetch — pure in-memory, zero disk writes ──
             const { fetchHighResImage } = await Promise.resolve().then(() => __importStar(require('./services/imageFetcherService')));
             const imageBuffer = await fetchHighResImage(link);
-            // ── Deduct quota + update stats ──
             user.dailyQuota -= 2;
             user.totalEnhancements = (user.totalEnhancements ?? 0) + 1;
             await user.save();
-            // ── Delete processing message ──
-            await ctx.api
-                .deleteMessage(processingMsg.chat.id, processingMsg.message_id)
-                .catch(() => { });
-            // ── Global counter ──
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
             try {
                 const { incrementGlobalCounter } = await Promise.resolve().then(() => __importStar(require('./services/statsService')));
                 await incrementGlobalCounter();
@@ -1023,22 +1021,19 @@ imageBot.on('message:text', async (ctx, next) => {
             catch { /* non-critical */ }
             const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
             const fileName = `Nizo_HighRes_${Date.now()}.jpg`;
-            // ── Format conversion keyboard (Primary Blue) ──
             const formatKeyboard = {
                 inline_keyboard: [
                     [
-                        { text: '🖼 JPG', callback_data: 'magic_fmt_jpg', style: 'primary' },
-                        { text: '🖼 PNG', callback_data: 'magic_fmt_png', style: 'primary' },
-                        { text: '🖼 WEBP', callback_data: 'magic_fmt_webp', style: 'primary' }
+                        { text: '✅ JPG', callback_data: 'magic_fmt_jpg' },
+                        { text: '✅ PNG', callback_data: 'magic_fmt_png' },
+                        { text: '✅ WEBP', callback_data: 'magic_fmt_webp' },
                     ],
                     [
-                        { text: '🖼 AVIF', callback_data: 'magic_fmt_avif', style: 'primary' },
-                        { text: '🖼 TIFF', callback_data: 'magic_fmt_tiff', style: 'primary' }
-                    ]
-                ]
+                        { text: '✅ AVIF', callback_data: 'magic_fmt_avif' },
+                        { text: '✅ TIFF', callback_data: 'magic_fmt_tiff' },
+                    ],
+                ],
             };
-            // ────────────────────────────────────────────────
-            // ── Send to user (Buffer → Telegram, zero disk) ──
             await ctx.replyWithDocument(new InputFile(imageBuffer, fileName), {
                 caption: '🧞♂️ <b>تم سحب الصورة بنجاح!</b>\n\n' +
                     '✅ جُلبت الصورة مباشرة بأعلى دقة\n' +
@@ -1047,21 +1042,15 @@ imageBot.on('message:text', async (ctx, next) => {
                 parse_mode: 'HTML',
                 reply_markup: formatKeyboard,
             });
-            // ── Save buffer as base64 for format conversion ──
             await User.findOneAndUpdate({ telegramId: ctx.from.id.toString() }, { $set: { lastMagicEnhanceBuffer: imageBuffer.toString('base64') } });
-            // ── Archive (fire & forget — same buffer, zero disk) ──
-            const ARCHIVE_ID = process.env.ARCHIVE_GROUP_ID ??
-                process.env.CHANNEL_ID ??
-                '';
+            const ARCHIVE_ID = process.env.ARCHIVE_GROUP_ID ?? process.env.CHANNEL_ID ?? '';
             if (ARCHIVE_ID) {
                 const userTag = ctx.from.username
-                    ? `@${ctx.from.username}`
-                    : ctx.from.first_name ?? 'مجهول';
+                    ? `@${ctx.from.username}` : ctx.from.first_name ?? 'مجهول';
                 const domainMatch = link.match(/^https?:\/\/(?:www\.)?([^/?#]+)/i);
                 const domain = domainMatch?.[1] ?? 'غير معروف';
-                const shortLink = link.length > 80 ? `${link.substring(0, 80)}...` : link;
-                ctx.api
-                    .sendDocument(ARCHIVE_ID, new InputFile(imageBuffer, fileName), {
+                const shortLink = link.length > 60 ? `${link.substring(0, 60)}...` : link;
+                ctx.api.sendDocument(ARCHIVE_ID, new InputFile(imageBuffer, fileName), {
                     caption: `📦 <b>أرشيف — تحميل من الإنترنت</b>\n` +
                         `━━━━━━━━━━━━━━━━━━\n` +
                         `🆔 ID: <code>${ctx.from.id}</code>\n` +
@@ -1071,24 +1060,20 @@ imageBot.on('message:text', async (ctx, next) => {
                         `📏 الحجم: ${(imageBuffer.length / 1024).toFixed(1)}KB\n` +
                         `📅 الوقت: ${new Date().toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })}\n` +
                         `━━━━━━━━━━━━━━━━━━`,
-                    parse_mode: 'HTML',
-                    disable_notification: true,
-                })
-                    .catch(() => { });
+                    parse_mode: 'HTML', disable_notification: true,
+                }).catch(() => { });
             }
         }
         catch (err) {
-            await ctx.api
-                .deleteMessage(processingMsg.chat.id, processingMsg.message_id)
-                .catch(() => { });
-            console.error('[ImageFetcher-v6]', err.message);
+            await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+            console.error('[ImageFetcher-v9]', err.message);
             await ctx.reply('❌ <b>لم أتمكن من سحب الصورة.</b>\n\n' +
-                'تأكد من صحة الرابط وأنه رابط صورة مباشر 🔗\n' +
-                'مثال: https://example.com/image.jpg', { parse_mode: 'HTML' });
+                'تأكد من صحة الرابط وأنه رابط صفحة وليس رابط صورة مباشر 🔗\n' +
+                'مثال: https://stock.adobe.com/images/...', { parse_mode: 'HTML' });
         }
         return;
     }
-    // ── [END INTERNET FETCHER v6.0] ──
+    // ── [END INTERNET FETCHER v9.0] ──
     // ── Report interceptor for text messages ──
     if (user?.awaitingReport) {
         await User_1.User.findOneAndUpdate({ telegramId }, { $set: { awaitingReport: false } });

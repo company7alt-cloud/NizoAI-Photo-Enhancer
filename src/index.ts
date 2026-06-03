@@ -1143,34 +1143,20 @@ imageBot.on('message:text', async (ctx, next) => {
     return; // Stop — don't process as standard message
   }
 
-  // ── [INTERNET FETCHER v6.0] Zero-disk in-memory pipeline ──
+  // ── [INTERNET FETCHER v9.0] Zero-disk in-memory pipeline ──
   if ((ctx.session as any)?.awaitingInternetLink) {
     (ctx.session as any).awaitingInternetLink = false;
 
-    const link: string = ctx.message?.text?.trim() ?? '';
+    let link: string = ctx.message?.text?.trim() ?? '';
     if (!link.startsWith('http')) {
       await ctx.reply('❌ يرجى إرسال رابط صحيح يبدأ بـ http');
       return;
     }
 
-    // ── PREMIUM DIRECT LINK INTERCEPTOR ──
-    const isPremiumDirect = /ftcdn\.net|istockphoto\.com\/.*\.jpg|shutterstock\.com\/.*\.jpg/i.test(link);
-    if (isPremiumDirect) {
-      await ctx.reply(
-        '❌ <b>عذراً يا صديقي!</b>\n\n' +
-        'لقد قمت بإرسال <b>"رابط الصورة المباشرة"</b> والذي يحتوي على العلامة المائية مسبقاً.\n\n' +
-        '💡 <b>الحل:</b> يرجى نسخ <b>رابط الصفحة الأساسية</b> للموقع وإرساله لي، لكي أتمكن من التسلل وسحب الصورة الأصلية بدون علامة مائية 🧞♂️',
-        { parse_mode: 'HTML' }
-      );
-      return;
-    }
-    // ──────────────────────────────────────
-
     // ── Guard B: Kill-Switch ──
     const { isInternetFetcherEnabled: _ifeB } =
       await import('./utils/internetFetcherSettings');
-    const _adminB: boolean =
-      ctx.from?.id?.toString() === process.env.ADMIN_ID;
+    const _adminB: boolean = ctx.from?.id?.toString() === process.env.ADMIN_ID;
     if (!_ifeB() && !_adminB) {
       await ctx.reply(
         `🔧 *تحميل الصور من الإنترنت*\n\n` +
@@ -1182,70 +1168,82 @@ imageBot.on('message:text', async (ctx, next) => {
       return;
     }
 
-    // ── Quota check ──
-    const { User } = await import('./database/models/User');
-    const user = await User.findOne({
-      telegramId: ctx.from!.id.toString(),
-    });
-    if (!user || user.dailyQuota < 2) {
+    // ── Smart CDN Resolver ──
+    const { resolveCdnToPageUrl } =
+      await import('./services/imageFetcherService');
+    const resolvedLink: string = resolveCdnToPageUrl(link);
+
+    if (resolvedLink !== link) {
+      const cdnMsg = await ctx.reply(
+        '🔄 <b>تم اكتشاف رابط CDN مباشر!</b>\n\n' +
+        '🧠 جاري التحويل التلقائي إلى رابط الصفحة الأصلية...',
+        { parse_mode: 'HTML' },
+      );
+      link = resolvedLink;
+      await new Promise(r => setTimeout(r, 1_500));
+      await ctx.api.deleteMessage(cdnMsg.chat.id, cdnMsg.message_id).catch(() => {});
+    } else if (
+      /istockphoto\.com\/.*\.(jpg|jpeg|png)/i.test(link) ||
+      /shutterstock\.com\/.*\.(jpg|jpeg|png)/i.test(link)
+    ) {
       await ctx.reply(
-        '❌ <b>رصيدك غير كافٍ!</b>\n\n' +
-        'تحتاج إلى محاولتين (2) على الأقل لهذه الميزة 🧞♂️',
+        '⚠️ <b>رابط صورة مصغرة بعلامة مائية!</b>\n\n' +
+        'هذا الرابط يشير إلى نسخة مصغرة تحتوي على علامة مائية مدمجة.\n\n' +
+        '💡 <b>الحل:</b> أرسل <b>رابط صفحة الموقع</b> وسأسحب الصورة الأصلية بدون علامة مائية 🧞♂️\n\n' +
+        '📌 <b>مثال:</b>\n<code>https://www.istockphoto.com/photo/...</code>',
         { parse_mode: 'HTML' },
       );
       return;
     }
 
-    // ── Processing message ──
+    // ── Quota check ──
+    const { User } = await import('./database/models/User');
+    const user = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    if (!user || user.dailyQuota < 2) {
+      await ctx.reply(
+        '❌ <b>رصيدك غير كافٍ!</b>\n\nتحتاج إلى محاولتين (2) على الأقل لهذه الميزة 🧞♂️',
+        { parse_mode: 'HTML' },
+      );
+      return;
+    }
+
     const processingMsg = await ctx.reply(
-      '🧞♂️ <b>جاري استدعاء الثقب الأسود...</b>\n\n' +
-      '⏳ يتم سحب الصورة بأعلى دقة ممكنة...',
+      '🧞♂️ <b>جاري استدعاء الثقب الأسود...</b>\n\n⏳ يتم سحب الصورة بأعلى دقة ممكنة...',
       { parse_mode: 'HTML' },
     );
 
     try {
-      // ── Fetch — pure in-memory, zero disk writes ──
-      const { fetchHighResImage } =
-        await import('./services/imageFetcherService');
-      const imageBuffer: Buffer = await fetchHighResImage(link);
+      const { fetchHighResImage } = await import('./services/imageFetcherService');
+      const imageBuffer: Buffer   = await fetchHighResImage(link);
 
-      // ── Deduct quota + update stats ──
       user.dailyQuota        -= 2;
       user.totalEnhancements  = (user.totalEnhancements ?? 0) + 1;
       await user.save();
 
-      // ── Delete processing message ──
-      await ctx.api
-        .deleteMessage(processingMsg.chat.id, processingMsg.message_id)
-        .catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
 
-      // ── Global counter ──
       try {
-        const { incrementGlobalCounter } =
-          await import('./services/statsService');
+        const { incrementGlobalCounter } = await import('./services/statsService');
         await incrementGlobalCounter();
       } catch { /* non-critical */ }
 
       const { InputFile } = await import('grammy');
-      const fileName      = `Nizo_HighRes_${Date.now()}.jpg`;
+      const fileName       = `Nizo_HighRes_${Date.now()}.jpg`;
 
-      // ── Format conversion keyboard (Primary Blue) ──
       const formatKeyboard = {
         inline_keyboard: [
           [
-            { text: '🖼 JPG',  callback_data: 'magic_fmt_jpg',  style: 'primary' as any },
-            { text: '🖼 PNG',  callback_data: 'magic_fmt_png',  style: 'primary' as any },
-            { text: '🖼 WEBP', callback_data: 'magic_fmt_webp', style: 'primary' as any }
+            { text: '✅ JPG',  callback_data: 'magic_fmt_jpg'  },
+            { text: '✅ PNG',  callback_data: 'magic_fmt_png'  },
+            { text: '✅ WEBP', callback_data: 'magic_fmt_webp' },
           ],
           [
-            { text: '🖼 AVIF', callback_data: 'magic_fmt_avif', style: 'primary' as any },
-            { text: '🖼 TIFF', callback_data: 'magic_fmt_tiff', style: 'primary' as any }
-          ]
-        ]
+            { text: '✅ AVIF', callback_data: 'magic_fmt_avif' },
+            { text: '✅ TIFF', callback_data: 'magic_fmt_tiff' },
+          ],
+        ],
       };
-      // ────────────────────────────────────────────────
 
-      // ── Send to user (Buffer → Telegram, zero disk) ──
       await ctx.replyWithDocument(
         new InputFile(imageBuffer, fileName),
         {
@@ -1259,69 +1257,49 @@ imageBot.on('message:text', async (ctx, next) => {
         },
       );
 
-      // ── Save buffer as base64 for format conversion ──
       await User.findOneAndUpdate(
         { telegramId: ctx.from!.id.toString() },
         { $set: { lastMagicEnhanceBuffer: imageBuffer.toString('base64') } },
       );
 
-      // ── Archive (fire & forget — same buffer, zero disk) ──
       const ARCHIVE_ID: string =
-        process.env.ARCHIVE_GROUP_ID ??
-        process.env.CHANNEL_ID       ??
-        '';
+        process.env.ARCHIVE_GROUP_ID ?? process.env.CHANNEL_ID ?? '';
 
       if (ARCHIVE_ID) {
-        const userTag: string = ctx.from!.username
-          ? `@${ctx.from!.username}`
-          : ctx.from!.first_name ?? 'مجهول';
+        const userTag: string   = ctx.from!.username
+          ? `@${ctx.from!.username}` : ctx.from!.first_name ?? 'مجهول';
+        const domainMatch       = link.match(/^https?:\/\/(?:www\.)?([^/?#]+)/i);
+        const domain: string    = domainMatch?.[1] ?? 'غير معروف';
+        const shortLink: string = link.length > 60 ? `${link.substring(0,60)}...` : link;
 
-        const domainMatch = link.match(
-          /^https?:\/\/(?:www\.)?([^/?#]+)/i,
-        );
-        const domain: string = domainMatch?.[1] ?? 'غير معروف';
-        const shortLink: string =
-          link.length > 80 ? `${link.substring(0, 80)}...` : link;
-
-        ctx.api
-          .sendDocument(
-            ARCHIVE_ID,
-            new InputFile(imageBuffer, fileName),
-            {
-              caption:
-                `📦 <b>أرشيف — تحميل من الإنترنت</b>\n` +
-                `━━━━━━━━━━━━━━━━━━\n` +
-                `🆔 ID: <code>${ctx.from!.id}</code>\n` +
-                `👤 User: ${userTag}\n` +
-                `🌐 الموقع: <b>${domain}</b>\n` +
-                `🔗 الرابط: ${shortLink}\n` +
-                `📏 الحجم: ${(imageBuffer.length / 1024).toFixed(1)}KB\n` +
-                `📅 الوقت: ${new Date().toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })}\n` +
-                `━━━━━━━━━━━━━━━━━━`,
-              parse_mode:           'HTML',
-              disable_notification: true,
-            },
-          )
-          .catch(() => {});
+        ctx.api.sendDocument(ARCHIVE_ID, new InputFile(imageBuffer, fileName), {
+          caption:
+            `📦 <b>أرشيف — تحميل من الإنترنت</b>\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `🆔 ID: <code>${ctx.from!.id}</code>\n` +
+            `👤 User: ${userTag}\n` +
+            `🌐 الموقع: <b>${domain}</b>\n` +
+            `🔗 الرابط: ${shortLink}\n` +
+            `📏 الحجم: ${(imageBuffer.length/1024).toFixed(1)}KB\n` +
+            `📅 الوقت: ${new Date().toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'})}\n` +
+            `━━━━━━━━━━━━━━━━━━`,
+          parse_mode: 'HTML', disable_notification: true,
+        }).catch(() => {});
       }
 
     } catch (err: unknown) {
-      await ctx.api
-        .deleteMessage(processingMsg.chat.id, processingMsg.message_id)
-        .catch(() => {});
-
-      console.error('[ImageFetcher-v6]', (err as Error).message);
-
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      console.error('[ImageFetcher-v9]', (err as Error).message);
       await ctx.reply(
         '❌ <b>لم أتمكن من سحب الصورة.</b>\n\n' +
-        'تأكد من صحة الرابط وأنه رابط صورة مباشر 🔗\n' +
-        'مثال: https://example.com/image.jpg',
+        'تأكد من صحة الرابط وأنه رابط صفحة وليس رابط صورة مباشر 🔗\n' +
+        'مثال: https://stock.adobe.com/images/...',
         { parse_mode: 'HTML' },
       );
     }
     return;
   }
-  // ── [END INTERNET FETCHER v6.0] ──
+  // ── [END INTERNET FETCHER v9.0] ──
 
   // ── Report interceptor for text messages ──
   if (user?.awaitingReport) {

@@ -78,42 +78,50 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
   if (!data || !ctx.from) return;
 
-  // ── FORCED KILL-SWITCH CALLBACK ──
+  // ── [KILL-SWITCH — ABSOLUTE TOP] Admin Toggle Internet Fetcher ──
   if (data === 'admin_toggle_internet_fetcher') {
     await ctx.answerCallbackQuery().catch(() => {});
-    if (ctx.from?.id?.toString() !== process.env.ADMIN_ID) {
-      console.warn(`[Kill-Switch] Unauthorized attempt by ${ctx.from?.id}`);
-      return;
-    }
+    if (ctx.from?.id?.toString() !== process.env.ADMIN_ID) return;
 
-    try {
-      const { toggleInternetFetcher, getFetcherStatus } = await import('../../utils/internetFetcherSettings');
-      const newEnabled = toggleInternetFetcher();
-      const info = getFetcherStatus();
-      const changedAt = new Date(info.lastChanged).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
+    const { toggleInternetFetcher: _toggle, getFetcherStatus: _getStatus } =
+      await import('../../utils/internetFetcherSettings');
 
-      await ctx.editMessageText(
-        `⚙️ *لوحة التحكم — إدارة الميزات*\n\n` +
-        `${newEnabled ? '🟢' : '🔴'} *تحميل الصور من الإنترنت:* ${newEnabled ? 'مفعّل الآن ✅' : 'موقوف الآن 🔒'}\n\n` +
-        `${newEnabled ? '✅ تم الفتح — جميع المستخدمين يمكنهم الاستخدام' : '🔒 تم الإيقاف — المستخدمون سيرون رسالة الصيانة'}\n\n` +
-        `🕐 _آخر تغيير: ${changedAt}_\n\n` +
-        `💡 _بصفتك مديراً، تستطيع استخدام الميزة في جميع الأحوال_`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[{ 
-              text: newEnabled ? '🟢 تحميل الإنترنت: مفعّل' : '🔴 تحميل الإنترنت: موقوف', 
-              callback_data: 'admin_toggle_internet_fetcher' 
-            }]]
-          }
-        }
-      );
-    } catch (err) {
-      console.error('[Kill-Switch Error]:', err);
-    }
+    const newEnabled: boolean = _toggle();
+    const info                = _getStatus();
+    const changedAt: string   = new Date(info.lastChanged)
+      .toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
+
+    await ctx.editMessageText(
+      `⚙️ *لوحة التحكم — إدارة الميزات*\n\n` +
+      `${newEnabled ? '🟢' : '🔴'} *تحميل الصور من الإنترنت:* ` +
+      `${newEnabled ? 'مفعّل الآن ✅' : 'موقوف الآن 🔒'}\n\n` +
+      `${newEnabled
+        ? '✅ تم الفتح — جميع المستخدمين يمكنهم الاستخدام'
+        : '🔒 تم الإيقاف — المستخدمون سيرون رسالة الصيانة'}\n\n` +
+      `🕐 _آخر تغيير: ${changedAt}_\n\n` +
+      `💡 _بصفتك مديراً، تستطيع استخدام الميزة في جميع الأحوال_`,
+      {
+        parse_mode:   'Markdown',
+        reply_markup: {
+          inline_keyboard: [[{
+            text: newEnabled
+              ? '🟢 تحميل الإنترنت: مفعّل — اضغط لإيقافه'
+              : '🔴 تحميل الإنترنت: موقوف — اضغط لتفعيله',
+            callback_data: 'admin_toggle_internet_fetcher',
+          }]],
+        },
+      },
+    ).catch(async () => {
+      await ctx.reply(
+        `⚙️ *لوحة التحكم*\n\n` +
+        `${newEnabled ? '🟢' : '🔴'} *تحميل الصور:* ${newEnabled ? 'مفعّل ✅' : 'موقوف 🔒'}\n` +
+        `🕐 _${changedAt}_`,
+        { parse_mode: 'Markdown' },
+      ).catch(() => {});
+    });
     return;
   }
-  // ─────────────────────────────────
+  // ── [END KILL-SWITCH] ──
 
   // ── Admin User Control Handlers ──────────────────────────────────────────
   if (data === 'admin_user_control') {
@@ -1684,23 +1692,22 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ── Internet Image Fetcher Handlers ──────────────────────────────────────────
 
   if (data === 'menu_internet_download') {
-// ── [GUARD-A] Kill-Switch — Button Click ──
-const { isInternetFetcherEnabled: _ifeA } =
-  await import('../../utils/internetFetcherSettings');
-const _adminA: boolean =
-  ctx.from?.id?.toString() === process.env.ADMIN_ID;
-if (!_ifeA() && !_adminA) {
-  await ctx.answerCallbackQuery().catch(() => {});
-  await ctx.reply(
-    `🔧 *تحميل الصور من الإنترنت*\n\n` +
-    `✨ هذه الميزة تحت الصيانة حالياً لتقديم تجربة أفضل لك!\n\n` +
-    `🚀 سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n` +
-    `💙 نعتذر عن الإزعاج ونقدّر صبرك الجميل`,
-    { parse_mode: 'Markdown' },
-  );
-  return;
-}
-// ── [END GUARD-A] ──
+    // ── [GUARD-A] Kill-Switch — Button Click ──
+    const { isInternetFetcherEnabled: _ifeA } =
+      await import('../../utils/internetFetcherSettings');
+    const _adminA: boolean = ctx.from?.id?.toString() === process.env.ADMIN_ID;
+    if (!_ifeA() && !_adminA) {
+      await ctx.answerCallbackQuery().catch(() => {});
+      await ctx.reply(
+        `🔧 *تحميل الصور من الإنترنت*\n\n` +
+        `✨ هذه الميزة تحت الصيانة حالياً لتقديم تجربة أفضل لك!\n\n` +
+        `🚀 سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n` +
+        `💙 نعتذر عن الإزعاج ونقدّر صبرك الجميل`,
+        { parse_mode: 'Markdown' },
+      );
+      return;
+    }
+    // ── [END GUARD-A] ──
     await ctx.answerCallbackQuery().catch(() => {});
     await ctx.reply(
       '🧞‍♂️ <b>تحميل صورة من الإنترنت</b>\n\nاختر ما تريد:',
