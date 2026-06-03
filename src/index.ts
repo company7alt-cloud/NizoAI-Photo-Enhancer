@@ -1143,90 +1143,171 @@ imageBot.on('message:text', async (ctx, next) => {
     return; // Stop — don't process as standard message
   }
 
-  // ── Internet Link Interceptor ──────────────────────────────────────────────
-  if (ctx.session?.awaitingInternetLink) {
-    ctx.session.awaitingInternetLink = false;
-    const link = ctx.message?.text?.trim();
+  // ── [INTERNET FETCHER v6.0] Zero-disk in-memory pipeline ──
+  if ((ctx.session as any)?.awaitingInternetLink) {
+    (ctx.session as any).awaitingInternetLink = false;
 
-    if (!link || !link.startsWith('http')) {
+    const link: string = ctx.message?.text?.trim() ?? '';
+    if (!link.startsWith('http')) {
       await ctx.reply('❌ يرجى إرسال رابط صحيح يبدأ بـ http');
       return;
     }
 
+    // ── Guard B: Kill-Switch ──
+    const { isInternetFetcherEnabled: _ifeB } =
+      await import('./utils/internetFetcherSettings');
+    const _adminB: boolean =
+      ctx.from?.id?.toString() === process.env.ADMIN_ID;
+    if (!_ifeB() && !_adminB) {
+      await ctx.reply(
+        `🔧 *تحميل الصور من الإنترنت*\n\n` +
+        `✨ هذه الميزة تحت الصيانة حالياً لتقديم تجربة أفضل لك!\n\n` +
+        `🚀 سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n` +
+        `💙 نعتذر عن الإزعاج ونقدّر صبرك الجميل`,
+        { parse_mode: 'Markdown' },
+      );
+      return;
+    }
+
+    // ── Quota check ──
+    const { User } = await import('./database/models/User');
+    const user = await User.findOne({
+      telegramId: ctx.from!.id.toString(),
+    });
+    if (!user || user.dailyQuota < 2) {
+      await ctx.reply(
+        '❌ <b>رصيدك غير كافٍ!</b>\n\n' +
+        'تحتاج إلى محاولتين (2) على الأقل لهذه الميزة 🧞♂️',
+        { parse_mode: 'HTML' },
+      );
+      return;
+    }
+
+    // ── Processing message ──
     const processingMsg = await ctx.reply(
-      '🧞‍♂️ <b>جاري استدعاء العفريت...</b>\n\n' +
-      '⏳ يتم الآن سحب الصورة بأعلى دقة ممكنة، يرجى الانتظار...',
-      { parse_mode: 'HTML' }
+      '🧞♂️ <b>جاري استدعاء الثقب الأسود...</b>\n\n' +
+      '⏳ يتم سحب الصورة بأعلى دقة ممكنة...',
+      { parse_mode: 'HTML' },
     );
 
     try {
-      const { fetchHighResImage } = await import('./services/imageFetcherService');
-      const imageBuffer = await fetchHighResImage(link);
+      // ── Fetch — pure in-memory, zero disk writes ──
+      const { fetchHighResImage } =
+        await import('./services/imageFetcherService');
+      const imageBuffer: Buffer = await fetchHighResImage(link);
 
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      // ── Deduct quota + update stats ──
+      user.dailyQuota        -= 2;
+      user.totalEnhancements  = (user.totalEnhancements ?? 0) + 1;
+      await user.save();
 
-      const fileName = `Nizo_HighRes_${Date.now()}.jpg`;
+      // ── Delete processing message ──
+      await ctx.api
+        .deleteMessage(processingMsg.chat.id, processingMsg.message_id)
+        .catch(() => {});
 
-      const { incrementGlobalCounter } = await import('./services/statsService');
-      await incrementGlobalCounter();
+      // ── Global counter ──
+      try {
+        const { incrementGlobalCounter } =
+          await import('./services/statsService');
+        await incrementGlobalCounter();
+      } catch { /* non-critical */ }
 
-      const { InputFile, InlineKeyboard } = await import('grammy');
+      const { InputFile } = await import('grammy');
+      const fileName      = `Nizo_HighRes_${Date.now()}.jpg`;
 
+      // ── Format conversion keyboard ──
+      const formatKeyboard = {
+        inline_keyboard: [
+          [
+            { text: '🖼 JPG',  callback_data: 'magic_fmt_jpg'  },
+            { text: '🖼 PNG',  callback_data: 'magic_fmt_png'  },
+            { text: '🖼 WEBP', callback_data: 'magic_fmt_webp' },
+          ],
+          [
+            { text: '🖼 AVIF', callback_data: 'magic_fmt_avif' },
+            { text: '🖼 TIFF', callback_data: 'magic_fmt_tiff' },
+          ],
+        ],
+      };
+
+      // ── Send to user (Buffer → Telegram, zero disk) ──
       await ctx.replyWithDocument(
         new InputFile(imageBuffer, fileName),
         {
           caption:
-            '🧞‍♂️ <b>تم سحب الصورة بنجاح!</b>\n\n' +
-            '✅ الصورة الأصلية بأعلى دقة متاحة\n' +
-            '💎 تم الإرسال كملف للحفاظ على الجودة الكاملة',
-          parse_mode: 'HTML',
-          reply_markup: new InlineKeyboard()
-            .text('🖼 JPG',  'magic_fmt_jpg')
-            .text('🖼 PNG',  'magic_fmt_png')
-            .text('🖼 WEBP', 'magic_fmt_webp')
-            .row()
-            .text('🖼 AVIF', 'magic_fmt_avif')
-            .text('🖼 TIFF', 'magic_fmt_tiff')
-        }
+            '🧞♂️ <b>تم سحب الصورة بنجاح!</b>\n\n' +
+            '✅ جُلبت الصورة مباشرة بأعلى دقة\n' +
+            '💎 تكلفة العملية: <b>2 محاولة</b>\n' +
+            '📦 تم الإرسال كملف للحفاظ على الجودة الكاملة',
+          parse_mode:   'HTML',
+          reply_markup: formatKeyboard,
+        },
       );
 
+      // ── Save buffer as base64 for format conversion ──
       await User.findOneAndUpdate(
         { telegramId: ctx.from!.id.toString() },
-        { $set: { lastMagicEnhanceBuffer: imageBuffer.toString('base64') } }
+        { $set: { lastMagicEnhanceBuffer: imageBuffer.toString('base64') } },
       );
 
-      const BACKUP = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
-      if (BACKUP) {
-        const actionUser = ctx.from!;
-        const userLink = actionUser.username
-          ? `@${actionUser.username}`
-          : `${actionUser.first_name || 'مجهول'}`;
-        ctx.api.sendDocument(BACKUP, new InputFile(imageBuffer, fileName), {
-          caption:
-            `📦 <b>أرشيف — تحميل من الإنترنت</b>\n` +
-            `━━━━━━━━━━━━━━\n` +
-            `🆔 <b>User ID:</b> <code>${actionUser.id}</code>\n` +
-            `👤 <b>Username:</b> ${userLink}\n` +
-            `🔗 <b>الرابط:</b> ${link.substring(0, 100)}\n` +
-            `📅 <b>الوقت:</b> ${new Date().toLocaleString('ar-SA')}\n` +
-            `━━━━━━━━━━━━━━`,
-          parse_mode: 'HTML',
-          disable_notification: true,
-        }).catch((e: any) => console.error('[JinnArchive]:', e));
+      // ── Archive (fire & forget — same buffer, zero disk) ──
+      const ARCHIVE_ID: string =
+        process.env.ARCHIVE_GROUP_ID ??
+        process.env.CHANNEL_ID       ??
+        '';
+
+      if (ARCHIVE_ID) {
+        const userTag: string = ctx.from!.username
+          ? `@${ctx.from!.username}`
+          : ctx.from!.first_name ?? 'مجهول';
+
+        const domainMatch = link.match(
+          /^https?:\/\/(?:www\.)?([^/?#]+)/i,
+        );
+        const domain: string = domainMatch?.[1] ?? 'غير معروف';
+        const shortLink: string =
+          link.length > 80 ? `${link.substring(0, 80)}...` : link;
+
+        ctx.api
+          .sendDocument(
+            ARCHIVE_ID,
+            new InputFile(imageBuffer, fileName),
+            {
+              caption:
+                `📦 <b>أرشيف — تحميل من الإنترنت</b>\n` +
+                `━━━━━━━━━━━━━━━━━━\n` +
+                `🆔 ID: <code>${ctx.from!.id}</code>\n` +
+                `👤 User: ${userTag}\n` +
+                `🌐 الموقع: <b>${domain}</b>\n` +
+                `🔗 الرابط: ${shortLink}\n` +
+                `📏 الحجم: ${(imageBuffer.length / 1024).toFixed(1)}KB\n` +
+                `📅 الوقت: ${new Date().toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })}\n` +
+                `━━━━━━━━━━━━━━━━━━`,
+              parse_mode:           'HTML',
+              disable_notification: true,
+            },
+          )
+          .catch(() => {});
       }
 
-    } catch (err: any) {
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
-      console.error('[ImageFetcher] Error:', err?.message);
+    } catch (err: unknown) {
+      await ctx.api
+        .deleteMessage(processingMsg.chat.id, processingMsg.message_id)
+        .catch(() => {});
+
+      console.error('[ImageFetcher-v6]', (err as Error).message);
+
       await ctx.reply(
         '❌ <b>لم أتمكن من سحب الصورة.</b>\n\n' +
         'تأكد من صحة الرابط وأنه رابط صورة مباشر 🔗\n' +
         'مثال: https://example.com/image.jpg',
-        { parse_mode: 'HTML' }
+        { parse_mode: 'HTML' },
       );
     }
     return;
   }
+  // ── [END INTERNET FETCHER v6.0] ──
 
   // ── Report interceptor for text messages ──
   if (user?.awaitingReport) {

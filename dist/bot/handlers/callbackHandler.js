@@ -1182,6 +1182,9 @@ async function callbackHandler(ctx) {
         if (!isAdminUser)
             return;
         await ctx.answerCallbackQuery().catch(() => { });
+        // ── [KILL-SWITCH BUTTON] ──
+        const { isInternetFetcherEnabled: _ifePanel } = await Promise.resolve().then(() => __importStar(require('../../utils/internetFetcherSettings')));
+        const _panelOn = _ifePanel();
         const buildAdminKeyboard = (l) => ({
             inline_keyboard: [
                 // @ts-ignore
@@ -1204,6 +1207,12 @@ async function callbackHandler(ctx) {
                 [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start', style: 'primary' }],
                 // @ts-ignore
                 [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance' }],
+                [{
+                        text: _panelOn
+                            ? '🟢 تحميل الإنترنت: مفعّل — اضغط لإيقافه'
+                            : '🔴 تحميل الإنترنت: موقوف — اضغط لتفعيله',
+                        callback_data: 'admin_toggle_internet_fetcher',
+                    }],
                 // @ts-ignore
                 [{ text: '❌ إغلاق', callback_data: 'admin_close', style: 'danger' }],
             ]
@@ -1223,6 +1232,27 @@ async function callbackHandler(ctx) {
         await ctx.reply('🔑 <b>تجاوز أقفال الميزات</b>\n\nأرسل الـ ID الخاص بالمستخدم الذي تريد منحه صلاحية تجاوز الإغلاق:', { parse_mode: 'HTML' });
         return;
     }
+    // ── [KILL-SWITCH CALLBACK] ──
+    if (data === 'admin_toggle_internet_fetcher') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        if (ctx.from?.id?.toString() !== process.env.ADMIN_ID)
+            return;
+        const { toggleInternetFetcher: _toggle, getFetcherStatus: _getStatus, } = await Promise.resolve().then(() => __importStar(require('../../utils/internetFetcherSettings')));
+        const newEnabled = _toggle();
+        const info = _getStatus();
+        const changedAt = new Date(info.lastChanged)
+            .toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
+        await ctx.reply(`⚙️ *لوحة التحكم — إدارة الميزات*\n\n` +
+            `${newEnabled ? '🟢' : '🔴'} *تحميل الصور من الإنترنت:* ` +
+            `${newEnabled ? 'مفعّل الآن ✅' : 'موقوف الآن 🔒'}\n\n` +
+            `${newEnabled
+                ? '✅ تم الفتح — جميع المستخدمين يمكنهم الاستخدام'
+                : '🔒 تم الإيقاف — المستخدمون سيرون رسالة الصيانة'}\n\n` +
+            `🕐 _آخر تغيير: ${changedAt}_\n\n` +
+            `💡 _بصفتك مديراً، تستطيع استخدام الميزة في جميع الأحوال_`, { parse_mode: 'Markdown' });
+        return;
+    }
+    // ── [END CALLBACK] ──
     if (data.startsWith('atoggle_') && isAdminUser) {
         await ctx.answerCallbackQuery().catch(() => { });
         const field = data.replace('atoggle_', '');
@@ -1329,6 +1359,18 @@ async function callbackHandler(ctx) {
     }
     // ── Internet Image Fetcher Handlers ──────────────────────────────────────────
     if (data === 'menu_internet_download') {
+        // ── [GUARD-A] Kill-Switch — Button Click ──
+        const { isInternetFetcherEnabled: _ifeA } = await Promise.resolve().then(() => __importStar(require('../../utils/internetFetcherSettings')));
+        const _adminA = ctx.from?.id?.toString() === process.env.ADMIN_ID;
+        if (!_ifeA() && !_adminA) {
+            await ctx.answerCallbackQuery().catch(() => { });
+            await ctx.reply(`🔧 *تحميل الصور من الإنترنت*\n\n` +
+                `✨ هذه الميزة تحت الصيانة حالياً لتقديم تجربة أفضل لك!\n\n` +
+                `🚀 سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n` +
+                `💙 نعتذر عن الإزعاج ونقدّر صبرك الجميل`, { parse_mode: 'Markdown' });
+            return;
+        }
+        // ── [END GUARD-A] ──
         await ctx.answerCallbackQuery().catch(() => { });
         await ctx.reply('🧞‍♂️ <b>تحميل صورة من الإنترنت</b>\n\nاختر ما تريد:', {
             parse_mode: 'HTML',
