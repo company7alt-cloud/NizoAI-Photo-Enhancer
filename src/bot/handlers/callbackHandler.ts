@@ -97,7 +97,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       `${newEnabled ? 'مفعّل الآن ✅' : 'موقوف الآن 🔒'}\n\n` +
       `${newEnabled
         ? '✅ تم الفتح — جميع المستخدمين يمكنهم الاستخدام'
-        : '🔒 تم الإيقاف — المستخدمون سيرون رسالة الصيانة'}\n\n` +
+        : '🔒 تم الإيقاف — المستخدمون سيرون رسالة الصيانة'
+      }\n\n` +
       `🕐 _آخر تغيير: ${changedAt}_\n\n` +
       `💡 _بصفتك مديراً، تستطيع استخدام الميزة في جميع الأحوال_`,
       {
@@ -114,7 +115,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     ).catch(async () => {
       await ctx.reply(
         `⚙️ *لوحة التحكم*\n\n` +
-        `${newEnabled ? '🟢' : '🔴'} *تحميل الصور:* ${newEnabled ? 'مفعّل ✅' : 'موقوف 🔒'}\n` +
+        `${newEnabled ? '🟢' : '🔴'} *تحميل الصور:* ` +
+        `${newEnabled ? 'مفعّل ✅' : 'موقوف 🔒'}\n` +
         `🕐 _${changedAt}_`,
         { parse_mode: 'Markdown' },
       ).catch(() => {});
@@ -1693,8 +1695,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   if (data === 'menu_internet_download') {
     // ── [GUARD-A] Kill-Switch — Button Click ──
-    const { isInternetFetcherEnabled: _ifeA } =
-      await import('../../utils/internetFetcherSettings');
+    const { isInternetFetcherEnabled: _ifeA } = await import('../../utils/internetFetcherSettings');
     const _adminA: boolean = ctx.from?.id?.toString() === process.env.ADMIN_ID;
     if (!_ifeA() && !_adminA) {
       await ctx.answerCallbackQuery().catch(() => {});

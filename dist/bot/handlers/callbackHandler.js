@@ -129,7 +129,8 @@ async function callbackHandler(ctx) {
             },
         }).catch(async () => {
             await ctx.reply(`⚙️ *لوحة التحكم*\n\n` +
-                `${newEnabled ? '🟢' : '🔴'} *تحميل الصور:* ${newEnabled ? 'مفعّل ✅' : 'موقوف 🔒'}\n` +
+                `${newEnabled ? '🟢' : '🔴'} *تحميل الصور:* ` +
+                `${newEnabled ? 'مفعّل ✅' : 'موقوف 🔒'}\n` +
                 `🕐 _${changedAt}_`, { parse_mode: 'Markdown' }).catch(() => { });
         });
         return;
