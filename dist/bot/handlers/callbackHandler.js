@@ -100,6 +100,38 @@ async function callbackHandler(ctx) {
     const data = ctx.callbackQuery?.data;
     if (!data || !ctx.from)
         return;
+    // ── FORCED KILL-SWITCH CALLBACK ──
+    if (data === 'admin_toggle_internet_fetcher') {
+        await ctx.answerCallbackQuery().catch(() => { });
+        if (ctx.from?.id?.toString() !== process.env.ADMIN_ID) {
+            console.warn(`[Kill-Switch] Unauthorized attempt by ${ctx.from?.id}`);
+            return;
+        }
+        try {
+            const { toggleInternetFetcher, getFetcherStatus } = await Promise.resolve().then(() => __importStar(require('../../utils/internetFetcherSettings')));
+            const newEnabled = toggleInternetFetcher();
+            const info = getFetcherStatus();
+            const changedAt = new Date(info.lastChanged).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
+            await ctx.editMessageText(`⚙️ *لوحة التحكم — إدارة الميزات*\n\n` +
+                `${newEnabled ? '🟢' : '🔴'} *تحميل الصور من الإنترنت:* ${newEnabled ? 'مفعّل الآن ✅' : 'موقوف الآن 🔒'}\n\n` +
+                `${newEnabled ? '✅ تم الفتح — جميع المستخدمين يمكنهم الاستخدام' : '🔒 تم الإيقاف — المستخدمون سيرون رسالة الصيانة'}\n\n` +
+                `🕐 _آخر تغيير: ${changedAt}_\n\n` +
+                `💡 _بصفتك مديراً، تستطيع استخدام الميزة في جميع الأحوال_`, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[{
+                                text: newEnabled ? '🟢 تحميل الإنترنت: مفعّل' : '🔴 تحميل الإنترنت: موقوف',
+                                callback_data: 'admin_toggle_internet_fetcher'
+                            }]]
+                }
+            });
+        }
+        catch (err) {
+            console.error('[Kill-Switch Error]:', err);
+        }
+        return;
+    }
+    // ─────────────────────────────────
     // ── Admin User Control Handlers ──────────────────────────────────────────
     if (data === 'admin_user_control') {
         const adminIds = (process.env.ADMIN_IDS || '').split(',');
@@ -1232,27 +1264,6 @@ async function callbackHandler(ctx) {
         await ctx.reply('🔑 <b>تجاوز أقفال الميزات</b>\n\nأرسل الـ ID الخاص بالمستخدم الذي تريد منحه صلاحية تجاوز الإغلاق:', { parse_mode: 'HTML' });
         return;
     }
-    // ── [KILL-SWITCH CALLBACK] ──
-    if (data === 'admin_toggle_internet_fetcher') {
-        await ctx.answerCallbackQuery().catch(() => { });
-        if (ctx.from?.id?.toString() !== process.env.ADMIN_ID)
-            return;
-        const { toggleInternetFetcher: _toggle, getFetcherStatus: _getStatus, } = await Promise.resolve().then(() => __importStar(require('../../utils/internetFetcherSettings')));
-        const newEnabled = _toggle();
-        const info = _getStatus();
-        const changedAt = new Date(info.lastChanged)
-            .toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
-        await ctx.reply(`⚙️ *لوحة التحكم — إدارة الميزات*\n\n` +
-            `${newEnabled ? '🟢' : '🔴'} *تحميل الصور من الإنترنت:* ` +
-            `${newEnabled ? 'مفعّل الآن ✅' : 'موقوف الآن 🔒'}\n\n` +
-            `${newEnabled
-                ? '✅ تم الفتح — جميع المستخدمين يمكنهم الاستخدام'
-                : '🔒 تم الإيقاف — المستخدمون سيرون رسالة الصيانة'}\n\n` +
-            `🕐 _آخر تغيير: ${changedAt}_\n\n` +
-            `💡 _بصفتك مديراً، تستطيع استخدام الميزة في جميع الأحوال_`, { parse_mode: 'Markdown' });
-        return;
-    }
-    // ── [END CALLBACK] ──
     if (data.startsWith('atoggle_') && isAdminUser) {
         await ctx.answerCallbackQuery().catch(() => { });
         const field = data.replace('atoggle_', '');

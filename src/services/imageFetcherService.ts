@@ -244,13 +244,34 @@ async function layerDomParser(page: Page): Promise<Buffer | null> {
   return null;
 }
 
+// ══════════════════════════════════════════════
+// LAYER 6 — SCREENSHOT FALLBACK (Smart Resort)
+// ══════════════════════════════════════════════
 async function layerScreenshot(page: Page): Promise<Buffer | null> {
   console.log('[L6-SCREENSHOT] Last resort...');
   try {
+    // Prevent taking screenshots of Cloudflare blocks or Adobe "Access Restricted" pages
+    const isBlockedPage = await page.evaluate(() => {
+      const text = document.body.innerText.toLowerCase();
+      return text.includes('access is temporarily restricted') || 
+             text.includes('just a moment') ||
+             text.includes('cloudflare');
+    });
+
+    if (isBlockedPage) {
+      console.warn('[L6-SCREENSHOT] Blocked page detected. Refusing to screenshot.');
+      return null;
+    }
+
     const shot = await page.screenshot({ type: 'jpeg', quality: 92, fullPage: false });
     const buf = Buffer.from(shot);
-    if (buf.length > MIN_SIZE) { console.log(`✅ [L6-SCREENSHOT] ${(buf.length / 1024).toFixed(1)}KB`); return buf; }
-  } catch (e) { console.warn('[L6-SCREENSHOT]', (e as Error).message); }
+    if (buf.length > MIN_SIZE) {
+      console.log(`✅ [L6-SCREENSHOT] ${(buf.length / 1024).toFixed(1)}KB`);
+      return buf;
+    }
+  } catch (e) {
+    console.warn('[L6-SCREENSHOT]', (e as Error).message);
+  }
   return null;
 }
 

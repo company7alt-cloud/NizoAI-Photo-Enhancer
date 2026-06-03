@@ -971,6 +971,15 @@ imageBot.on('message:text', async (ctx, next) => {
             await ctx.reply('❌ يرجى إرسال رابط صحيح يبدأ بـ http');
             return;
         }
+        // ── PREMIUM DIRECT LINK INTERCEPTOR ──
+        const isPremiumDirect = /ftcdn\.net|istockphoto\.com\/.*\.jpg|shutterstock\.com\/.*\.jpg/i.test(link);
+        if (isPremiumDirect) {
+            await ctx.reply('❌ <b>عذراً يا صديقي!</b>\n\n' +
+                'لقد قمت بإرسال <b>"رابط الصورة المباشرة"</b> والذي يحتوي على العلامة المائية مسبقاً.\n\n' +
+                '💡 <b>الحل:</b> يرجى نسخ <b>رابط الصفحة الأساسية</b> للموقع وإرساله لي، لكي أتمكن من التسلل وسحب الصورة الأصلية بدون علامة مائية 🧞♂️', { parse_mode: 'HTML' });
+            return;
+        }
+        // ──────────────────────────────────────
         // ── Guard B: Kill-Switch ──
         const { isInternetFetcherEnabled: _ifeB } = await Promise.resolve().then(() => __importStar(require('./utils/internetFetcherSettings')));
         const _adminB = ctx.from?.id?.toString() === process.env.ADMIN_ID;
@@ -1014,20 +1023,21 @@ imageBot.on('message:text', async (ctx, next) => {
             catch { /* non-critical */ }
             const { InputFile } = await Promise.resolve().then(() => __importStar(require('grammy')));
             const fileName = `Nizo_HighRes_${Date.now()}.jpg`;
-            // ── Format conversion keyboard ──
+            // ── Format conversion keyboard (Primary Blue) ──
             const formatKeyboard = {
                 inline_keyboard: [
                     [
-                        { text: '🖼 JPG', callback_data: 'magic_fmt_jpg' },
-                        { text: '🖼 PNG', callback_data: 'magic_fmt_png' },
-                        { text: '🖼 WEBP', callback_data: 'magic_fmt_webp' },
+                        { text: '🖼 JPG', callback_data: 'magic_fmt_jpg', style: 'primary' },
+                        { text: '🖼 PNG', callback_data: 'magic_fmt_png', style: 'primary' },
+                        { text: '🖼 WEBP', callback_data: 'magic_fmt_webp', style: 'primary' }
                     ],
                     [
-                        { text: '🖼 AVIF', callback_data: 'magic_fmt_avif' },
-                        { text: '🖼 TIFF', callback_data: 'magic_fmt_tiff' },
-                    ],
-                ],
+                        { text: '🖼 AVIF', callback_data: 'magic_fmt_avif', style: 'primary' },
+                        { text: '🖼 TIFF', callback_data: 'magic_fmt_tiff', style: 'primary' }
+                    ]
+                ]
             };
+            // ────────────────────────────────────────────────
             // ── Send to user (Buffer → Telegram, zero disk) ──
             await ctx.replyWithDocument(new InputFile(imageBuffer, fileName), {
                 caption: '🧞♂️ <b>تم سحب الصورة بنجاح!</b>\n\n' +
