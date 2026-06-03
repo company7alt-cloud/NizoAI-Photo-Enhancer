@@ -40,15 +40,15 @@ async function showFormatSelection(ctx: any, count: number, _upscale: boolean): 
   const keyboard: any[] = [
     [
       // @ts-ignore
-      { text: '✅ PNG', callback_data: 'fconv_png', style: 'primary' as const },
-      { text: '✅ JPG', callback_data: 'fconv_jpg', style: 'primary' as const },
+      { text: '🖼️ PNG', callback_data: 'fconv_png', style: 'primary' as const },
+      { text: '🖼️ JPG', callback_data: 'fconv_jpg', style: 'primary' as const },
       // @ts-ignore
-      { text: '✅ WEBP', callback_data: 'fconv_webp', style: 'primary' as const },
+      { text: '🖼️ WEBP', callback_data: 'fconv_webp', style: 'primary' as const },
     ],
     [
       // @ts-ignore
-      { text: '✅ AVIF', callback_data: 'fconv_avif', style: 'primary' as const },
-      { text: '✅ TIFF', callback_data: 'fconv_tiff', style: 'primary' as const },
+      { text: '🖼️ AVIF', callback_data: 'fconv_avif', style: 'primary' as const },
+      { text: '🖼️ TIFF', callback_data: 'fconv_tiff', style: 'primary' as const },
     ],
   ];
 
@@ -80,21 +80,30 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── [KILL-SWITCH — ABSOLUTE TOP] Admin Toggle Internet Fetcher ──
   if (data === 'admin_toggle_internet_fetcher') {
-    if (!isAdmin(ctx.from!.id)) {
-      await ctx.answerCallbackQuery({ text: '⛔ غير مصرح' }).catch(() => {});
-      return;
-    }
     await ctx.answerCallbackQuery().catch(() => {});
-    const { toggleInternetFetcher, getFetcherStatus } = await import('../../utils/internetFetcherSettings');
-    const newEnabled = toggleInternetFetcher();
-    const status = getFetcherStatus();
-    const stateText = newEnabled ? '✅ مفعّل' : '🔴 مطفي';
-    await ctx.reply(
-      `🌐 <b>تحميل الصور من الإنترنت</b>\n\n` +
-      `الحالة الآن: <b>${stateText}</b>\n` +
-      `آخر تغيير: ${new Date(status.lastChanged).toLocaleString('ar-SA')}`,
-      { parse_mode: 'HTML' }
-    );
+    if (ctx.from?.id?.toString() !== process.env.ADMIN_ID) return;
+    try {
+      const { toggleInternetFetcher, getFetcherStatus } = await import('../../utils/internetFetcherSettings');
+      const newEnabled = toggleInternetFetcher();
+      const info = getFetcherStatus();
+      const changedAt = new Date(info.lastChanged).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
+      await ctx.editMessageText(
+        `⚙️ <b>لوحة التحكم — إدارة الميزات</b>\n\n` +
+        `${newEnabled ? '🟢' : '🔴'} <b>تحميل الصور من الإنترنت:</b> ${newEnabled ? 'مفعّل ✅' : 'موقوف 🔒'}\n\n` +
+        `🕐 آخر تغيير: ${changedAt}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [[{
+              text: newEnabled ? '🟢 تحميل الإنترنت — اضغط لإيقافه' : '🔴 تحميل الإنترنت — اضغط لتفعيله',
+              callback_data: 'admin_toggle_internet_fetcher',
+            }]]
+          }
+        }
+      ).catch(() => {});
+    } catch (e) {
+      console.error('[Toggle Internet]', e);
+    }
     return;
   }
   // ── [END KILL-SWITCH] ──
@@ -485,15 +494,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: '✅ PNG', callback_data: 'conv_png', style: 'primary' as const },
-              { text: '✅ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
+              { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' as const },
+              { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
               // @ts-ignore
-              { text: '✅ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
+              { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '✅ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
-              { text: '✅ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
+              { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
+              { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
             ],
           ],
         },
@@ -560,15 +569,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: '✅ PNG', callback_data: 'conv_png', style: 'primary' as const },
-              { text: '✅ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
+              { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' as const },
+              { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
               // @ts-ignore
-              { text: '✅ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
+              { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '✅ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
-              { text: '✅ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
+              { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
+              { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
             ],
           ],
         },

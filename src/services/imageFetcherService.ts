@@ -23,6 +23,15 @@ const NOISE_KEYWORDS = [
 // Multiple proxies per VIP site — fallback chain
 const VIP_MAP: VipEntry[] = [
   {
+    match: 'freepik.com',
+    proxies: [
+      'https://downloader.la/freepik-downloader.html',
+      'https://freepikdownloader.com/',
+      'https://www.freepikdownload.com/',
+    ],
+    timeout: 45_000,
+  },
+  {
     match: 'stock.adobe.com',
     proxies: [
       'https://stockbeaver.com/',

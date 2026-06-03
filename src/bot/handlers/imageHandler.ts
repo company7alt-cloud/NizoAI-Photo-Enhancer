@@ -1,4 +1,4 @@
-// src/bot/handlers/imageHandler.ts
+﻿// src/bot/handlers/imageHandler.ts
 import { InlineKeyboard } from 'grammy';
 import { InputFile } from 'grammy';
 
@@ -227,23 +227,23 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
             inline_keyboard: [
               [
                 // @ts-ignore
-                { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' as const },
-                { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' as const },
+                { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' as const },
+                { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
                 // @ts-ignore
-                { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' as const },
+                { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
               ],
               [
                 // @ts-ignore
-                { text: '🖼 GIF', callback_data: 'conv_gif', style: 'primary' as const },
-                { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
+                { text: '🖼️ GIF', callback_data: 'conv_gif', style: 'primary' as const },
+                { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
                 // @ts-ignore
-                { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' as const },
+                { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
               ],
             ]
           }
         });
         await ctx.replyWithPhoto(new InputFile(resultBuffer, `NizoAI_Filter_${Date.now()}.jpg`), {
-          caption: '🖼 معاينة سريعة'
+          caption: '🖼️ معاينة سريعة'
         });
       } catch (filterErr: any) {
         // Refund on failure
@@ -279,7 +279,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     user.customEraserGridSize = 0;
     
     const btnMsg = await ctx.reply(
-      "🖼️ <b>تم استلام صورتك!</b>\n\n" +
+      "🖼️️ <b>تم استلام صورتك!</b>\n\n" +
       "📐 <b>اختر حجم الشبكة:</b>\n" +
       "كلما زاد التقسيم، زادت دقة التحديد",
       {
@@ -409,7 +409,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       // Send photo preview
       await ctx.replyWithPhoto(
         new InputFile(resultBuffer),
-        { caption: '🖼 معاينة سريعة' }
+        { caption: '🖼️ معاينة سريعة' }
       );
 
       const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID
@@ -454,12 +454,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         {
           parse_mode: "Markdown",
           reply_markup: new InlineKeyboard()
-            .text({ text: "🖼 JPG 🖼️", style: 'primary' as const }, "eraser_fmt_jpg")
-            .text({ text: "🗋 PNG 🖼️", style: 'primary' as const }, "eraser_fmt_png")
-            .text({ text: "🌐 WEBP 🖼️", style: 'primary' as const }, "eraser_fmt_webp")
+            .text({ text: "🖼️ JPG 🖼️️", style: 'primary' as const }, "eraser_fmt_jpg")
+            .text({ text: "🗋 PNG 🖼️️", style: 'primary' as const }, "eraser_fmt_png")
+            .text({ text: "🌐 WEBP 🖼️️", style: 'primary' as const }, "eraser_fmt_webp")
             .row()
-            .text({ text: "🎞 GIF 🖼️", style: 'primary' as const }, "eraser_fmt_gif")
-            .text({ text: "📄 TIFF 🖼️", style: 'primary' as const }, "eraser_fmt_tiff")
+            .text({ text: "🎞 GIF 🖼️️", style: 'primary' as const }, "eraser_fmt_gif")
+            .text({ text: "📄 TIFF 🖼️️", style: 'primary' as const }, "eraser_fmt_tiff")
         }
       );
 
@@ -641,18 +641,18 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         }
       );
 
-      await ctx.replyWithPhoto(new InputFile(resultBuffer), { caption: '🖼 معاينة سريعة' });
+      await ctx.replyWithPhoto(new InputFile(resultBuffer), { caption: '🖼️ معاينة سريعة' });
 
       await ctx.reply(
         '🔄 تحويل الصيغة:',
         {
           reply_markup: new InlineKeyboard()
-            .text('🖼 JPG',  'magic_fmt_jpg')
-            .text('🖼 PNG',  'magic_fmt_png')
-            .text('🖼 WEBP', 'magic_fmt_webp')
+            .text('🖼️ JPG',  'magic_fmt_jpg')
+            .text('🖼️ PNG',  'magic_fmt_png')
+            .text('🖼️ WEBP', 'magic_fmt_webp')
             .row()
-            .text('🖼 AVIF', 'magic_fmt_avif')
-            .text('🖼 TIFF', 'magic_fmt_tiff')
+            .text('🖼️ AVIF', 'magic_fmt_avif')
+            .text('🖼️ TIFF', 'magic_fmt_tiff')
         }
       );
 
@@ -854,15 +854,15 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
             inline_keyboard: [
               [
                 // @ts-ignore
-                { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' as const },
-                { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' as const },
+                { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' as const },
+                { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
                 // @ts-ignore
-                { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' as const },
+                { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
               ],
               [
                 // @ts-ignore
-                { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' as const },
-                { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
+                { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
+                { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
               ],
             ],
           },
@@ -871,7 +871,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       await ctx.replyWithPhoto(
         new InputFile(resultBuffer, fileName),
-        { caption: '🖼 معاينة سريعة' }
+        { caption: '🖼️ معاينة سريعة' }
       );
 
       // ── STEP: Channel archive (100% untouched original logic) ────────────
@@ -993,21 +993,21 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' as const },
-              { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' as const },
+              { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' as const },
+              { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
               // @ts-ignore
-              { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' as const },
+              { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' as const },
-              { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
+              { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
+              { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
             ],
           ],
         },
       });
       await ctx.replyWithPhoto(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
-        caption: '🖼 معاينة سريعة'
+        caption: '🖼️ معاينة سريعة'
       });
 
       const archiveId = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
