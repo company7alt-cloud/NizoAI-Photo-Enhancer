@@ -396,13 +396,25 @@ async function layerNetworkIntercept(targetUrl: string, page: Page): Promise<Buf
     try {
       const ct: string     = response.headers()['content-type'] ?? '';
       const resUrl: string = response.url();
-      if (
+      const lowerUrl = resUrl.toLowerCase();
+          const isLogo = 
+            lowerUrl.includes('logo') ||
+            lowerUrl.includes('favicon') ||
+            lowerUrl.includes('brand') ||
+            lowerUrl.includes('avatar') ||
+            lowerUrl.includes('icon') ||
+            lowerUrl.includes('sprite');
+          
+          if (isLogo) return; // Reject logos silently
+          if (
         ct.startsWith('image/') && !ct.includes('svg+xml') &&
         response.status() === 200 &&
         !NOISE_KEYWORDS.some(n => resUrl.toLowerCase().includes(n))
       ) {
         const buf: Buffer = await response.buffer();
-        if (buf.length > MIN_SIZE && (!largestBuf || buf.length > largestBuf.length)) {
+        // Reject images smaller than 80KB for VIP sites
+          if (buf.length < 80_000 && NOISE_KEYWORDS.some(n => resUrl.includes(n))) return;
+          if (buf.length > MIN_SIZE && (!largestBuf || buf.length > largestBuf.length)) {
           largestBuf = buf;
           console.log(`📸 [L4] ${(buf.length / 1024).toFixed(1)}KB`);
         }
@@ -439,6 +451,72 @@ async function layerNetworkIntercept(targetUrl: string, page: Page): Promise<Buf
 // ══════════════════════════════════════════════
 async function layerDomParser(page: Page): Promise<Buffer | null> {
   console.log('[L5-DOM] Parsing...');
+  // ── FREEPIK DIRECT IMAGE EXTRACTOR ──
+  try {
+    const pageUrl: string = page.url();
+    if (pageUrl.includes('freepik.com')) {
+      const freepikHtml: string = await page.content();
+      
+      // Strategy 1: Extract from __NEXT_DATA__ JSON state
+      const nextMatch = freepikHtml.match(
+        /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i
+      );
+      if (nextMatch) {
+        try {
+          const nextData = JSON.parse(nextMatch[1]) as Record<string, unknown>;
+          const jsonStr = JSON.stringify(nextData);
+          const imgMatch = jsonStr.match(
+            /https:\/\/(?:img|cdn|cdni)\.freepik\.com\/[^\s"]+\.(?:jpg|jpeg|png|webp)/i
+          );
+          if (imgMatch) {
+            const buf = await safeFetch(imgMatch[0], MIN_SIZE);
+            if (buf) {
+              console.log(`✅ [L5-FREEPIK-JSON] ${(buf.length / 1024).toFixed(1)}KB`);
+              return buf;
+            }
+          }
+        } catch { /* continue */ }
+      }
+
+      // Strategy 2: Extract preview image from meta tags with anti-logo guard
+      const ogMatches = [...freepikHtml.matchAll(
+        /<meta[^>]+property="og:image"[^>]+content="([^"]+)"/gi
+      )];
+      for (const match of ogMatches) {
+        const url = match[1];
+        const lower = url.toLowerCase();
+        if (
+          !lower.includes('logo') &&
+          !lower.includes('avatar') &&
+          !lower.includes('favicon') &&
+          !lower.includes('brand') &&
+          !lower.includes('icon') &&
+          url.startsWith('http')
+        ) {
+          const buf = await safeFetch(url, MIN_SIZE);
+          if (buf) {
+            console.log(`✅ [L5-FREEPIK-OG] ${(buf.length / 1024).toFixed(1)}KB`);
+            return buf;
+          }
+        }
+      }
+
+      // Strategy 3: data-cy attribute
+      const dataCyMatch = freepikHtml.match(
+        /data-cy="image-detail-img"[^>]*src="([^"]+)"/i
+      );
+      if (dataCyMatch) {
+        const buf = await safeFetch(dataCyMatch[1], MIN_SIZE);
+        if (buf) {
+          console.log(`✅ [L5-FREEPIK-DATACY] ${(buf.length / 1024).toFixed(1)}KB`);
+          return buf;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[L5-FREEPIK]', (e as Error).message);
+  }
+  // ── END FREEPIK EXTRACTOR ──
   try {
     const candidates: ImageCandidate[] = await page.evaluate((): ImageCandidate[] => {
       const results: ImageCandidate[] = [];
