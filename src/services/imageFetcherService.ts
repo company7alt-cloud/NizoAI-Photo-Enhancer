@@ -543,6 +543,33 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
     const page = await browser.newPage();
     await page.setViewport({ width: viewportWidth, height: viewportHeight });
 
+    // --- FREEPIK DIRECT BYPASS ---
+    if (targetUrl.includes('freepik.com')) {
+      try {
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        const imgUrl = await page.evaluate(() => {
+          const meta = document.querySelector('meta[property="og:image"]');
+          if (meta) return meta.getAttribute('content');
+          const img = document.querySelector('img[data-cy="image-detail-img"]') || document.querySelector('.thumb img');
+          return img ? img.getAttribute('src') : null;
+        });
+        
+        if (imgUrl && imgUrl.startsWith('http')) {
+          const viewSource = await page.goto(imgUrl, { waitUntil: 'networkidle0', timeout: 30000 });
+          if (viewSource) {
+            const buf = await viewSource.buffer();
+            if (!buf.toString('utf8', 0, 20).toLowerCase().includes('<html')) {
+              state.success = true;
+              return buf; // Return pure image
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Freepik Bypass Error]', e);
+      }
+    }
+    // -----------------------------
+
     await page.evaluateOnNewDocument(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => false });
 
