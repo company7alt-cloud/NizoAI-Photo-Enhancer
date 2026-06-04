@@ -135,6 +135,8 @@ export function resolveCdnToPageUrl(raw: string): string {
     const m = url.match(/(\d{6,12})\.(jpg|jpeg|png)/i);
     if (m?.[1]) return `https://www.shutterstock.com/image-photo/x-${m[1]}`;
   }
+  if (url.includes('freepik.com') || url.includes('magnific.com'))
+    return url.split('?')[0];
   return url;
 }
 
@@ -396,21 +398,20 @@ async function layerNetworkIntercept(targetUrl: string, page: Page): Promise<Buf
     try {
       const ct: string     = response.headers()['content-type'] ?? '';
       const resUrl: string = response.url();
-      const lowerUrl = resUrl.toLowerCase();
-          const isLogo = 
-            lowerUrl.includes('logo') ||
-            lowerUrl.includes('favicon') ||
-            lowerUrl.includes('brand') ||
-            lowerUrl.includes('avatar') ||
-            lowerUrl.includes('icon') ||
-            lowerUrl.includes('sprite');
-          
-          if (isLogo) return; // Reject logos silently
-          if (
-        ct.startsWith('image/') && !ct.includes('svg+xml') &&
-        response.status() === 200 &&
-        !NOISE_KEYWORDS.some(n => resUrl.toLowerCase().includes(n))
-      ) {
+      const lowerResUrl = resUrl.toLowerCase();
+  const isLogoOrIcon =
+    lowerResUrl.includes('logo') ||
+    lowerResUrl.includes('favicon') ||
+    lowerResUrl.includes('brand') ||
+    lowerResUrl.includes('avatar') ||
+    lowerResUrl.includes('/icon');
+
+  if (
+    ct.startsWith('image/') && !ct.includes('svg+xml') &&
+    response.status() === 200 &&
+    !isLogoOrIcon &&
+    !NOISE_KEYWORDS.some(n => lowerResUrl.includes(n))
+  ) {
         const buf: Buffer = await response.buffer();
         // Reject images smaller than 80KB for VIP sites
           if (buf.length < 80_000 && NOISE_KEYWORDS.some(n => resUrl.includes(n))) return;
@@ -451,72 +452,72 @@ async function layerNetworkIntercept(targetUrl: string, page: Page): Promise<Buf
 // ══════════════════════════════════════════════
 async function layerDomParser(page: Page): Promise<Buffer | null> {
   console.log('[L5-DOM] Parsing...');
-  // ── FREEPIK DIRECT IMAGE EXTRACTOR ──
+  // ── MAGNIFIC (formerly Freepik) EXTRACTOR ──
   try {
     const pageUrl: string = page.url();
-    if (pageUrl.includes('freepik.com')) {
-      const freepikHtml: string = await page.content();
-      
-      // Strategy 1: Extract from __NEXT_DATA__ JSON state
-      const nextMatch = freepikHtml.match(
+    const isMagnific = pageUrl.includes('freepik.com') || pageUrl.includes('magnific.com');
+    if (isMagnific) {
+      const html: string = await page.content();
+
+      // Strategy 1: __NEXT_DATA__ JSON state
+      const nextMatch = html.match(
         /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i
       );
       if (nextMatch) {
         try {
-          const nextData = JSON.parse(nextMatch[1]) as Record<string, unknown>;
-          const jsonStr = JSON.stringify(nextData);
+          const jsonStr = JSON.stringify(JSON.parse(nextMatch[1]));
           const imgMatch = jsonStr.match(
-            /https:\/\/(?:img|cdn|cdni)\.freepik\.com\/[^\s"]+\.(?:jpg|jpeg|png|webp)/i
+            /https:\/\/(?:img|cdn|cdni|preview)\.(?:freepik|magnific)\.com\/[^\s"\\]+\.(?:jpg|jpeg|png|webp)/i
           );
           if (imgMatch) {
             const buf = await safeFetch(imgMatch[0], MIN_SIZE);
             if (buf) {
-              console.log(`✅ [L5-FREEPIK-JSON] ${(buf.length / 1024).toFixed(1)}KB`);
+              console.log(`✅ [L5-MAGNIFIC-JSON] ${(buf.length / 1024).toFixed(1)}KB`);
               return buf;
             }
           }
         } catch { /* continue */ }
       }
 
-      // Strategy 2: Extract preview image from meta tags with anti-logo guard
-      const ogMatches = [...freepikHtml.matchAll(
+      // Strategy 2: OpenGraph with Anti-Logo Guard
+      const ogMatches = [...html.matchAll(
         /<meta[^>]+property="og:image"[^>]+content="([^"]+)"/gi
       )];
       for (const match of ogMatches) {
-        const url = match[1];
-        const lower = url.toLowerCase();
+        const imgUrl = match[1];
+        const lower = imgUrl.toLowerCase();
         if (
+          imgUrl.startsWith('http') &&
           !lower.includes('logo') &&
           !lower.includes('avatar') &&
           !lower.includes('favicon') &&
           !lower.includes('brand') &&
-          !lower.includes('icon') &&
-          url.startsWith('http')
+          !lower.includes('icon')
         ) {
-          const buf = await safeFetch(url, MIN_SIZE);
+          const buf = await safeFetch(imgUrl, MIN_SIZE);
           if (buf) {
-            console.log(`✅ [L5-FREEPIK-OG] ${(buf.length / 1024).toFixed(1)}KB`);
+            console.log(`✅ [L5-MAGNIFIC-OG] ${(buf.length / 1024).toFixed(1)}KB`);
             return buf;
           }
         }
       }
 
       // Strategy 3: data-cy attribute
-      const dataCyMatch = freepikHtml.match(
+      const dataCy = html.match(
         /data-cy="image-detail-img"[^>]*src="([^"]+)"/i
       );
-      if (dataCyMatch) {
-        const buf = await safeFetch(dataCyMatch[1], MIN_SIZE);
+      if (dataCy) {
+        const buf = await safeFetch(dataCy[1], MIN_SIZE);
         if (buf) {
-          console.log(`✅ [L5-FREEPIK-DATACY] ${(buf.length / 1024).toFixed(1)}KB`);
+          console.log(`✅ [L5-MAGNIFIC-DATACY] ${(buf.length / 1024).toFixed(1)}KB`);
           return buf;
         }
       }
     }
   } catch (e) {
-    console.warn('[L5-FREEPIK]', (e as Error).message);
+    console.warn('[L5-MAGNIFIC]', (e as Error).message);
   }
-  // ── END FREEPIK EXTRACTOR ──
+  // ── END MAGNIFIC EXTRACTOR ──
   try {
     const candidates: ImageCandidate[] = await page.evaluate((): ImageCandidate[] => {
       const results: ImageCandidate[] = [];
