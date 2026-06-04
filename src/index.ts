@@ -1,4 +1,4 @@
-﻿// src/index.ts
+// src/index.ts
 import 'dotenv/config';
 
 // â”€â”€â”€ Environment Guards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1213,10 +1213,8 @@ imageBot.on('message:text', async (ctx, next) => {
     const domain = domainMatch?.[1] ?? 'ط§ظ„ظ…ظˆظ‚ط¹ ط§ظ„ظ…ط·ظ„ظˆط¨';
 
     const processingMsg = await ctx.reply(
-      '🌐 <b>جاري معالجة الرابط...</b>\n\n' +
-      '⚙️ يتم الآن تحليل البيانات واستخراج الصورة بأعلى جودة متاحة\n' +
-      '━━━━━━━━━━━━━━━━━━━━\n' +
-      '⏱ قد تستغرق العملية 30-60 ثانية...',
+      '⏳ <b>جاري البحث عن الصورة...</b>\n\n' +
+      'لحظات من فضلك، يتم الآن جلب الصورة بأعلى جودة متوفرة 🌐',
       { parse_mode: 'HTML' }
     );
 
@@ -1323,47 +1321,16 @@ imageBot.on('message:text', async (ctx, next) => {
       }
 
     } catch (err: any) {
-      const errMsg: string = (err?.message ?? '').toUpperCase();
+      // Remove the waiting message quietly
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
 
-      clearInterval(fetchInterval);
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
-      console.error('[ImageFetcher-v10]', (err as Error).message);
-
-      if (
-        errMsg.includes('VIP_PROXIES_EXHAUSTED') ||
-        errMsg.includes('CORRUPTED')             ||
-        errMsg.includes('HTML')
-      ) {
-        await ctx.reply(
-          '❌ <b>تعذّر استخراج الصورة من هذا الرابط.</b>\n\n' +
-          'قد تكون الصورة محمية بقيود الوصول، أو أن الرابط غير مدعوم حالياً.\n' +
-          'يرجى تجربة رابط مختلف أو رفع الصورة مباشرة 🔗',
-          { parse_mode: 'HTML' }
-        );
-      } else if (
-        errMsg.includes('TIMEOUT') ||
-        errMsg.includes('TIME_OUT')
-      ) {
-        await ctx.reply(
-          '⏳ <b>انتهت مهلة الاتصال بالخادم.</b>\n\n' +
-          'المصدر لا يستجيب حالياً أو أن حجم الملف كبير جداً.\n' +
-          'يرجى المحاولة مجدداً بعد قليل ⚡',
-          { parse_mode: 'HTML' }
-        );
-      } else if (errMsg.includes('ALL_LAYERS_EXHAUSTED')) {
-        await ctx.reply(
-          '⚠️ <b>لم يتمكن النظام من استخراج الصورة.</b>\n\n' +
-          'هذا الرابط لا يدعم الاستخراج المباشر.\n' +
-          'يرجى رفع الصورة يدوياً أو تجربة رابط آخر 📎',
-          { parse_mode: 'HTML' }
-        );
-      } else {
-        await ctx.reply(
-          '⚠️ <b>حدث خطأ أثناء معالجة الرابط.</b>\n\n' +
-          'يرجى التأكد من صحة الرابط والمحاولة مرة أخرى 🔄',
-          { parse_mode: 'HTML' }
-        );
-      }
+      // Send the unified, friendly apology message for ANY failure
+      await ctx.reply(
+        '🥺 <b>عذراً، لم نتمكن من جلب هذه الصورة.</b>\n\n' +
+        'اطمئن يا صديقي، <b>تم إرجاع محاولتك ولن يتم خصم أي رصيد منك</b> 🎁\n\n' +
+        'يرجى إعادة المحاولة برابط آخر، وإذا تكررت المشكلة لا تتردد في فتح بلاغ ومراسلة المطور 🛠️',
+        { parse_mode: 'HTML' }
+      );
     }
     return;
   }

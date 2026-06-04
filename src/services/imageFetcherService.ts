@@ -656,100 +656,97 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
     // ╚═══════════════════════════════════════════════════════╝
     if (targetUrl.includes('freepik.com') || targetUrl.includes('magnific.com')) {
       try {
-        console.log('[GHOST] Initiating phantom extraction sequence...');
+        console.log('[GHOST v2.0] Initiating raw data extraction...');
 
-        // Human-simulation: random pre-navigation delay
-        await new Promise(r => setTimeout(r, 1_200 + Math.random() * 800));
+        // Disable JS temporarily to bypass Cloudflare infinite loops, fetch raw HTML
+        await page.setJavaScriptEnabled(false);
+        const rawResponse = await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25_000 });
+        const htmlContent: string = (await rawResponse?.text()) ?? '';
+        await page.setJavaScriptEnabled(true); // Re-enable for safety
 
-        // Navigate with stealth headers already active
-        await page.goto(targetUrl, {
-          waitUntil: 'domcontentloaded',
-          timeout: 35_000,
-        });
+        let imgUrl: string | null = null;
 
-        // Cloudflare challenge detector
-        const isChallenge: boolean = await page.evaluate((): boolean =>
-          document.title.toLowerCase().includes('just a moment') ||
-          document.querySelector('#challenge-form') !== null ||
-          (document.body?.innerText ?? '').toLowerCase().includes('checking your browser')
-        );
-
-        if (isChallenge) {
-          console.warn('[GHOST] CF challenge detected — executing 15s patience protocol...');
-          await new Promise(r => setTimeout(r, 15_000));
+        // Strategy A: Regex search for OpenGraph image in raw HTML
+        const ogMatch = htmlContent.match(/<meta\s+[^>]*property="og:image"\s+content="([^"]+)"/i)
+          ?? htmlContent.match(/<meta\s+[^>]*content="([^"]+)"\s+property="og:image"/i);
+        if (ogMatch && ogMatch[1].startsWith('http')) {
+          imgUrl = ogMatch[1];
+          console.log('[GHOST v2.0] Strategy A (og:image regex) succeeded.');
         }
 
-        // Content stabilization delay
-        await new Promise(r => setTimeout(r, 2_000 + Math.random() * 1_000));
-
-        // Multi-strategy image URL extraction
-        const imgUrl: string | null = await page.evaluate((): string | null => {
-          // Strategy 1: OpenGraph (highest quality, most reliable)
-          const og = document.querySelector('meta[property="og:image"]') as HTMLMetaElement | null;
-          if (og?.content?.startsWith('http')) return og.content;
-
-          // Strategy 2: Twitter card image
-          const tw = document.querySelector('meta[name="twitter:image"]') as HTMLMetaElement | null;
-          if (tw?.content?.startsWith('http')) return tw.content;
-
-          // Strategy 3: Freepik-specific data attribute
-          const dataImg = document.querySelector('[data-cy="image-detail-img"]') as HTMLImageElement | null;
-          if (dataImg?.src?.startsWith('http')) return dataImg.src;
-
-          // Strategy 4: Largest natural image on page
-          const imgs = Array.from(document.querySelectorAll('img'))
-            .filter((img: HTMLImageElement) => img.src.startsWith('http') && (img.naturalWidth || img.width) > 400)
-            .sort((a: HTMLImageElement, b: HTMLImageElement) =>
-              ((b.naturalWidth || b.width) * (b.naturalHeight || b.height)) -
-              ((a.naturalWidth || a.width) * (a.naturalHeight || a.height))
-            );
-          if (imgs[0]?.src) return imgs[0].src;
-
-          // Strategy 5: JSON-LD structured data
-          const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
-          for (const s of scripts) {
-            try {
-              const d = JSON.parse(s.textContent ?? '') as Record<string, unknown>;
-              const img = d['image'];
-              if (typeof img === 'string' && img.startsWith('http')) return img;
-              if (Array.isArray(img) && typeof img[0] === 'string') return img[0];
-            } catch { /* skip */ }
+        // Strategy B: Regex search for JSON-LD image data
+        if (!imgUrl) {
+          const jsonLdMatches = htmlContent.match(/<script\s+type="application\/ld\+json">([\s\S]*?)<\/script>/gi);
+          if (jsonLdMatches) {
+            for (const match of jsonLdMatches) {
+              try {
+                const cleanJson = match
+                  .replace(/<script[^>]*>/i, '')
+                  .replace(/<\/script>/i, '');
+                const data = JSON.parse(cleanJson) as Record<string, unknown>;
+                const img = data['image'];
+                if (typeof img === 'string' && img.startsWith('http')) {
+                  imgUrl = img;
+                  break;
+                }
+                if (Array.isArray(img) && typeof img[0] === 'string' && img[0].startsWith('http')) {
+                  imgUrl = img[0] as string;
+                  break;
+                }
+              } catch { /* skip invalid JSON */ }
+            }
+            if (imgUrl) console.log('[GHOST v2.0] Strategy B (JSON-LD regex) succeeded.');
           }
+        }
 
-          return null;
-        });
+        // Strategy C: Regex search for Freepik data-cy attribute
+        if (!imgUrl) {
+          const dataCyMatch = htmlContent.match(/data-cy="image-detail-img"[^>]*src="([^"]+)"/i)
+            ?? htmlContent.match(/src="([^"]+)"[^>]*data-cy="image-detail-img"/i);
+          if (dataCyMatch && dataCyMatch[1].startsWith('http')) {
+            imgUrl = dataCyMatch[1];
+            console.log('[GHOST v2.0] Strategy C (data-cy regex) succeeded.');
+          }
+        }
+
+        // Strategy D: Twitter card image in raw HTML
+        if (!imgUrl) {
+          const twMatch = htmlContent.match(/<meta\s+[^>]*name="twitter:image"\s+content="([^"]+)"/i)
+            ?? htmlContent.match(/<meta\s+[^>]*content="([^"]+)"\s+name="twitter:image"/i);
+          if (twMatch && twMatch[1].startsWith('http')) {
+            imgUrl = twMatch[1];
+            console.log('[GHOST v2.0] Strategy D (twitter:image regex) succeeded.');
+          }
+        }
 
         if (imgUrl && imgUrl.startsWith('http')) {
-          console.log(`[GHOST] Target acquired: ${imgUrl.substring(0, 80)}...`);
+          console.log(`[GHOST v2.0] Target acquired directly from HTML: ${imgUrl.substring(0, 80)}...`);
 
-          // Fetch actual image binary
-          const imgResponse = await page.goto(imgUrl, {
-            waitUntil: 'networkidle0',
-            timeout: 30_000,
-          });
-
+          // Fetch the image binary
+          const imgResponse = await page.goto(imgUrl, { waitUntil: 'networkidle0', timeout: 30_000 });
           if (imgResponse) {
             const buf = await imgResponse.buffer();
             const header = buf.toString('utf8', 0, 30).toLowerCase();
 
-            // Validate: reject HTML error pages, accept only real image data
             const isValidImage =
               !header.includes('<html') &&
               !header.includes('<!doc') &&
               !header.includes('<?xml') &&
-              buf.length > 40_000;
+              buf.length > 20_000;
 
             if (isValidImage) {
-              console.log(`✅ [GHOST] Phantom extraction complete: ${(buf.length / 1024).toFixed(1)}KB`);
+              console.log(`✅ [GHOST v2.0] Extraction success: ${(buf.length / 1024).toFixed(1)}KB`);
               state.success = true;
               return buf;
             }
           }
         }
 
-        console.warn('[GHOST] Direct extraction unsuccessful — routing to VIP fallback chain...');
-      } catch (ghostErr) {
-        console.error('[GHOST] Extraction error:', (ghostErr as Error).message);
+        console.warn('[GHOST v2.0] Early bypass failed, falling back to VIP routing...');
+      } catch (e) {
+        console.error('[GHOST v2.0] Bypass error:', (e as Error).message);
+        // Ensure JS stays enabled even on error
+        await page.setJavaScriptEnabled(true).catch(() => {});
       }
     }
     // ══════════════════════════════════════════════════════════
