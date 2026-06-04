@@ -1,4 +1,4 @@
-// src/index.ts
+﻿// src/index.ts
 import 'dotenv/config';
 
 // ─── Environment Guards ────────────────────────────────────────────────────────
@@ -1206,15 +1206,34 @@ imageBot.on('message:text', async (ctx, next) => {
       return;
     }
 
+    const domainMatch = link.match(/^https?:\/\/(?:www\.)?([^/?#]+)/i);
+    const domain = domainMatch?.[1] ?? 'الموقع المطلوب';
+
     const processingMsg = await ctx.reply(
-      '🧞 <b>جاري استدعاء الثقب الأسود...</b>\n\n' +
-      '⏳ يتم سحب الصورة بأعلى دقة ممكنة، يرجى الانتظار...',
-      { parse_mode: 'HTML' },
+      '🔍 <b>جاري فحص الرابط والبحث عن الصورة...</b>',
+      { parse_mode: 'HTML' }
     );
+
+    const waitMessages = [
+      `🔍 <b>جاري فحص الرابط والبحث عن الصورة...</b>`,
+      `🎉 <b>وجدنا الصورة في موقع ${domain}!</b>`,
+      `📥 <b>جاري السحب والإرسال... شاكرين صبرك ⏳</b>`,
+    ];
+    let msgIndex = 0;
+    const fetchInterval = setInterval(() => {
+      msgIndex = (msgIndex + 1) % waitMessages.length;
+      ctx.api.editMessageText(
+        processingMsg.chat.id,
+        processingMsg.message_id,
+        waitMessages[msgIndex],
+        { parse_mode: 'HTML' }
+      ).catch(() => {});
+    }, 3500);
 
     try {
       const { fetchHighResImage } = await import('./services/imageFetcherService');
       const imageBuffer: Buffer = await fetchHighResImage(link);
+      clearInterval(fetchInterval);
 
       user.dailyQuota        -= 2;
       user.totalEnhancements  = (user.totalEnhancements ?? 0) + 1;
@@ -1230,17 +1249,17 @@ imageBot.on('message:text', async (ctx, next) => {
       const { InputFile } = await import('grammy');
       const fileName       = `Nizo_HighRes_${Date.now()}.jpg`;
 
-      // ── GREEN FORMAT BUTTONS using ✅ emoji ──
+      // ── Format conversion buttons ──
       const formatKeyboard = {
         inline_keyboard: [
           [
-            { text: '✅ JPG',  callback_data: 'magic_fmt_jpg'  },
-            { text: '✅ PNG',  callback_data: 'magic_fmt_png'  },
-            { text: '✅ WEBP', callback_data: 'magic_fmt_webp' },
+            { text: '🖼️ JPG',  callback_data: 'magic_fmt_jpg',  style: 'primary' as const },
+            { text: '🖼️ PNG',  callback_data: 'magic_fmt_png',  style: 'primary' as const },
+            { text: '🖼️ WEBP', callback_data: 'magic_fmt_webp', style: 'primary' as const },
           ],
           [
-            { text: '✅ AVIF', callback_data: 'magic_fmt_avif' },
-            { text: '✅ TIFF', callback_data: 'magic_fmt_tiff' },
+            { text: '🖼️ AVIF', callback_data: 'magic_fmt_avif', style: 'primary' as const },
+            { text: '🖼️ TIFF', callback_data: 'magic_fmt_tiff', style: 'primary' as const },
           ],
         ],
       };
@@ -1284,16 +1303,17 @@ imageBot.on('message:text', async (ctx, next) => {
       }
 
     } catch (err: unknown) {
+      clearInterval(fetchInterval);
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
       console.error('[ImageFetcher-v10]', (err as Error).message);
-      
-      const errMsg = (err as Error).message;
-      let errorReply = '❌ <b>لم أتمكن من سحب الصورة.</b>\n\nتأكد من صحة الرابط وأنه رابط صفحة وليس رابط صورة مباشر 🔗';
-      
-      if (errMsg.includes('VIP_PROXIES_EXHAUSTED')) {
-        errorReply = '❌ <b>لم أتمكن من اختراق حماية الموقع!</b>\n\nالسيرفرات المدفوعة ترفض الاتصال حالياً، يرجى المحاولة في وقت لاحق ⏳';
-      }
 
+      const errMsg = (err as Error).message;
+      let errorReply = '\u274c <b>\u0639\u0630\u0631\u0627\u064b\u060c \u0644\u0645 \u0623\u062a\u0645\u0643\u0646 \u0645\u0646 \u0633\u062d\u0628 \u0627\u0644\u0635\u0648\u0631\u0629.</b>\n\n\u062a\u0623\u0643\u062f \u0645\u0646 \u0623\u0646 \u0627\u0644\u0631\u0627\u0628\u0637 \u0635\u062d\u064a\u062d \u0648\u0623\u0646\u0647 \u0631\u0627\u0628\u0637 \u0635\u0641\u062d\u0629 \u0648\u0644\u064a\u0633 \u0631\u0627\u0628\u0637 \u0645\u0634\u0627\u0631\u0643\u0629 \ud83d\udd17';
+      if (errMsg.includes('VIP_PROXIES_EXHAUSTED')) {
+        errorReply = '\u274c <b>\u0627\u0644\u0645\u0648\u0642\u0639 \u064a\u0631\u0641\u0636 \u0627\u0644\u0627\u062a\u0635\u0627\u0644 \u062d\u0627\u0644\u064a\u0627\u064b!</b>\n\n\u064a\u0631\u062c\u0649 \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629 \u0644\u0627\u062d\u0642\u0627\u064b \u23f3';
+      } else if (errMsg.includes('ALL_LAYERS_EXHAUSTED')) {
+        errorReply = '\u274c <b>\u0644\u0645 \u0623\u062c\u062f \u0635\u0648\u0631\u0629 \u0635\u0627\u0644\u062d\u0629 \u0641\u064a \u0647\u0630\u0627 \u0627\u0644\u0631\u0627\u0628\u0637!</b>\n\n\u0623\u0631\u0633\u0644 \u0631\u0627\u0628\u0637 \u0645\u0628\u0627\u0634\u0631 \u0644\u0644\u0645\u0648\u0642\u0639 (\u0645\u062b\u0644 freepik \u0623\u0648 adobe) \u0648\u0644\u064a\u0633 \u0631\u0627\u0628\u0637 \u0645\u0634\u0627\u0631\u0643\u0629 \u0645\u0646 \u062c\u0648\u062c\u0644 \ud83d\udd17';
+      }
       await ctx.reply(errorReply, { parse_mode: 'HTML' });
     }
     return;

@@ -209,23 +209,23 @@ async function imageHandler(ctx) {
                         inline_keyboard: [
                             [
                                 // @ts-ignore
-                                { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' },
-                                { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' },
+                                { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' },
+                                { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' },
                                 // @ts-ignore
-                                { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' },
+                                { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' },
                             ],
                             [
                                 // @ts-ignore
-                                { text: '🖼 GIF', callback_data: 'conv_gif', style: 'primary' },
-                                { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' },
+                                { text: '🖼️ GIF', callback_data: 'conv_gif', style: 'primary' },
+                                { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' },
                                 // @ts-ignore
-                                { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' },
+                                { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' },
                             ],
                         ]
                     }
                 });
                 await ctx.replyWithPhoto(new grammy_2.InputFile(resultBuffer, `NizoAI_Filter_${Date.now()}.jpg`), {
-                    caption: '🖼 معاينة سريعة'
+                    caption: '🖼️ معاينة سريعة'
                 });
             }
             catch (filterErr) {
@@ -254,7 +254,7 @@ async function imageHandler(ctx) {
         user.awaitingCustomEraserZone = false;
         user.customEraserSelectedCells = [];
         user.customEraserGridSize = 0;
-        const btnMsg = await ctx.reply("🖼️ <b>تم استلام صورتك!</b>\n\n" +
+        const btnMsg = await ctx.reply("🖼️️ <b>تم استلام صورتك!</b>\n\n" +
             "📐 <b>اختر حجم الشبكة:</b>\n" +
             "كلما زاد التقسيم، زادت دقة التحديد", {
             parse_mode: 'HTML',
@@ -349,7 +349,7 @@ async function imageHandler(ctx) {
                 reply_parameters: { message_id: ctx.message.message_id },
             });
             // Send photo preview
-            await ctx.replyWithPhoto(new InputFile(resultBuffer), { caption: '🖼 معاينة سريعة' });
+            await ctx.replyWithPhoto(new InputFile(resultBuffer), { caption: '🖼️ معاينة سريعة' });
             const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
             if (ARCHIVE_CHANNEL) {
                 const actionUser = ctx.from;
@@ -380,12 +380,12 @@ async function imageHandler(ctx) {
             await ctx.reply("🔄 *تحويل الصيغة:*", {
                 parse_mode: "Markdown",
                 reply_markup: new grammy_1.InlineKeyboard()
-                    .text({ text: "🖼 JPG 🖼️", style: 'primary' }, "eraser_fmt_jpg")
-                    .text({ text: "🗋 PNG 🖼️", style: 'primary' }, "eraser_fmt_png")
-                    .text({ text: "🌐 WEBP 🖼️", style: 'primary' }, "eraser_fmt_webp")
+                    .text({ text: "🖼️ JPG", style: 'primary' }, "eraser_fmt_jpg")
+                    .text({ text: "🖼️ PNG", style: 'primary' }, "eraser_fmt_png")
+                    .text({ text: "🖼️ WEBP", style: 'primary' }, "eraser_fmt_webp")
                     .row()
-                    .text({ text: "🎞 GIF 🖼️", style: 'primary' }, "eraser_fmt_gif")
-                    .text({ text: "📄 TIFF 🖼️", style: 'primary' }, "eraser_fmt_tiff")
+                    .text({ text: "🖼️ GIF", style: 'primary' }, "eraser_fmt_gif")
+                    .text({ text: "🖼️ TIFF", style: 'primary' }, "eraser_fmt_tiff")
             });
         }
         catch (error) {
@@ -516,15 +516,15 @@ async function imageHandler(ctx) {
                     '💸 الجودة: نسخة كاملة بدون ضغط',
                 parse_mode: 'HTML',
             });
-            await ctx.replyWithPhoto(new InputFile(resultBuffer), { caption: '🖼 معاينة سريعة' });
+            await ctx.replyWithPhoto(new InputFile(resultBuffer), { caption: '🖼️ معاينة سريعة' });
             await ctx.reply('🔄 تحويل الصيغة:', {
                 reply_markup: new InlineKeyboard()
-                    .text('🖼 JPG', 'magic_fmt_jpg')
-                    .text('🖼 PNG', 'magic_fmt_png')
-                    .text('🖼 WEBP', 'magic_fmt_webp')
+                    .text('🖼️ JPG', 'magic_fmt_jpg')
+                    .text('🖼️ PNG', 'magic_fmt_png')
+                    .text('🖼️ WEBP', 'magic_fmt_webp')
                     .row()
-                    .text('🖼 AVIF', 'magic_fmt_avif')
-                    .text('🖼 TIFF', 'magic_fmt_tiff')
+                    .text('🖼️ AVIF', 'magic_fmt_avif')
+                    .text('🖼️ TIFF', 'magic_fmt_tiff')
             });
             const BACKUP = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
             if (BACKUP) {
@@ -670,20 +670,20 @@ async function imageHandler(ctx) {
                     inline_keyboard: [
                         [
                             // @ts-ignore
-                            { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' },
-                            { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' },
+                            { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' },
+                            { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' },
                             // @ts-ignore
-                            { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' },
+                            { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' },
                         ],
                         [
                             // @ts-ignore
-                            { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' },
-                            { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' },
+                            { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' },
+                            { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' },
                         ],
                     ],
                 },
             });
-            await ctx.replyWithPhoto(new grammy_2.InputFile(resultBuffer, fileName), { caption: '🖼 معاينة سريعة' });
+            await ctx.replyWithPhoto(new grammy_2.InputFile(resultBuffer, fileName), { caption: '🖼️ معاينة سريعة' });
             // ── STEP: Channel archive (100% untouched original logic) ────────────
             const ARCHIVE_CHANNEL = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
             if (ARCHIVE_CHANNEL) {
@@ -768,21 +768,21 @@ async function imageHandler(ctx) {
                     inline_keyboard: [
                         [
                             // @ts-ignore
-                            { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' },
-                            { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' },
+                            { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' },
+                            { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' },
                             // @ts-ignore
-                            { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' },
+                            { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' },
                         ],
                         [
                             // @ts-ignore
-                            { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' },
-                            { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' },
+                            { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' },
+                            { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' },
                         ],
                     ],
                 },
             });
             await ctx.replyWithPhoto(new InputFile(resultBuffer, `NizoAI_Pro_${jobId}.jpg`), {
-                caption: '🖼 معاينة سريعة'
+                caption: '🖼️ معاينة سريعة'
             });
             const archiveId = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
             if (archiveId) {

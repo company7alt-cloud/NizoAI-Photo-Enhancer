@@ -2733,12 +2733,12 @@ function buildCellKeyboard(
       await ctx.reply("🔄 <b>تحويل الصيغة:</b>", {
         parse_mode: 'HTML',
         reply_markup: new InlineKeyboard()
-          .text({ text: 'JPG ✅', style: 'primary' as const }, 'eraser_fmt_jpg')
-          .text({ text: 'PNG ✅', style: 'primary' as const }, 'eraser_fmt_png')
-          .text({ text: 'WEBP ✅', style: 'primary' as const }, 'eraser_fmt_webp')
+          .text({ text: '🖼️ JPG', style: 'primary' as const }, 'eraser_fmt_jpg')
+          .text({ text: '🖼️ PNG', style: 'primary' as const }, 'eraser_fmt_png')
+          .text({ text: '🖼️ WEBP', style: 'primary' as const }, 'eraser_fmt_webp')
           .row()
-          .text({ text: 'GIF ✅', style: 'primary' as const }, 'eraser_fmt_gif')
-          .text({ text: 'TIFF ✅', style: 'primary' as const }, 'eraser_fmt_tiff')
+          .text({ text: '🖼️ GIF', style: 'primary' as const }, 'eraser_fmt_gif')
+          .text({ text: '🖼️ TIFF', style: 'primary' as const }, 'eraser_fmt_tiff')
       });
 
       const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;

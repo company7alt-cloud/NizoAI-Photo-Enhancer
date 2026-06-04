@@ -69,15 +69,15 @@ async function showFormatSelection(ctx, count, _upscale) {
     const keyboard = [
         [
             // @ts-ignore
-            { text: '🖼 PNG', callback_data: 'fconv_png', style: 'primary' },
-            { text: '🖼 JPG', callback_data: 'fconv_jpg', style: 'primary' },
+            { text: '🖼️ PNG', callback_data: 'fconv_png', style: 'primary' },
+            { text: '🖼️ JPG', callback_data: 'fconv_jpg', style: 'primary' },
             // @ts-ignore
-            { text: '🖼 WEBP', callback_data: 'fconv_webp', style: 'primary' },
+            { text: '🖼️ WEBP', callback_data: 'fconv_webp', style: 'primary' },
         ],
         [
             // @ts-ignore
-            { text: '🖼 AVIF', callback_data: 'fconv_avif', style: 'primary' },
-            { text: '🖼 TIFF', callback_data: 'fconv_tiff', style: 'primary' },
+            { text: '🖼️ AVIF', callback_data: 'fconv_avif', style: 'primary' },
+            { text: '🖼️ TIFF', callback_data: 'fconv_tiff', style: 'primary' },
         ],
     ];
     // Add PDF and SVG only for single image
@@ -105,34 +105,26 @@ async function callbackHandler(ctx) {
         await ctx.answerCallbackQuery().catch(() => { });
         if (ctx.from?.id?.toString() !== process.env.ADMIN_ID)
             return;
-        const { toggleInternetFetcher: _toggle, getFetcherStatus: _getStatus } = await Promise.resolve().then(() => __importStar(require('../../utils/internetFetcherSettings')));
-        const newEnabled = _toggle();
-        const info = _getStatus();
-        const changedAt = new Date(info.lastChanged)
-            .toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
-        await ctx.editMessageText(`⚙️ *لوحة التحكم — إدارة الميزات*\n\n` +
-            `${newEnabled ? '🟢' : '🔴'} *تحميل الصور من الإنترنت:* ` +
-            `${newEnabled ? 'مفعّل الآن ✅' : 'موقوف الآن 🔒'}\n\n` +
-            `${newEnabled
-                ? '✅ تم الفتح — جميع المستخدمين يمكنهم الاستخدام'
-                : '🔒 تم الإيقاف — المستخدمون سيرون رسالة الصيانة'}\n\n` +
-            `🕐 _آخر تغيير: ${changedAt}_\n\n` +
-            `💡 _بصفتك مديراً، تستطيع استخدام الميزة في جميع الأحوال_`, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [[{
-                            text: newEnabled
-                                ? '🟢 تحميل الإنترنت: مفعّل — اضغط لإيقافه'
-                                : '🔴 تحميل الإنترنت: موقوف — اضغط لتفعيله',
-                            callback_data: 'admin_toggle_internet_fetcher',
-                        }]],
-            },
-        }).catch(async () => {
-            await ctx.reply(`⚙️ *لوحة التحكم*\n\n` +
-                `${newEnabled ? '🟢' : '🔴'} *تحميل الصور:* ` +
-                `${newEnabled ? 'مفعّل ✅' : 'موقوف 🔒'}\n` +
-                `🕐 _${changedAt}_`, { parse_mode: 'Markdown' }).catch(() => { });
-        });
+        try {
+            const { toggleInternetFetcher, getFetcherStatus } = await Promise.resolve().then(() => __importStar(require('../../utils/internetFetcherSettings')));
+            const newEnabled = toggleInternetFetcher();
+            const info = getFetcherStatus();
+            const changedAt = new Date(info.lastChanged).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
+            await ctx.editMessageText(`⚙️ <b>لوحة التحكم — إدارة الميزات</b>\n\n` +
+                `${newEnabled ? '🟢' : '🔴'} <b>تحميل الصور من الإنترنت:</b> ${newEnabled ? 'مفعّل ✅' : 'موقوف 🔒'}\n\n` +
+                `🕐 آخر تغيير: ${changedAt}`, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [[{
+                                text: newEnabled ? '🟢 تحميل الإنترنت — اضغط لإيقافه' : '🔴 تحميل الإنترنت — اضغط لتفعيله',
+                                callback_data: 'admin_toggle_internet_fetcher',
+                            }]]
+                }
+            }).catch(() => { });
+        }
+        catch (e) {
+            console.error('[Toggle Internet]', e);
+        }
         return;
     }
     // ── [END KILL-SWITCH] ──
@@ -456,15 +448,15 @@ async function callbackHandler(ctx) {
                     inline_keyboard: [
                         [
                             // @ts-ignore
-                            { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' },
-                            { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' },
+                            { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' },
+                            { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' },
                             // @ts-ignore
-                            { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' },
+                            { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' },
                         ],
                         [
                             // @ts-ignore
-                            { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' },
-                            { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' },
+                            { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' },
+                            { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' },
                         ],
                     ],
                 },
@@ -517,15 +509,15 @@ async function callbackHandler(ctx) {
                     inline_keyboard: [
                         [
                             // @ts-ignore
-                            { text: '🖼 PNG', callback_data: 'conv_png', style: 'primary' },
-                            { text: '🖼 JPG', callback_data: 'conv_jpg', style: 'primary' },
+                            { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' },
+                            { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' },
                             // @ts-ignore
-                            { text: '🖼 WEBP', callback_data: 'conv_webp', style: 'primary' },
+                            { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' },
                         ],
                         [
                             // @ts-ignore
-                            { text: '🖼 AVIF', callback_data: 'conv_avif', style: 'primary' },
-                            { text: '🖼 TIFF', callback_data: 'conv_tiff', style: 'primary' },
+                            { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' },
+                            { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' },
                         ],
                     ],
                 },
@@ -1242,12 +1234,14 @@ async function callbackHandler(ctx) {
                 [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size', style: 'primary' }],
                 [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start', style: 'primary' }],
                 // @ts-ignore
-                [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance' }],
+                [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance', style: 'primary' }],
+                // @ts-ignore
                 [{
                         text: _panelOn
                             ? '🟢 تحميل الإنترنت: مفعّل — اضغط لإيقافه'
                             : '🔴 تحميل الإنترنت: موقوف — اضغط لتفعيله',
                         callback_data: 'admin_toggle_internet_fetcher',
+                        style: 'primary',
                     }],
                 // @ts-ignore
                 [{ text: '❌ إغلاق', callback_data: 'admin_close', style: 'danger' }],
@@ -1294,7 +1288,7 @@ async function callbackHandler(ctx) {
                 [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size', style: 'primary' }],
                 [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start', style: 'primary' }],
                 // @ts-ignore
-                [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance' }],
+                [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance', style: 'primary' }],
                 // @ts-ignore
                 [{ text: '❌ إغلاق', callback_data: 'admin_close', style: 'danger' }],
             ]
@@ -2156,12 +2150,12 @@ async function callbackHandler(ctx) {
             await ctx.reply("🔄 <b>تحويل الصيغة:</b>", {
                 parse_mode: 'HTML',
                 reply_markup: new InlineKeyboard()
-                    .text({ text: 'JPG 🖼️', style: 'primary' }, 'eraser_fmt_jpg')
-                    .text({ text: 'PNG 🖼️', style: 'primary' }, 'eraser_fmt_png')
-                    .text({ text: 'WEBP 🖼️', style: 'primary' }, 'eraser_fmt_webp')
+                    .text({ text: '🖼️ JPG', style: 'primary' }, 'eraser_fmt_jpg')
+                    .text({ text: '🖼️ PNG', style: 'primary' }, 'eraser_fmt_png')
+                    .text({ text: '🖼️ WEBP', style: 'primary' }, 'eraser_fmt_webp')
                     .row()
-                    .text({ text: 'GIF 🖼️', style: 'primary' }, 'eraser_fmt_gif')
-                    .text({ text: 'TIFF 🖼️', style: 'primary' }, 'eraser_fmt_tiff')
+                    .text({ text: '🖼️ GIF', style: 'primary' }, 'eraser_fmt_gif')
+                    .text({ text: '🖼️ TIFF', style: 'primary' }, 'eraser_fmt_tiff')
             });
             const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
             if (archiveChannel) {

@@ -454,12 +454,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         {
           parse_mode: "Markdown",
           reply_markup: new InlineKeyboard()
-            .text({ text: "🖼️ JPG 🖼️️", style: 'primary' as const }, "eraser_fmt_jpg")
-            .text({ text: "🗋 PNG 🖼️️", style: 'primary' as const }, "eraser_fmt_png")
-            .text({ text: "🌐 WEBP 🖼️️", style: 'primary' as const }, "eraser_fmt_webp")
+            .text({ text: "🖼️ JPG", style: 'primary' as const }, "eraser_fmt_jpg")
+            .text({ text: "🖼️ PNG", style: 'primary' as const }, "eraser_fmt_png")
+            .text({ text: "🖼️ WEBP", style: 'primary' as const }, "eraser_fmt_webp")
             .row()
-            .text({ text: "🎞 GIF 🖼️️", style: 'primary' as const }, "eraser_fmt_gif")
-            .text({ text: "📄 TIFF 🖼️️", style: 'primary' as const }, "eraser_fmt_tiff")
+            .text({ text: "🖼️ GIF", style: 'primary' as const }, "eraser_fmt_gif")
+            .text({ text: "🖼️ TIFF", style: 'primary' as const }, "eraser_fmt_tiff")
         }
       );
 
@@ -647,12 +647,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         '🔄 تحويل الصيغة:',
         {
           reply_markup: new InlineKeyboard()
-            .text('🖼️ JPG',  'magic_fmt_jpg')
-            .text('🖼️ PNG',  'magic_fmt_png')
-            .text('🖼️ WEBP', 'magic_fmt_webp')
+            .text({ text: '🖼️ JPG', style: 'primary' as const }, 'magic_fmt_jpg')
+            .text({ text: '🖼️ PNG', style: 'primary' as const }, 'magic_fmt_png')
+            .text({ text: '🖼️ WEBP', style: 'primary' as const }, 'magic_fmt_webp')
             .row()
-            .text('🖼️ AVIF', 'magic_fmt_avif')
-            .text('🖼️ TIFF', 'magic_fmt_tiff')
+            .text({ text: '🖼️ AVIF', style: 'primary' as const }, 'magic_fmt_avif')
+            .text({ text: '🖼️ TIFF', style: 'primary' as const }, 'magic_fmt_tiff')
         }
       );
 
