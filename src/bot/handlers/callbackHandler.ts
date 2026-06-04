@@ -1681,16 +1681,13 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   if (data === 'menu_internet_download') {
     // ── [GUARD-A] Kill-Switch — Button Click ──
     const { isInternetFetcherEnabled: _ifeA } = await import('../../utils/internetFetcherSettings');
-    const _adminA: boolean = ctx.from?.id?.toString() === process.env.ADMIN_ID;
+    const _adminIds: string[] = (process.env.ADMIN_IDS ?? '').split(',').map(id => id.trim()).filter(Boolean);
+    const _adminA: boolean = _adminIds.includes(ctx.from?.id?.toString() ?? '');
     if (!_ifeA() && !_adminA) {
-      await ctx.answerCallbackQuery().catch(() => {});
-      await ctx.reply(
-        `🔧 *تحميل الصور من الإنترنت*\n\n` +
-        `✨ هذه الميزة تحت الصيانة حالياً لتقديم تجربة أفضل لك!\n\n` +
-        `🚀 سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n` +
-        `💙 نعتذر عن الإزعاج ونقدّر صبرك الجميل`,
-        { parse_mode: 'Markdown' },
-      );
+      await ctx.answerCallbackQuery({
+        text: '🔧 هذه الميزة تحت الصيانة حالياً\n\n✨ سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n💙 نعتذر عن الإزعاج',
+        show_alert: true,
+      }).catch(() => {});
       return;
     }
     // ── [END GUARD-A] ──
