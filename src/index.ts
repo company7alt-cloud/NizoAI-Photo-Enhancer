@@ -1,4 +1,4 @@
-﻿// src/index.ts
+// src/index.ts
 import 'dotenv/config';
 
 // ─── Environment Guards ────────────────────────────────────────────────────────
@@ -1155,8 +1155,11 @@ imageBot.on('message:text', async (ctx, next) => {
 
     // ── Guard B: Kill-Switch ──
     const { isInternetFetcherEnabled: _ifeB } = await import('./utils/internetFetcherSettings');
-    const _adminB: boolean = ctx.from?.id?.toString() === process.env.ADMIN_ID;
-    if (!_ifeB() && !_adminB) {
+    const fetcherAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isFetcherAdmin = fetcherAdminIds.includes(ctx.from?.id?.toString() || '');
+
+    // Allow passing if the feature is enabled OR if the user is an Admin
+    if (!_ifeB() && !isFetcherAdmin) {
       await ctx.reply(
         `🔧 *تحميل الصور من الإنترنت*\n\n` +
         `✨ هذه الميزة تحت الصيانة حالياً لتقديم تجربة أفضل لك!\n\n` +
