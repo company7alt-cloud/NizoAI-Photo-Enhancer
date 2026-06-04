@@ -552,84 +552,18 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
     const page = await browser.newPage();
     await page.setViewport({ width: viewportWidth, height: viewportHeight });
 
-    // --- FREEPIK DIRECT BYPASS ---
-    if (targetUrl.includes('freepik.com') || targetUrl.includes('magnific.com')) {
-      try {
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        const imgUrl = await page.evaluate(() => {
-          const meta = document.querySelector('meta[property="og:image"]');
-          if (meta) return meta.getAttribute('content');
-          const img = document.querySelector('img[data-cy="image-detail-img"]') || document.querySelector('.thumb img');
-          return img ? img.getAttribute('src') : null;
-        });
-        
-        if (imgUrl && imgUrl.startsWith('http')) {
-          const viewSource = await page.goto(imgUrl, { waitUntil: 'networkidle0', timeout: 30000 });
-          if (viewSource) {
-            const buf = await viewSource.buffer();
-            if (!buf.toString('utf8', 0, 20).toLowerCase().includes('<html')) {
-              state.success = true;
-              return buf; // Return pure image
-            }
-          }
-        }
-      } catch (e) {
-        console.error('[Freepik Bypass Error]', e);
-      }
-    }
-    // -----------------------------
+    // ╔═══════════════════════════════════════════════════════╗
+    // ║   👻 PHANTOM STEALTH INIT — MUST RUN BEFORE goto()   ║
+    // ║   Applied globally before ANY navigation attempt      ║
+    // ╚═══════════════════════════════════════════════════════╝
 
-    await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    // STEP A: Identity Mask — Real Chrome on Windows
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    );
 
-      Object.defineProperty(navigator, 'plugins', {
-        get: () => {
-          const arr: Plugin[] = [
-            { name: 'Chrome PDF Plugin',  filename: 'internal-pdf-viewer'             } as unknown as Plugin,
-            { name: 'Chrome PDF Viewer',  filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' } as unknown as Plugin,
-            { name: 'Native Client',      filename: 'internal-nacl-plugin'             } as unknown as Plugin,
-          ];
-          Object.setPrototypeOf(arr, PluginArray.prototype);
-          return arr;
-        },
-      });
-
-      Object.defineProperty(navigator, 'languages',           { get: () => ['en-US', 'en', 'ar'] });
-      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-      Object.defineProperty(navigator, 'deviceMemory',        { get: () => 8 });
-
-      const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-      HTMLCanvasElement.prototype.toDataURL = function(type?: string, quality?: unknown): string {
-        const ctx2d = this.getContext('2d');
-        if (ctx2d) {
-          const imageData = ctx2d.getImageData(0, 0, this.width, this.height);
-          for (let i = 0; i < 8; i++) {
-            imageData.data[Math.floor(Math.random() * imageData.data.length)] ^= 1;
-          }
-          ctx2d.putImageData(imageData, 0, 0);
-        }
-        return origToDataURL.call(this, type, quality as number | undefined);
-      };
-
-      const getParam = WebGLRenderingContext.prototype.getParameter;
-      WebGLRenderingContext.prototype.getParameter = function(parameter: number): unknown {
-        if (parameter === 37445) return 'Intel Inc.';
-        if (parameter === 37446) return 'Intel Iris OpenGL Engine';
-        return getParam.call(this, parameter);
-      };
-
-      (window as unknown as Record<string, unknown>)['chrome'] = { runtime: {}, loadTimes: () => ({}), csi: () => ({}) };
-
-      const origQuery = window.navigator.permissions.query.bind(window.navigator.permissions);
-      (window.navigator.permissions as unknown as Record<string, unknown>)['query'] =
-        (parameters: PermissionDescriptor): Promise<PermissionStatus> =>
-          parameters.name === 'notifications'
-            ? Promise.resolve({ state: Notification.permission } as PermissionStatus)
-            : origQuery(parameters);
-    });
-
-    await page.setUserAgent(UA);
-
+    // STEP B: HTTP Headers — Identical to real Chrome browser
     await page.setExtraHTTPHeaders({
       'Accept-Language':           'en-US,en;q=0.9,ar;q=0.8',
       'Accept':                    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -644,6 +578,181 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
       'sec-ch-ua-mobile':          '?0',
       'sec-ch-ua-platform':        '"Windows"',
     });
+
+    // STEP C: JavaScript-level fingerprint erasure
+    await page.evaluateOnNewDocument((): void => {
+      // C1: Kill automation flag
+      Object.defineProperty(navigator, 'webdriver', { get: (): undefined => undefined });
+
+      // C2: Realistic plugin list
+      Object.defineProperty(navigator, 'plugins', {
+        get: (): Plugin[] => {
+          const arr = [
+            { name: 'Chrome PDF Plugin',  filename: 'internal-pdf-viewer'             },
+            { name: 'Chrome PDF Viewer',  filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+            { name: 'Native Client',      filename: 'internal-nacl-plugin'             },
+          ] as unknown as Plugin[];
+          Object.setPrototypeOf(arr, PluginArray.prototype);
+          return arr;
+        },
+      });
+
+      // C3: Realistic system properties
+      Object.defineProperty(navigator, 'languages',           { get: () => ['en-US', 'en', 'ar'] });
+      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+      Object.defineProperty(navigator, 'deviceMemory',        { get: () => 8 });
+      Object.defineProperty(navigator, 'platform',            { get: () => 'Win32' });
+      Object.defineProperty(navigator, 'vendor',              { get: () => 'Google Inc.' });
+
+      // C4: Screen resolution — matches our viewport
+      Object.defineProperty(screen, 'width',       { get: () => 1920 });
+      Object.defineProperty(screen, 'height',      { get: () => 1080 });
+      Object.defineProperty(screen, 'availWidth',  { get: () => 1920 });
+      Object.defineProperty(screen, 'availHeight', { get: () => 1040 });
+      Object.defineProperty(screen, 'colorDepth',  { get: () => 24 });
+      Object.defineProperty(screen, 'pixelDepth',  { get: () => 24 });
+
+      // C5: Canvas noise injection — defeats fingerprinting
+      const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function(type?: string, quality?: unknown): string {
+        const ctx2d = this.getContext('2d');
+        if (ctx2d) {
+          const imageData = ctx2d.getImageData(0, 0, this.width, this.height);
+          for (let i = 0; i < 8; i++) {
+            imageData.data[Math.floor(Math.random() * imageData.data.length)] ^= 1;
+          }
+          ctx2d.putImageData(imageData, 0, 0);
+        }
+        return origToDataURL.call(this, type, quality as number | undefined);
+      };
+
+      // C6: WebGL vendor spoof
+      const getParam = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function(parameter: number): unknown {
+        if (parameter === 37445) return 'Intel Inc.';
+        if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+        return getParam.call(this, parameter);
+      };
+
+      // C7: Chrome runtime object — proves we are "real Chrome"
+      (window as any)['chrome'] = {
+        runtime: { connect: () => {}, sendMessage: () => {} },
+        loadTimes: () => ({}),
+        csi: () => ({}),
+      };
+
+      // C8: Permissions API — normal browser behavior
+      const origQuery = window.navigator.permissions.query.bind(window.navigator.permissions);
+      (window.navigator.permissions as any)['query'] =
+        (parameters: PermissionDescriptor): Promise<PermissionStatus> =>
+          parameters.name === 'notifications'
+            ? Promise.resolve({ state: Notification.permission } as PermissionStatus)
+            : origQuery(parameters);
+    });
+
+    // ╔═══════════════════════════════════════════════════════╗
+    // ║   🎯 FREEPIK / MAGNIFIC — GHOST DIRECT EXTRACTION    ║
+    // ║   Runs AFTER full stealth init — zero detection risk  ║
+    // ╚═══════════════════════════════════════════════════════╝
+    if (targetUrl.includes('freepik.com') || targetUrl.includes('magnific.com')) {
+      try {
+        console.log('[GHOST] Initiating phantom extraction sequence...');
+
+        // Human-simulation: random pre-navigation delay
+        await new Promise(r => setTimeout(r, 1_200 + Math.random() * 800));
+
+        // Navigate with stealth headers already active
+        await page.goto(targetUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 35_000,
+        });
+
+        // Cloudflare challenge detector
+        const isChallenge: boolean = await page.evaluate((): boolean =>
+          document.title.toLowerCase().includes('just a moment') ||
+          document.querySelector('#challenge-form') !== null ||
+          (document.body?.innerText ?? '').toLowerCase().includes('checking your browser')
+        );
+
+        if (isChallenge) {
+          console.warn('[GHOST] CF challenge detected — executing 15s patience protocol...');
+          await new Promise(r => setTimeout(r, 15_000));
+        }
+
+        // Content stabilization delay
+        await new Promise(r => setTimeout(r, 2_000 + Math.random() * 1_000));
+
+        // Multi-strategy image URL extraction
+        const imgUrl: string | null = await page.evaluate((): string | null => {
+          // Strategy 1: OpenGraph (highest quality, most reliable)
+          const og = document.querySelector('meta[property="og:image"]') as HTMLMetaElement | null;
+          if (og?.content?.startsWith('http')) return og.content;
+
+          // Strategy 2: Twitter card image
+          const tw = document.querySelector('meta[name="twitter:image"]') as HTMLMetaElement | null;
+          if (tw?.content?.startsWith('http')) return tw.content;
+
+          // Strategy 3: Freepik-specific data attribute
+          const dataImg = document.querySelector('[data-cy="image-detail-img"]') as HTMLImageElement | null;
+          if (dataImg?.src?.startsWith('http')) return dataImg.src;
+
+          // Strategy 4: Largest natural image on page
+          const imgs = Array.from(document.querySelectorAll('img'))
+            .filter((img: HTMLImageElement) => img.src.startsWith('http') && (img.naturalWidth || img.width) > 400)
+            .sort((a: HTMLImageElement, b: HTMLImageElement) =>
+              ((b.naturalWidth || b.width) * (b.naturalHeight || b.height)) -
+              ((a.naturalWidth || a.width) * (a.naturalHeight || a.height))
+            );
+          if (imgs[0]?.src) return imgs[0].src;
+
+          // Strategy 5: JSON-LD structured data
+          const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+          for (const s of scripts) {
+            try {
+              const d = JSON.parse(s.textContent ?? '') as Record<string, unknown>;
+              const img = d['image'];
+              if (typeof img === 'string' && img.startsWith('http')) return img;
+              if (Array.isArray(img) && typeof img[0] === 'string') return img[0];
+            } catch { /* skip */ }
+          }
+
+          return null;
+        });
+
+        if (imgUrl && imgUrl.startsWith('http')) {
+          console.log(`[GHOST] Target acquired: ${imgUrl.substring(0, 80)}...`);
+
+          // Fetch actual image binary
+          const imgResponse = await page.goto(imgUrl, {
+            waitUntil: 'networkidle0',
+            timeout: 30_000,
+          });
+
+          if (imgResponse) {
+            const buf = await imgResponse.buffer();
+            const header = buf.toString('utf8', 0, 30).toLowerCase();
+
+            // Validate: reject HTML error pages, accept only real image data
+            const isValidImage =
+              !header.includes('<html') &&
+              !header.includes('<!doc') &&
+              !header.includes('<?xml') &&
+              buf.length > 40_000;
+
+            if (isValidImage) {
+              console.log(`✅ [GHOST] Phantom extraction complete: ${(buf.length / 1024).toFixed(1)}KB`);
+              state.success = true;
+              return buf;
+            }
+          }
+        }
+
+        console.warn('[GHOST] Direct extraction unsuccessful — routing to VIP fallback chain...');
+      } catch (ghostErr) {
+        console.error('[GHOST] Extraction error:', (ghostErr as Error).message);
+      }
+    }
+    // ══════════════════════════════════════════════════════════
 
     state.layer = 'L2'; result = await layerVipRouter(targetUrl, page); if (result) { state.success = true; return result; }
     state.layer = 'L3'; result = await layerPicsave(targetUrl, page);   if (result) { state.success = true; return result; }
