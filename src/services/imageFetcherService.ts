@@ -656,64 +656,65 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
     // ╚═══════════════════════════════════════════════════════╝
     if (targetUrl.includes('freepik.com') || targetUrl.includes('magnific.com')) {
       try {
-        console.log('[GHOST v2.0] Initiating raw data extraction...');
+        console.log('[GHOST v3.0] Initiating Googlebot Cloak extraction...');
         
-        // Disable JS temporarily to bypass Cloudflare infinite loops, fetch raw HTML
+        // Step 1: Deep Googlebot Identity Spoofing
+        await page.setUserAgent('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)');
+        await page.setExtraHTTPHeaders({
+          'X-Forwarded-For': '66.249.66.1', // Google IP
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        });
+
+        // Step 2: Disable JS to skip CF challenges, fetch raw HTML
         await page.setJavaScriptEnabled(false);
         const rawResponse = await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
         const htmlContent = await rawResponse?.text() || '';
-        await page.setJavaScriptEnabled(true); // Re-enable for safety
+        await page.setJavaScriptEnabled(true);
 
         let imgUrl: string | null = null;
 
-        // Strategy A: Regex search for OpenGraph image in raw HTML
+        // Step 3: Extract from OpenGraph (Premium Vectors expose high-res preview here)
         const ogMatch = htmlContent.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
         if (ogMatch && ogMatch[1].startsWith('http')) {
           imgUrl = ogMatch[1];
         }
 
-        // Strategy B: Regex search for JSON-LD image data
+        // Step 4: Extract from JSON-LD fallback
         if (!imgUrl) {
           const jsonLdMatches = htmlContent.match(/<script\s+type="application\/ld\+json">([\s\S]*?)<\/script>/gi);
           if (jsonLdMatches) {
             for (const match of jsonLdMatches) {
               try {
-                const cleanJson = match.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '');
-                const data: any = JSON.parse(cleanJson);
+                const data: any = JSON.parse(match.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, ''));
                 if (data.image) {
                   imgUrl = typeof data.image === 'string' ? data.image : (Array.isArray(data.image) ? data.image[0] : null);
                   if (imgUrl) break;
                 }
-              } catch (e) { /* skip invalid JSON */ }
+              } catch (e) { /* skip */ }
             }
           }
         }
 
-        // Strategy C: Regex search for Freepik data-cy attribute
-        if (!imgUrl) {
-          const dataCyMatch = htmlContent.match(/data-cy="image-detail-img"[^>]*src="([^"]+)"/i);
-          if (dataCyMatch && dataCyMatch[1].startsWith('http')) {
-            imgUrl = dataCyMatch[1];
-          }
-        }
-
         if (imgUrl && imgUrl.startsWith('http')) {
-          console.log(`[GHOST v2.0] Target acquired directly from HTML: ${imgUrl.substring(0, 80)}...`);
+          console.log(`[GHOST v3.0] Target acquired via Googlebot: ${imgUrl.substring(0, 80)}...`);
           
-          // Fetch the image binary
+          // Step 5: Fetch image binary bypassing CF
           const imgResponse = await page.goto(imgUrl, { waitUntil: 'networkidle0', timeout: 30000 });
           if (imgResponse) {
             const buf = await imgResponse.buffer();
             if (buf.length > 20_000 && !buf.toString('utf8', 0, 10).toLowerCase().includes('<html')) {
-              console.log(`✅ [GHOST v2.0] Extraction success: ${(buf.length / 1024).toFixed(1)}KB`);
+              console.log(`✅ [GHOST v3.0] Extraction success: ${(buf.length / 1024).toFixed(1)}KB`);
               state.success = true;
               return buf;
             }
           }
         }
-        console.warn('[GHOST v2.0] Early bypass failed, falling back to VIP routing...');
+        console.warn('[GHOST v3.0] Googlebot cloak failed, falling back to VIP proxy...');
       } catch (e) {
-        console.error('[GHOST v2.0] Bypass error:', (e as Error).message);
+        console.error('[GHOST v3.0] Bypass error:', (e as Error).message);
       }
     }
     // ══════════════════════════════════════════════════════════
