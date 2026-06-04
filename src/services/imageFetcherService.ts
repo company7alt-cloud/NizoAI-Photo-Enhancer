@@ -23,6 +23,15 @@ const NOISE_KEYWORDS = [
 // Multiple proxies per VIP site — fallback chain
 const VIP_MAP: VipEntry[] = [
   {
+    match: 'magnific.com',
+    proxies: [
+      'https://downloader.la/freepik-downloader.html',
+      'https://freepikdownloader.com/',
+      'https://www.freepikdownload.com/'
+    ],
+    timeout: 45_000,
+  },
+  {
     match: 'freepik.com',
     proxies: [
       'https://downloader.la/freepik-downloader.html',
@@ -544,7 +553,7 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
     await page.setViewport({ width: viewportWidth, height: viewportHeight });
 
     // --- FREEPIK DIRECT BYPASS ---
-    if (targetUrl.includes('freepik.com')) {
+    if (targetUrl.includes('freepik.com') || targetUrl.includes('magnific.com')) {
       try {
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
         const imgUrl = await page.evaluate(() => {
