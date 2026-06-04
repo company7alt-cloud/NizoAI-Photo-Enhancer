@@ -81,28 +81,39 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ── [KILL-SWITCH — ABSOLUTE TOP] Admin Toggle Internet Fetcher ──
   if (data === 'admin_toggle_internet_fetcher') {
     await ctx.answerCallbackQuery().catch(() => {});
-    if (ctx.from?.id?.toString() !== process.env.ADMIN_ID) return;
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    if (!adminIds.includes(ctx.from!.id.toString())) return;
+
     try {
       const { toggleInternetFetcher, getFetcherStatus } = await import('../../utils/internetFetcherSettings');
       const newEnabled = toggleInternetFetcher();
       const info = getFetcherStatus();
       const changedAt = new Date(info.lastChanged).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
-      await ctx.editMessageText(
-        `⚙️ <b>لوحة التحكم — إدارة الميزات</b>\n\n` +
-        `${newEnabled ? '🟢' : '🔴'} <b>تحميل الصور من الإنترنت:</b> ${newEnabled ? 'مفعّل ✅' : 'موقوف 🔒'}\n\n` +
-        `🕐 آخر تغيير: ${changedAt}`,
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [[{
-              text: newEnabled ? '🟢 تحميل الإنترنت — اضغط لإيقافه' : '🔴 تحميل الإنترنت — اضغط لتفعيله',
-              callback_data: 'admin_toggle_internet_fetcher',
-            }]]
+
+      const stateText = newEnabled ? '✅ مفعّل للجميع' : '🔴 مطفي للجميع';
+      const btnText   = newEnabled ? '🟢 إيقاف تحميل الإنترنت' : '🔴 تشغيل تحميل الإنترنت';
+
+      if (ctx.callbackQuery?.message?.text?.includes('لوحة التحكم — إدارة الميزات')) {
+        await ctx.editMessageText(
+          `⚙️ <b>لوحة التحكم — إدارة الميزات</b>\n\n` +
+          `<b>تحميل الصور من الإنترنت:</b> ${stateText}\n\n` +
+          `🕐 آخر تغيير: ${changedAt}`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              // @ts-ignore
+              inline_keyboard: [[{ text: btnText, callback_data: 'admin_toggle_internet_fetcher', style: 'primary' as const }]]
+            }
           }
-        }
-      ).catch(() => {});
+        ).catch(() => {});
+      } else {
+        await ctx.reply(
+          `🌐 <b>حالة تحميل الإنترنت تغيرت</b>\n\nالحالة الآن: <b>${stateText}</b>`,
+          { parse_mode: 'HTML' }
+        );
+      }
     } catch (e) {
-      console.error('[Toggle Internet]', e);
+      console.error('[Toggle Internet Error]', e);
     }
     return;
   }
@@ -1514,20 +1525,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
 
   if (data === 'admin_grant_vip' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => { });
-    await User.findOneAndUpdate(
-      { telegramId: ctx.from.id.toString() },
-      { $set: { adminAwaitingInput: 'grant_vip_id', adminTargetUserId: null } }
-    );
-    await ctx.reply('🔑 <b>تجاوز أقفال الميزات</b>\n\nأرسل الـ ID الخاص بالمستخدم الذي تريد منحه صلاحية تجاوز الإغلاق:', { parse_mode: 'HTML' });
-    return;
-  }
-
-
-  if (data === 'admin_grant_vip' && isAdminUser) {
     await ctx.answerCallbackQuery().catch(() => {});
     await User.findOneAndUpdate(
-      { telegramId: ctx.from.id.toString() },
+      { telegramId: ctx.from!.id.toString() },
       { $set: { adminAwaitingInput: 'grant_vip_id', adminTargetUserId: null } }
     );
     await ctx.reply('🔑 <b>تجاوز أقفال الميزات</b>\n\nأرسل الـ ID الخاص بالمستخدم الذي تريد منحه صلاحية تجاوز الإغلاق:', { parse_mode: 'HTML' });
@@ -1679,28 +1679,31 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ── Internet Image Fetcher Handlers ──────────────────────────────────────────
 
   if (data === 'menu_internet_download') {
-    // ── [GUARD-A] Kill-Switch — Button Click ──
-    const { isInternetFetcherEnabled: _ifeA } = await import('../../utils/internetFetcherSettings');
-    const _adminIds: string[] = (process.env.ADMIN_IDS ?? '').split(',').map(id => id.trim()).filter(Boolean);
-    const _adminA: boolean = _adminIds.includes(ctx.from?.id?.toString() ?? '');
-    if (!_ifeA() && !_adminA) {
+    // STRICT GUARD: Only Admin or when enabled
+    const { isInternetFetcherEnabled } = await import('../../utils/internetFetcherSettings');
+    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
+    const isFetcherAdmin = adminIds.includes(ctx.from!.id.toString());
+
+    if (!isInternetFetcherEnabled() && !isFetcherAdmin) {
       await ctx.answerCallbackQuery({
         text: '🔧 هذه الميزة تحت الصيانة حالياً\n\n✨ سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n💙 نعتذر عن الإزعاج',
         show_alert: true,
       }).catch(() => {});
-      return;
+      return; // HARD STOP
     }
-    // ── [END GUARD-A] ──
+
     await ctx.answerCallbackQuery().catch(() => {});
     await ctx.reply(
-      '🧞‍♂️ <b>تحميل صورة من الإنترنت</b>\n\nاختر ما تريد:',
+      '🧞 <b>تحميل صورة من الإنترنت</b>\n\nاختر ما تريد:',
       {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '📥 تحميل صورة من رابط', callback_data: 'ask_internet_link', style: 'primary' as any }],
-            [{ text: '🔍 بحث عن صورة 🔒',    callback_data: 'locked_search_feature', style: 'primary' as any }],
-            [{ text: '🔙 رجوع',               callback_data: 'show_welcome', style: 'danger' as any }],
+            // @ts-ignore
+            [{ text: '📥 تحميل صورة من رابط', callback_data: 'ask_internet_link', style: 'primary' as const }],
+            [{ text: '🔍 بحث عن صورة 🔒',     callback_data: 'locked_search_feature', style: 'primary' as const }],
+            // @ts-ignore
+            [{ text: '🔙 رجوع',               callback_data: 'show_welcome', style: 'danger' as const }],
           ]
         }
       }
