@@ -657,21 +657,19 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
     if (targetUrl.includes('freepik.com') || targetUrl.includes('magnific.com')) {
       try {
         console.log('[GHOST v2.0] Initiating raw data extraction...');
-
+        
         // Disable JS temporarily to bypass Cloudflare infinite loops, fetch raw HTML
         await page.setJavaScriptEnabled(false);
-        const rawResponse = await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25_000 });
-        const htmlContent: string = (await rawResponse?.text()) ?? '';
+        const rawResponse = await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        const htmlContent = await rawResponse?.text() || '';
         await page.setJavaScriptEnabled(true); // Re-enable for safety
 
         let imgUrl: string | null = null;
 
         // Strategy A: Regex search for OpenGraph image in raw HTML
-        const ogMatch = htmlContent.match(/<meta\s+[^>]*property="og:image"\s+content="([^"]+)"/i)
-          ?? htmlContent.match(/<meta\s+[^>]*content="([^"]+)"\s+property="og:image"/i);
+        const ogMatch = htmlContent.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
         if (ogMatch && ogMatch[1].startsWith('http')) {
           imgUrl = ogMatch[1];
-          console.log('[GHOST v2.0] Strategy A (og:image regex) succeeded.');
         }
 
         // Strategy B: Regex search for JSON-LD image data
@@ -680,73 +678,42 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
           if (jsonLdMatches) {
             for (const match of jsonLdMatches) {
               try {
-                const cleanJson = match
-                  .replace(/<script[^>]*>/i, '')
-                  .replace(/<\/script>/i, '');
-                const data = JSON.parse(cleanJson) as Record<string, unknown>;
-                const img = data['image'];
-                if (typeof img === 'string' && img.startsWith('http')) {
-                  imgUrl = img;
-                  break;
+                const cleanJson = match.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '');
+                const data: any = JSON.parse(cleanJson);
+                if (data.image) {
+                  imgUrl = typeof data.image === 'string' ? data.image : (Array.isArray(data.image) ? data.image[0] : null);
+                  if (imgUrl) break;
                 }
-                if (Array.isArray(img) && typeof img[0] === 'string' && img[0].startsWith('http')) {
-                  imgUrl = img[0] as string;
-                  break;
-                }
-              } catch { /* skip invalid JSON */ }
+              } catch (e) { /* skip invalid JSON */ }
             }
-            if (imgUrl) console.log('[GHOST v2.0] Strategy B (JSON-LD regex) succeeded.');
           }
         }
 
         // Strategy C: Regex search for Freepik data-cy attribute
         if (!imgUrl) {
-          const dataCyMatch = htmlContent.match(/data-cy="image-detail-img"[^>]*src="([^"]+)"/i)
-            ?? htmlContent.match(/src="([^"]+)"[^>]*data-cy="image-detail-img"/i);
+          const dataCyMatch = htmlContent.match(/data-cy="image-detail-img"[^>]*src="([^"]+)"/i);
           if (dataCyMatch && dataCyMatch[1].startsWith('http')) {
             imgUrl = dataCyMatch[1];
-            console.log('[GHOST v2.0] Strategy C (data-cy regex) succeeded.');
-          }
-        }
-
-        // Strategy D: Twitter card image in raw HTML
-        if (!imgUrl) {
-          const twMatch = htmlContent.match(/<meta\s+[^>]*name="twitter:image"\s+content="([^"]+)"/i)
-            ?? htmlContent.match(/<meta\s+[^>]*content="([^"]+)"\s+name="twitter:image"/i);
-          if (twMatch && twMatch[1].startsWith('http')) {
-            imgUrl = twMatch[1];
-            console.log('[GHOST v2.0] Strategy D (twitter:image regex) succeeded.');
           }
         }
 
         if (imgUrl && imgUrl.startsWith('http')) {
           console.log(`[GHOST v2.0] Target acquired directly from HTML: ${imgUrl.substring(0, 80)}...`);
-
+          
           // Fetch the image binary
-          const imgResponse = await page.goto(imgUrl, { waitUntil: 'networkidle0', timeout: 30_000 });
+          const imgResponse = await page.goto(imgUrl, { waitUntil: 'networkidle0', timeout: 30000 });
           if (imgResponse) {
             const buf = await imgResponse.buffer();
-            const header = buf.toString('utf8', 0, 30).toLowerCase();
-
-            const isValidImage =
-              !header.includes('<html') &&
-              !header.includes('<!doc') &&
-              !header.includes('<?xml') &&
-              buf.length > 20_000;
-
-            if (isValidImage) {
+            if (buf.length > 20_000 && !buf.toString('utf8', 0, 10).toLowerCase().includes('<html')) {
               console.log(`✅ [GHOST v2.0] Extraction success: ${(buf.length / 1024).toFixed(1)}KB`);
               state.success = true;
               return buf;
             }
           }
         }
-
         console.warn('[GHOST v2.0] Early bypass failed, falling back to VIP routing...');
       } catch (e) {
         console.error('[GHOST v2.0] Bypass error:', (e as Error).message);
-        // Ensure JS stays enabled even on error
-        await page.setJavaScriptEnabled(true).catch(() => {});
       }
     }
     // ══════════════════════════════════════════════════════════
