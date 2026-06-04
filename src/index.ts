@@ -1137,7 +1137,7 @@ imageBot.on('message:text', async (ctx, next) => {
   if (user?.supportSessionActive && user.supportSessionAdminId) {
     await ctx.api.sendMessage(
       user.supportSessionAdminId,
-      `ًں’¬ <b>ط±ط¯ ظ…ظ† ط§ظ„ط¹ظ…ظٹظ„ (${ctx.from?.first_name || 'ظ…ط¬ظ‡ظˆظ„'} | <code>${telegramId}</code>):</b>\n\n${messageText}`,
+      `ًں’¬ <b>ط±ط¯ ظ…ظ† ط§ظ„ط¹ظ…ظٹظ„ (${ctx.from?.first_name || 'مجهول'} | <code>${telegramId}</code>):</b>\n\n${messageText}`,
       { parse_mode: 'HTML' }
     );
     return; // Stop â€” don't process as standard message
@@ -1210,7 +1210,7 @@ imageBot.on('message:text', async (ctx, next) => {
     }
 
     const domainMatch = link.match(/^https?:\/\/(?:www\.)?([^/?#]+)/i);
-    const domain = domainMatch?.[1] ?? 'ط§ظ„ظ…ظˆظ‚ط¹ ط§ظ„ظ…ط·ظ„ظˆط¨';
+    const domain = domainMatch?.[1] ?? 'الموقع المطلوب';
 
     const processingMsg = await ctx.reply(
       '⏳ <b>جاري البحث عن الصورة...</b>\n\n' +
@@ -1272,13 +1272,13 @@ imageBot.on('message:text', async (ctx, next) => {
       const formatKeyboard = {
         inline_keyboard: [
           [
-            { text: 'ًں–¼ï¸ڈ JPG',  callback_data: 'magic_fmt_jpg',  style: 'primary' as const },
-            { text: 'ًں–¼ï¸ڈ PNG',  callback_data: 'magic_fmt_png',  style: 'primary' as const },
-            { text: 'ًں–¼ï¸ڈ WEBP', callback_data: 'magic_fmt_webp', style: 'primary' as const },
+            { text: '🖼️ JPG',  callback_data: 'conv_jpg',  style: 'primary' as const },
+            { text: '🖼️ PNG',  callback_data: 'conv_png',  style: 'primary' as const },
+            { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
           ],
           [
-            { text: 'ًں–¼ï¸ڈ AVIF', callback_data: 'magic_fmt_avif', style: 'primary' as const },
-            { text: 'ًں–¼ï¸ڈ TIFF', callback_data: 'magic_fmt_tiff', style: 'primary' as const },
+            { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
+            { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
           ],
         ],
       };
@@ -1300,22 +1300,22 @@ imageBot.on('message:text', async (ctx, next) => {
       const ARCHIVE_ID: string = process.env.ARCHIVE_GROUP_ID ?? process.env.CHANNEL_ID ?? '';
 
       if (ARCHIVE_ID) {
-        const userTag: string = ctx.from!.username ? `@${ctx.from!.username}` : ctx.from!.first_name ?? 'ظ…ط¬ظ‡ظˆظ„';
+        const userTag: string = ctx.from!.username ? `@${ctx.from!.username}` : ctx.from!.first_name ?? 'مجهول';
         const domainMatch       = link.match(/^https?:\/\/(?:www\.)?([^/?#]+)/i);
-        const domain: string    = domainMatch?.[1] ?? 'ط؛ظٹط± ظ…ط¹ط±ظˆظپ';
+        const domain: string    = domainMatch?.[1] ?? 'غير معروف';
         const shortLink: string = link.length > 60 ? `${link.substring(0, 60)}...` : link;
 
         ctx.api.sendDocument(ARCHIVE_ID, new InputFile(imageBuffer, fileName), {
           caption:
-            `ًں“¦ <b>ط£ط±ط´ظٹظپ â€” طھط­ظ…ظٹظ„ ظ…ظ† ط§ظ„ط¥ظ†طھط±ظ†طھ</b>\n` +
-            `â”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پ\n` +
-            `ًں†” ID: <code>${ctx.from!.id}</code>\n` +
-            `ًں‘¤ User: ${userTag}\n` +
-            `ًںŒگ ط§ظ„ظ…ظˆظ‚ط¹: <b>${domain}</b>\n` +
-            `ًں”— ط§ظ„ط±ط§ط¨ط·: ${shortLink}\n` +
-            `ًں“ڈ ط§ظ„ط­ط¬ظ…: ${(imageBuffer.length / 1024).toFixed(1)}KB\n` +
-            `ًں“… ط§ظ„ظˆظ‚طھ: ${new Date().toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })}\n` +
-            `â”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پ`,
+            '📦 <b>أرشيف — تحميل من الإنترنت</b>\n' +
+            '━━━━━━━━━━━━━━━━━\n' +
+            '🆔 ID: <code>' + ctx.from!.id + '</code>\n' +
+            '👤 User: ' + userTag + '\n' +
+            '🌐 الموقع: <b>' + domain + '</b>\n' +
+            '🔗 الرابط: ' + shortLink + '\n' +
+            '📏 الحجم: ' + (imageBuffer.length / 1024).toFixed(1) + 'KB\n' +
+            '📅 الوقت: ' + new Date().toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' }) + '\n' +
+            '━━━━━━━━━━━━━━━━━',
           parse_mode: 'HTML', disable_notification: true,
         }).catch(() => {});
       }
@@ -1465,7 +1465,7 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
   // 2. User -> Admin (Direct forward)
   if (user?.supportSessionActive && user.supportSessionAdminId) {
     try {
-      const firstName = ctx.from?.first_name || 'ظ…ط¬ظ‡ظˆظ„';
+      const firstName = ctx.from?.first_name || 'مجهول';
       await ctx.api.sendMessage(
         user.supportSessionAdminId,
         `ًں’¬ <b>ظ…ظ„ظپ ظ…ظ† ط§ظ„ط¹ظ…ظٹظ„ (${firstName} | <code>${telegramId}</code>):</b>`,
@@ -2119,7 +2119,7 @@ ${ctx.session.combinedText}`;
     if (ctx.callbackQuery?.message?.message_id) {
       await ctx.api.deleteMessage(ctx.chat!.id, ctx.callbackQuery.message.message_id).catch(() => { });
     }
-    await ctx.reply(`â‌Œ ظپط´ظ„ ط¥ظ†ط´ط§ط، ط§ظ„ظ…ط³طھظ†ط¯: ${err.message || 'ط®ط·ط£ ط؛ظٹط± ظ…ط¹ط±ظˆظپ'}\nظٹط±ط¬ظ‰ ط§ظ„ظ…ط­ط§ظˆظ„ط© ظ…ط±ط© ط£ط®ط±ظ‰.`);
+    await ctx.reply(`â‌Œ ظپط´ظ„ ط¥ظ†ط´ط§ط، ط§ظ„ظ…ط³طھظ†ط¯: ${err.message || 'ط®ط·ط£ غير معروف'}\nظٹط±ط¬ظ‰ ط§ظ„ظ…ط­ط§ظˆظ„ط© ظ…ط±ط© ط£ط®ط±ظ‰.`);
   } finally {
     // Cleanup rules
     ctx.session.textBuffer = [];
@@ -2687,7 +2687,7 @@ registerDocCallback('pro_confirm', 'pro_confirm', async (ctx) => {
 
   } catch (err: any) {
     console.error('[ProMode PDF Error]', err);
-    await ctx.reply(`â‌Œ ظپط´ظ„ ط¥ظ†ط´ط§ط، ط§ظ„ظ…ط³طھظ†ط¯: ${err?.message || 'ط®ط·ط£ ط؛ظٹط± ظ…ط¹ط±ظˆظپ'}`);
+    await ctx.reply(`â‌Œ ظپط´ظ„ ط¥ظ†ط´ط§ط، ط§ظ„ظ…ط³طھظ†ط¯: ${err?.message || 'ط®ط·ط£ غير معروف'}`);
   }
 });
 
