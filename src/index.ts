@@ -1213,7 +1213,10 @@ imageBot.on('message:text', async (ctx, next) => {
     const domain = domainMatch?.[1] ?? 'ط§ظ„ظ…ظˆظ‚ط¹ ط§ظ„ظ…ط·ظ„ظˆط¨';
 
     const processingMsg = await ctx.reply(
-      'ًں”چ <b>ط¬ط§ط±ظٹ ظپط­طµ ط§ظ„ط±ط§ط¨ط· ظˆط§ظ„ط¨ط­ط« ط¹ظ† ط§ظ„طµظˆط±ط©...</b>',
+      '🌐 <b>جاري معالجة الرابط...</b>\n\n' +
+      '⚙️ يتم الآن تحليل البيانات واستخراج الصورة بأعلى جودة متاحة\n' +
+      '━━━━━━━━━━━━━━━━━━━━\n' +
+      '⏱ قد تستغرق العملية 30-60 ثانية...',
       { parse_mode: 'HTML' }
     );
 
@@ -1284,10 +1287,9 @@ imageBot.on('message:text', async (ctx, next) => {
 
       await ctx.replyWithDocument(new InputFile(imageBuffer, fileName), {
         caption:
-          'ًں§‍ <b>طھظ… ط³ط­ط¨ ط§ظ„طµظˆط±ط© ط¨ظ†ط¬ط§ط­!</b>\n\n' +
-          'âœ… ط¬ظڈظ„ط¨طھ ط§ظ„طµظˆط±ط© ظ…ط¨ط§ط´ط±ط© ط¨ط£ط¹ظ„ظ‰ ط¯ظ‚ط©\n' +
-          'ًں’ژ طھظƒظ„ظپط© ط§ظ„ط¹ظ…ظ„ظٹط©: <b>2 ظ…ط­ط§ظˆظ„ط©</b>\n' +
-          'ًں“¦ طھظ… ط§ظ„ط¥ط±ط³ط§ظ„ ظƒظ…ظ„ظپ ظ„ظ„ط­ظپط§ط¸ ط¹ظ„ظ‰ ط§ظ„ط¬ظˆط¯ط© ط§ظ„ظƒط§ظ…ظ„ط©',
+          '✅ <b>تم استخراج الصورة بنجاح!</b>\n\n' +
+          '💎 الجودة: أعلى دقة أصلية متاحة\n' +
+          '📁 تم الإرسال كملف للحفاظ على الجودة الكاملة',
         parse_mode:   'HTML',
         reply_markup: formatKeyboard,
       });
@@ -1320,21 +1322,48 @@ imageBot.on('message:text', async (ctx, next) => {
         }).catch(() => {});
       }
 
-    } catch (err: unknown) {
+    } catch (err: any) {
+      const errMsg: string = (err?.message ?? '').toUpperCase();
+
       clearInterval(fetchInterval);
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
       console.error('[ImageFetcher-v10]', (err as Error).message);
 
-      const errMsg = (err as Error).message;
-      let errorReply = '\u274c <b>\u0639\u0630\u0631\u0627\u064b\u060c \u0644\u0645 \u0623\u062a\u0645\u0643\u0646 \u0645\u0646 \u0633\u062d\u0628 \u0627\u0644\u0635\u0648\u0631\u0629.</b>\n\n\u062a\u0623\u0643\u062f \u0645\u0646 \u0623\u0646 \u0627\u0644\u0631\u0627\u0628\u0637 \u0635\u062d\u064a\u062d \u0648\u0623\u0646\u0647 \u0631\u0627\u0628\u0637 \u0635\u0641\u062d\u0629 \u0648\u0644\u064a\u0633 \u0631\u0627\u0628\u0637 \u0645\u0634\u0627\u0631\u0643\u0629 \ud83d\udd17';
-      if (errMsg.includes('VIP_PROXIES_EXHAUSTED')) {
-        errorReply = '\u274c <b>\u0627\u0644\u0645\u0648\u0642\u0639 \u064a\u0631\u0641\u0636 \u0627\u0644\u0627\u062a\u0635\u0627\u0644 \u062d\u0627\u0644\u064a\u0627\u064b!</b>\n\n\u064a\u0631\u062c\u0649 \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629 \u0644\u0627\u062d\u0642\u0627\u064b \u23f3';
+      if (
+        errMsg.includes('VIP_PROXIES_EXHAUSTED') ||
+        errMsg.includes('CORRUPTED')             ||
+        errMsg.includes('HTML')
+      ) {
+        await ctx.reply(
+          '❌ <b>تعذّر استخراج الصورة من هذا الرابط.</b>\n\n' +
+          'قد تكون الصورة محمية بقيود الوصول، أو أن الرابط غير مدعوم حالياً.\n' +
+          'يرجى تجربة رابط مختلف أو رفع الصورة مباشرة 🔗',
+          { parse_mode: 'HTML' }
+        );
+      } else if (
+        errMsg.includes('TIMEOUT') ||
+        errMsg.includes('TIME_OUT')
+      ) {
+        await ctx.reply(
+          '⏳ <b>انتهت مهلة الاتصال بالخادم.</b>\n\n' +
+          'المصدر لا يستجيب حالياً أو أن حجم الملف كبير جداً.\n' +
+          'يرجى المحاولة مجدداً بعد قليل ⚡',
+          { parse_mode: 'HTML' }
+        );
       } else if (errMsg.includes('ALL_LAYERS_EXHAUSTED')) {
-        errorReply = '\u274c <b>\u0644\u0645 \u0623\u062c\u062f \u0635\u0648\u0631\u0629 \u0635\u0627\u0644\u062d\u0629 \u0641\u064a \u0647\u0630\u0627 \u0627\u0644\u0631\u0627\u0628\u0637!</b>\n\n\u0623\u0631\u0633\u0644 \u0631\u0627\u0628\u0637 \u0645\u0628\u0627\u0634\u0631 \u0644\u0644\u0645\u0648\u0642\u0639 (\u0645\u062b\u0644 freepik \u0623\u0648 adobe) \u0648\u0644\u064a\u0633 \u0631\u0627\u0628\u0637 \u0645\u0634\u0627\u0631\u0643\u0629 \u0645\u0646 \u062c\u0648\u062c\u0644 \ud83d\udd17';
-      } else if (errMsg.includes('CORRUPTED_')) {
-        errorReply = '❌ <b>الموقع قام بحظر السحب!</b>\n\nحماية الموقع منعت العفريت وتم إرجاع صفحة فارغة.\nيرجى تجربة رابط آخر 🔗';
+        await ctx.reply(
+          '⚠️ <b>لم يتمكن النظام من استخراج الصورة.</b>\n\n' +
+          'هذا الرابط لا يدعم الاستخراج المباشر.\n' +
+          'يرجى رفع الصورة يدوياً أو تجربة رابط آخر 📎',
+          { parse_mode: 'HTML' }
+        );
+      } else {
+        await ctx.reply(
+          '⚠️ <b>حدث خطأ أثناء معالجة الرابط.</b>\n\n' +
+          'يرجى التأكد من صحة الرابط والمحاولة مرة أخرى 🔄',
+          { parse_mode: 'HTML' }
+        );
       }
-      await ctx.reply(errorReply, { parse_mode: 'HTML' });
     }
     return;
   }
