@@ -9,7 +9,16 @@ export async function connectDatabase(): Promise<void> {
   }
 
   try {
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS:          0,
+      connectTimeoutMS:         30000,
+      heartbeatFrequencyMS:     10000,
+      maxPoolSize:              10,
+      minPoolSize:              2,
+      retryWrites:              true,
+      retryReads:               true,
+    });
     console.log('[Database] ✅ Connected successfully to MongoDB');
   } catch (err) {
     console.error('[Database] ❌ Connection error:', err);
@@ -17,12 +26,27 @@ export async function connectDatabase(): Promise<void> {
   }
 }
 
-mongoose.connection.on('error', (err: Error) => {
-  console.error('[Database] 🔴 Runtime error:', err);
+mongoose.connection.on('disconnected', () => {
+  console.warn('[Database] ⚠️ Disconnected from MongoDB — reconnecting in 5s...');
+  setTimeout(() => {
+    mongoose.connect(process.env.MONGODB_URI!, {
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS:          0,
+      heartbeatFrequencyMS:     10000,
+      maxPoolSize:              10,
+      minPoolSize:              2,
+      retryWrites:              true,
+      retryReads:               true,
+    }).catch((err: unknown) => console.error('[Database] Reconnect failed:', err));
+  }, 5000);
 });
 
-mongoose.connection.on('disconnected', () => {
-  console.warn('[Database] ⚠️ Disconnected from MongoDB');
+mongoose.connection.on('error', (err: unknown) => {
+  console.error('[Database] MongoDB error:', err);
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('[Database] ✅ Reconnected to MongoDB');
 });
 
 // Graceful shutdown — closes DB before process exits

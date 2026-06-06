@@ -11,13 +11,14 @@ if (!process.env.MONGODB_URI) throw new Error('❌ MONGODB_URI is missing');
 import http from 'http';
 import path from 'path';
 import OpenAI from 'openai';
+import mongoose from 'mongoose';
 import { Bot, session, NextFunction, InlineKeyboard, InputFile } from 'grammy';
 import { run } from '@grammyjs/runner';
 import cron from 'node-cron';
 
 import { BotContext, isAdmin, SessionData } from './utils/validators';
 import { safeReplyWithPhoto } from './utils/assetGuard';
-import { connectDatabase, closeDatabaseConnection } from './database/connection';
+import { connectDatabase } from './database/connection';
 import { Settings } from './database/models/Settings';
 import { User } from './database/models/User';
 // ForceSubChannel static import removed — clawback system disabled
@@ -3436,24 +3437,30 @@ async function bootstrap(): Promise<void> {
       .then(({ startFakeCounterEngine }) => startFakeCounterEngine())
       .catch(err => console.error('[ImageBot] Failed to start fake counter engine', err));
 
-    const imageRunner = run(imageBot);
-    const docRunner = run(docBot);
+    void run(imageBot);
+    void run(docBot);
     console.log('✅ Image Bot and Document Bot are now running via grammy/runner for maximum concurrency and speed.');
 
-    // Graceful shutdown for runners
-    const shutdown = async () => {
-      console.log('[System] Shutting down...');
-      server.close();
-      if (imageRunner.isRunning()) await imageRunner.stop();
-      if (docRunner.isRunning()) await docRunner.stop();
-      await closeDatabaseConnection();
-      process.exit(0);
-    };
+    let isShuttingDown = false;
 
+    async function gracefulShutdown(signal: string): Promise<void> {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+      console.log(`[Shutdown] Received ${signal} — graceful shutdown initiated`);
+      try {
+        await mongoose.connection.close(false);
+        console.log('[Shutdown] MongoDB connection closed cleanly');
+      } catch (err) {
+        console.error('[Shutdown] Error closing MongoDB:', err);
+      }
+      process.exit(0);
+    }
+
+    // Only close DB on actual termination signals
     process.removeAllListeners('SIGTERM');
     process.removeAllListeners('SIGINT');
-    process.once('SIGINT', shutdown);
-    process.once('SIGTERM', shutdown);
+    process.once('SIGINT',  () => gracefulShutdown('SIGINT'));
+    process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
   } catch (error: unknown) {
     console.error('[Bootstrap] ❌ Fatal error:', error);
