@@ -23,6 +23,16 @@ const NOISE_KEYWORDS = [
 // Multiple proxies per VIP site — fallback chain
 const VIP_MAP: VipEntry[] = [
   {
+    match: 'magnific.com',
+    proxies: ['https://downloader.la/freepik-downloader.html','https://freepicdownloader.com/','https://fpkdl.com/'],
+    timeout: 45_000,
+  },
+  {
+    match: 'freepik.com',
+    proxies: ['https://downloader.la/freepik-downloader.html','https://freepicdownloader.com/','https://fpkdl.com/'],
+    timeout: 45_000,
+  },
+  {
     match: 'stock.adobe.com',
     proxies: [
       'https://stockbeaver.com/',
@@ -149,6 +159,12 @@ async function safeFetch(url: string, minSize = 1_000): Promise<Buffer | null> {
     const buf = Buffer.from(await res.arrayBuffer());
     return buf.length >= minSize ? buf : null;
   } catch { return null; }
+}
+
+
+function isHtmlResponse(buf: Buffer): boolean {
+  const head = buf.slice(0, 120).toString('utf8').toLowerCase().trimStart();
+  return head.startsWith('<!doctype') || head.startsWith('<html') || head.includes('<head>');
 }
 
 async function fillInput(page: Page, selector: string, value: string): Promise<boolean> {
@@ -371,7 +387,11 @@ async function layerVipRouter(targetUrl: string, page: Page): Promise<Buffer | n
       if (!dlLink) return null;
 
       const buf = await safeFetch(dlLink, MIN_SIZE);
-      if (buf) { console.log(`✅ [L2-VIP] ${(buf.length / 1024).toFixed(1)}KB via ${proxyUrl}`); return buf; }
+      if (buf) {
+        if (isHtmlResponse(buf)) { console.log(`🚫 [L2-VIP] HTML rejected from ${proxyUrl}`); return null; }
+        console.log(`✅ [L2-VIP] ${(buf.length / 1024).toFixed(1)}KB via ${proxyUrl}`);
+        return buf;
+      }
       return null;
     }, 1, `L2-VIP:${proxyUrl}`);
 
@@ -519,6 +539,11 @@ async function layerDomParser(page: Page): Promise<Buffer | null> {
 async function layerScreenshot(page: Page): Promise<Buffer | null> {
   console.log('[L6-SCREENSHOT] Last resort...');
   try {
+    const pageUrl = page.url();
+    if (pageUrl.includes('magnific.com') || pageUrl.includes('freepik.com')) {
+      console.warn('[L6] Magnific screenshot rejected');
+      return null;
+    }
     const isBlocked: boolean = await page.evaluate((): boolean => {
       const t = (document.body?.innerText ?? '').toLowerCase();
       return (
