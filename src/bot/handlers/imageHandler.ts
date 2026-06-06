@@ -569,47 +569,69 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
     try {
       const tgFile = await ctx.api.getFile(fileId);
-      const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
-      const fetchRes = await fetch(fileUrl);
-      if (!fetchRes.ok) throw new Error('download_failed');
-      const inputBuffer = Buffer.from(await fetchRes.arrayBuffer());
+      const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
 
-      const HIDDEN_PROMPT = "Enhance product realism while preserving all original features, shape, branding, labels, and design details, maintain natural surface texture and fine material details, improve lighting balance and tone, refine color depth without over-smoothing, visible micro-textures, material grain, small natural imperfections, fine surface details, subtle light reflections and realistic highlights, natural gloss or matte finish according to the product material, tiny edge details, sharp contours, realistic shadows, stray fine fibers or dust particles where appropriate, subsurface light interaction for translucent materials, light glow through edges where natural, organic texture, ultra-realistic photo-quality finish.";
-      const NEGATIVE_PROMPT = "cartoon, 3d render, plastic, over-smoothed, deformed, blurry, bad anatomy, text changes, altered logo, watermark, artificial lighting, oversaturated";
-      void NEGATIVE_PROMPT; // 💡 Prevent TS6133 unused variable error per ZERO DELETIONS policy
+      const replicateKey = process.env.REPLICATE_API_TOKEN || '';
+      if (!replicateKey) throw new Error('REPLICATE_API_TOKEN is missing');
 
-      const base64Image = `data:image/jpeg;base64,${inputBuffer.toString('base64')}`;
-      const siliconApiKey = process.env.SILICONFLOW_API_KEY || '';
-      if (!siliconApiKey) throw new Error('SILICONFLOW_API_KEY is missing');
-
-      // Call SiliconFlow API directly (Synchronous) for this specific feature
-      const siliconRes = await fetch('https://api.siliconflow.cn/v1/images/generations', {
+      // Step 1: Create prediction
+      const createRes = await fetch('https://api.replicate.com/v1/models/philz1337x/crystal-upscaler/predictions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${siliconApiKey}`,
+          'Authorization': `Bearer ${replicateKey}`,
           'Content-Type': 'application/json',
+          'Prefer': 'wait=60',
         },
         body: JSON.stringify({
-          model: 'Qwen/Qwen-Image-Edit',
-          prompt: HIDDEN_PROMPT,
-          image: base64Image,
-          image_size: "1024x1024"
+          input: {
+            image:        imageUrl,
+            scale_factor: 2,
+            resemblance:  0.6,
+            creativity:   0.35,
+            dynamic:      6,
+            sharpen:      2,
+            tiling_width:  112,
+            tiling_height: 144,
+          }
         })
       });
 
-      if (!siliconRes.ok) {
-        const errDetails = await siliconRes.text();
-        console.error('[MagicEnhance] SiliconFlow API Error:', errDetails);
-        throw new Error(`api_rejected: ${siliconRes.status}`);
+      if (!createRes.ok) {
+        const errText = await createRes.text();
+        console.error('[MagicEnhance] Replicate create error:', errText);
+        throw new Error(`replicate_create_failed: ${createRes.status}`);
       }
 
-      const prediction = await siliconRes.json() as any;
-      const outputUrl = prediction.images?.[0]?.url;
+      let predictionData = await createRes.json() as any;
+      const predictionId: string = predictionData.id;
 
-      if (!outputUrl) {
-        console.error('[MagicEnhance] Empty Output from SiliconFlow:', JSON.stringify(prediction));
-        throw new Error('empty_output');
+      // Step 2: Poll until done (max 10 minutes)
+      const pollStart = Date.now();
+      while (
+        predictionData.status !== 'succeeded' &&
+        predictionData.status !== 'failed' &&
+        predictionData.status !== 'canceled'
+      ) {
+        if (Date.now() - pollStart > 10 * 60 * 1000) {
+          throw new Error('replicate_timeout');
+        }
+        await new Promise(r => setTimeout(r, 4000));
+        const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
+          headers: { 'Authorization': `Bearer ${replicateKey}` }
+        });
+        predictionData = await pollRes.json() as any;
       }
+
+      if (predictionData.status !== 'succeeded') {
+        console.error('[MagicEnhance] Replicate failed:', JSON.stringify(predictionData.error));
+        throw new Error('replicate_prediction_failed');
+      }
+
+      const outputUrl: string = Array.isArray(predictionData.output)
+        ? predictionData.output[0]
+        : predictionData.output;
+
+      if (!outputUrl) throw new Error('empty_output');
 
       const resultRes = await fetch(outputUrl);
       if (!resultRes.ok) throw new Error('result_download_failed');
