@@ -193,6 +193,12 @@ async function huntButton(page: Page): Promise<boolean> {
       await page.mouse.move(targetX, targetY, { steps: 15 + Math.floor(Math.random() * 10) });
       await new Promise(r => setTimeout(r, 100 + Math.random() * 150));
 
+      // Force JS click — bypasses invisible overlays
+      await page.evaluate((selector: string): void => {
+        const btn = document.querySelector(selector) as HTMLElement | null;
+        if (btn) btn.click();
+      }, sel);
+      // Fallback: also try mouse click
       await page.mouse.down();
       await new Promise(r => setTimeout(r, 40 + Math.random() * 60));
       await page.mouse.up();
@@ -284,6 +290,45 @@ async function layerVipRouter(targetUrl: string, page: Page): Promise<Buffer | n
     const result = await withRetry(async () => {
       await page.setRequestInterception(false).catch(() => {});
       await page.goto(proxyUrl, { waitUntil: 'domcontentloaded', timeout: entry.timeout });
+
+      // 🚜 PHANTOM ANNIHILATOR — Precision overlay removal
+      await page.evaluate((): void => {
+        // 1. Surgical targeted selectors ONLY — no blind deletion
+        const targetedSelectors: string[] = [
+          '.ad-blocker-modal', '#ad-blocker-modal',
+          '[id*="adblock"]',   '[class*="adblock"]',
+          '[id*="ad-block"]',  '[class*="ad-block"]',
+          '.cookie-consent',   '#cookie-notice',
+          '#cookie-banner',    '.fc-consent-root',
+          '.sweet-alert',      '.swal-overlay',
+          '.swal2-container',  '.modal-backdrop',
+        ];
+        targetedSelectors.forEach((sel: string) => {
+          document.querySelectorAll(sel).forEach((el: Element) => {
+            try { el.remove(); } catch (_) {}
+          });
+        });
+
+        // 2. Click ONLY the exact adblock bypass button
+        document.querySelectorAll('button, a, div[role="button"]').forEach((el: Element) => {
+          const text = ((el as HTMLElement).innerText ?? '').toLowerCase().trim();
+          if (
+            text === "i'have disabled ads-blocker" ||
+            text === "i have disabled ads-blocker" ||
+            text.includes('i have disabled')
+          ) {
+            try { (el as HTMLElement).click(); } catch (_) {}
+          }
+        });
+
+        // 3. Unlock body scroll
+        document.body.style.overflow        = 'auto';
+        document.body.style.position        = 'static';
+        document.documentElement.style.overflow = 'auto';
+      });
+
+      // Allow DOM to settle after annihilation
+      await new Promise(r => setTimeout(r, 800));
 
       const hasCF: boolean = await page.evaluate((): boolean =>
         document.title.toLowerCase().includes('just a moment') ||
