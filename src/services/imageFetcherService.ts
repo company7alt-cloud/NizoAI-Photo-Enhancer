@@ -6,18 +6,18 @@ import puppeteer, {
   HTTPRequest,
 } from 'puppeteer';
 
-interface VipEntry       { match: string; proxies: string[]; timeout: number; }
-interface ImageCandidate { type: string;  url: string; }
-interface EngineState    { layer: string; success: boolean; }
+interface VipEntry { match: string; proxies: string[]; timeout: number; }
+interface ImageCandidate { type: string; url: string; }
+interface EngineState { layer: string; success: boolean; }
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-const MIN_SIZE       = 40_000;
-const RETRY_MAX      = 2;
+const MIN_SIZE = 40_000;
+const RETRY_MAX = 2;
 const NOISE_KEYWORDS = [
-  'favicon','logo','icon','badge',
-  'avatar','sprite','pixel','tracking','analytics',
+  'favicon', 'logo', 'icon', 'badge',
+  'avatar', 'sprite', 'pixel', 'tracking', 'analytics',
 ];
 
 // Multiple proxies per VIP site — fallback chain
@@ -157,7 +157,7 @@ async function fillInput(page: Page, selector: string, value: string): Promise<b
       const el = document.querySelector(sel) as HTMLInputElement | null;
       if (!el) return false;
       el.focus(); el.value = ''; el.value = val;
-      el.dispatchEvent(new Event('input',  { bubbles: true }));
+      el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       return true;
     },
@@ -187,7 +187,7 @@ async function huntButton(page: Page): Promise<boolean> {
       const box = await element.boundingBox();
       if (!box || box.width === 0 || box.height === 0) continue;
 
-      const targetX = box.x + box.width  / 2 + (Math.random() * 10 - 5);
+      const targetX = box.x + box.width / 2 + (Math.random() * 10 - 5);
       const targetY = box.y + box.height / 2 + (Math.random() * 10 - 5);
 
       await page.mouse.move(targetX, targetY, { steps: 15 + Math.floor(Math.random() * 10) });
@@ -248,8 +248,8 @@ function normalizeUrl(raw: string): string {
       url.searchParams.set('fm', 'jpg'); url.searchParams.set('q', '100'); url.searchParams.set('fit', 'max');
       return url.toString();
     }
-    if (url.hostname.includes('freepik.com'))  return raw.split('?')[0];
-    if (url.hostname.includes('pixabay.com'))  return raw.replace(/_\d+\.(jpg|jpeg|png|webp)/i, '_1280.$1');
+    if (url.hostname.includes('freepik.com')) return raw.split('?')[0];
+    if (url.hostname.includes('pixabay.com')) return raw.replace(/_\d+\.(jpg|jpeg|png|webp)/i, '_1280.$1');
     if (url.hostname.includes('pexels.com')) {
       url.searchParams.delete('w'); url.searchParams.delete('h');
       url.searchParams.set('auto', 'compress');
@@ -288,7 +288,7 @@ async function layerVipRouter(targetUrl: string, page: Page): Promise<Buffer | n
   for (const proxyUrl of entry.proxies) {
     console.log(`🎯 [L2-VIP] Trying proxy: ${proxyUrl}`);
     const result = await withRetry(async () => {
-      await page.setRequestInterception(false).catch(() => {});
+      await page.setRequestInterception(false).catch(() => { });
       await page.goto(proxyUrl, { waitUntil: 'domcontentloaded', timeout: entry.timeout });
 
       // 🚜 PHANTOM ANNIHILATOR — Precision overlay removal
@@ -296,16 +296,16 @@ async function layerVipRouter(targetUrl: string, page: Page): Promise<Buffer | n
         // 1. Surgical targeted selectors ONLY — no blind deletion
         const targetedSelectors: string[] = [
           '.ad-blocker-modal', '#ad-blocker-modal',
-          '[id*="adblock"]',   '[class*="adblock"]',
-          '[id*="ad-block"]',  '[class*="ad-block"]',
-          '.cookie-consent',   '#cookie-notice',
-          '#cookie-banner',    '.fc-consent-root',
-          '.sweet-alert',      '.swal-overlay',
-          '.swal2-container',  '.modal-backdrop',
+          '[id*="adblock"]', '[class*="adblock"]',
+          '[id*="ad-block"]', '[class*="ad-block"]',
+          '.cookie-consent', '#cookie-notice',
+          '#cookie-banner', '.fc-consent-root',
+          '.sweet-alert', '.swal-overlay',
+          '.swal2-container', '.modal-backdrop',
         ];
         targetedSelectors.forEach((sel: string) => {
           document.querySelectorAll(sel).forEach((el: Element) => {
-            try { el.remove(); } catch (_) {}
+            try { el.remove(); } catch (_) { }
           });
         });
 
@@ -317,13 +317,13 @@ async function layerVipRouter(targetUrl: string, page: Page): Promise<Buffer | n
             text === "i have disabled ads-blocker" ||
             text.includes('i have disabled')
           ) {
-            try { (el as HTMLElement).click(); } catch (_) {}
+            try { (el as HTMLElement).click(); } catch (_) { }
           }
         });
 
         // 3. Unlock body scroll
-        document.body.style.overflow        = 'auto';
-        document.body.style.position        = 'static';
+        document.body.style.overflow = 'auto';
+        document.body.style.position = 'static';
         document.documentElement.style.overflow = 'auto';
       });
 
@@ -365,7 +365,7 @@ async function layerVipRouter(targetUrl: string, page: Page): Promise<Buffer | n
       await page.waitForSelector(
         'a[download], .download-link, a[href*=".jpg"], a.btn-success',
         { timeout: 35_000 },
-      ).catch(() => {});
+      ).catch(() => { });
 
       const dlLink = await huntDownloadLink(page);
       if (!dlLink) return null;
@@ -389,7 +389,7 @@ async function layerVipRouter(targetUrl: string, page: Page): Promise<Buffer | n
 async function layerPicsave(targetUrl: string, page: Page): Promise<Buffer | null> {
   console.log('[L3-PICSAVE] Attempting...');
   return withRetry(async () => {
-    await page.setRequestInterception(false).catch(() => {});
+    await page.setRequestInterception(false).catch(() => { });
     await page.goto('https://picsave.mom', { waitUntil: 'domcontentloaded', timeout: 24_000 });
     const inputSel =
       'input[type="url"], input[type="text"], input[name="url"], input[placeholder*="http"]';
@@ -401,7 +401,7 @@ async function layerPicsave(targetUrl: string, page: Page): Promise<Buffer | nul
     if (!filled) return null;
     await new Promise(r => setTimeout(r, 600));
     await huntButton(page);
-    await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 24_000 }).catch(() => {});
+    await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 24_000 }).catch(() => { });
     await new Promise(r => setTimeout(r, 2_500));
     const dlLink = await huntDownloadLink(page);
     if (!dlLink) return null;
@@ -421,7 +421,7 @@ async function layerNetworkIntercept(targetUrl: string, page: Page): Promise<Buf
   const onResponse = async (response: HTTPResponse): Promise<void> => {
     if (lock) return;
     try {
-      const ct: string     = response.headers()['content-type'] ?? '';
+      const ct: string = response.headers()['content-type'] ?? '';
       const resUrl: string = response.url();
       if (
         ct.startsWith('image/') && !ct.includes('svg+xml') &&
@@ -440,17 +440,17 @@ async function layerNetworkIntercept(targetUrl: string, page: Page): Promise<Buf
     await page.setRequestInterception(true);
     page.on('request', (req: HTTPRequest): void => {
       if (['font', 'stylesheet', 'media', 'websocket'].includes(req.resourceType()))
-        req.abort().catch(() => {});
-      else req.continue().catch(() => {});
+        req.abort().catch(() => { });
+      else req.continue().catch(() => { });
     });
-    page.on('response', (res: HTTPResponse): void => { onResponse(res).catch(() => {}); });
+    page.on('response', (res: HTTPResponse): void => { onResponse(res).catch(() => { }); });
     await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 38_000 });
     await new Promise(r => setTimeout(r, 4_500));
   } catch {
     console.warn('[L4] Timeout — checking buffer...');
   } finally {
     lock = true;
-    await page.setRequestInterception(false).catch(() => {});
+    await page.setRequestInterception(false).catch(() => { });
     page.removeAllListeners('request');
     page.removeAllListeners('response');
   }
@@ -532,7 +532,7 @@ async function layerScreenshot(page: Page): Promise<Buffer | null> {
     });
     if (isBlocked) { console.warn('[L6] Blocked — skip'); return null; }
     const shot = await page.screenshot({ type: 'jpeg', quality: 92, fullPage: false });
-    const buf  = Buffer.from(shot);
+    const buf = Buffer.from(shot);
     if (buf.length > MIN_SIZE) {
       console.log(`✅ [L6] ${(buf.length / 1024).toFixed(1)}KB`);
       return buf;
@@ -546,20 +546,20 @@ async function layerScreenshot(page: Page): Promise<Buffer | null> {
 // ══════════════════════════════════════════════
 export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
   const targetUrl = normalizeUrl(rawUrl);
-  let   browser:  Browser | null = null;
-  const state:    EngineState    = { layer: 'init', success: false };
+  let browser: Browser | null = null;
+  const state: EngineState = { layer: 'init', success: false };
 
   console.log(`\n🚀 [FETCHER-v10] ▶ ${targetUrl}`);
-  
+
   // ── FIREWALL: Prevent VPS Ban ──
   const isVipUrl = VIP_MAP.some(v => targetUrl.includes(v.match));
 
   try {
     state.layer = 'L1';
-    let result  = await layerDirectFetch(targetUrl);
+    let result = await layerDirectFetch(targetUrl);
     if (result) { state.success = true; return result; }
 
-    const viewportWidth  = 1900 + Math.floor(Math.random() * 21);
+    const viewportWidth = 1900 + Math.floor(Math.random() * 21);
     const viewportHeight = 1040 + Math.floor(Math.random() * 41);
 
     browser = await puppeteer.launch({
@@ -585,21 +585,21 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
       Object.defineProperty(navigator, 'plugins', {
         get: () => {
           const arr: Plugin[] = [
-            { name: 'Chrome PDF Plugin',  filename: 'internal-pdf-viewer'             } as unknown as Plugin,
-            { name: 'Chrome PDF Viewer',  filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' } as unknown as Plugin,
-            { name: 'Native Client',      filename: 'internal-nacl-plugin'             } as unknown as Plugin,
+            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' } as unknown as Plugin,
+            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' } as unknown as Plugin,
+            { name: 'Native Client', filename: 'internal-nacl-plugin' } as unknown as Plugin,
           ];
           Object.setPrototypeOf(arr, PluginArray.prototype);
           return arr;
         },
       });
 
-      Object.defineProperty(navigator, 'languages',           { get: () => ['en-US', 'en', 'ar'] });
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'ar'] });
       Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-      Object.defineProperty(navigator, 'deviceMemory',        { get: () => 8 });
+      Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
 
       const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-      HTMLCanvasElement.prototype.toDataURL = function(type?: string, quality?: unknown): string {
+      HTMLCanvasElement.prototype.toDataURL = function (type?: string, quality?: unknown): string {
         const ctx2d = this.getContext('2d');
         if (ctx2d) {
           const imageData = ctx2d.getImageData(0, 0, this.width, this.height);
@@ -612,7 +612,7 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
       };
 
       const getParam = WebGLRenderingContext.prototype.getParameter;
-      WebGLRenderingContext.prototype.getParameter = function(parameter: number): unknown {
+      WebGLRenderingContext.prototype.getParameter = function (parameter: number): unknown {
         if (parameter === 37445) return 'Intel Inc.';
         if (parameter === 37446) return 'Intel Iris OpenGL Engine';
         return getParam.call(this, parameter);
@@ -631,22 +631,22 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
     await page.setUserAgent(UA);
 
     await page.setExtraHTTPHeaders({
-      'Accept-Language':           'en-US,en;q=0.9,ar;q=0.8',
-      'Accept':                    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-      'Sec-Fetch-Dest':            'document',
-      'Sec-Fetch-Mode':            'navigate',
-      'Sec-Fetch-Site':            'none',
-      'Sec-Fetch-User':            '?1',
+      'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
       'Upgrade-Insecure-Requests': '1',
-      'Referer':                   'https://www.google.com/',
-      'Cache-Control':             'max-age=0',
-      'sec-ch-ua':                 '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-      'sec-ch-ua-mobile':          '?0',
-      'sec-ch-ua-platform':        '"Windows"',
+      'Referer': 'https://www.google.com/',
+      'Cache-Control': 'max-age=0',
+      'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
     });
 
     state.layer = 'L2'; result = await layerVipRouter(targetUrl, page); if (result) { state.success = true; return result; }
-    state.layer = 'L3'; result = await layerPicsave(targetUrl, page);   if (result) { state.success = true; return result; }
+    state.layer = 'L3'; result = await layerPicsave(targetUrl, page); if (result) { state.success = true; return result; }
 
     // ── FIREWALL ENFORCEMENT ──
     if (isVipUrl) {
@@ -655,13 +655,13 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
     }
 
     state.layer = 'L4'; result = await layerNetworkIntercept(targetUrl, page); if (result) { state.success = true; return result; }
-    state.layer = 'L5'; result = await layerDomParser(page);                   if (result) { state.success = true; return result; }
-    state.layer = 'L6'; result = await layerScreenshot(page);                  if (result) { state.success = true; return result; }
+    state.layer = 'L5'; result = await layerDomParser(page); if (result) { state.success = true; return result; }
+    state.layer = 'L6'; result = await layerScreenshot(page); if (result) { state.success = true; return result; }
 
     throw new Error('ALL_LAYERS_EXHAUSTED');
 
   } finally {
     if (!state.success) console.error(`❌ [FETCHER-v10] Failed at: ${state.layer}`);
-    if (browser) { await browser.close().catch(() => {}); console.log('🔒 [BROWSER] Closed\n'); }
+    if (browser) { await browser.close().catch(() => { }); console.log('🔒 [BROWSER] Closed\n'); }
   }
 }
