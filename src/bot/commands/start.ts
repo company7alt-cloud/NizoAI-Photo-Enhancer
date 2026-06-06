@@ -17,7 +17,16 @@ export async function startCommand(ctx: BotContext): Promise<void> {
   const language = ctx.from!.language_code ?? 'en';
 
   // ctx.match contains everything after /start (the payload)
-  const rawPayload = (ctx.match as string | undefined)?.trim() ?? '';
+  const rawPayload: string = (() => {
+    const m = ctx.match;
+    if (typeof m === 'string') return m.trim();
+    if (Array.isArray(m) && typeof m[1] === 'string') return m[1].trim();
+    if (m && typeof m === 'object') {
+      const first = Object.values(m as unknown as Record<string, unknown>)[0];
+      if (typeof first === 'string') return first.trim();
+    }
+    return '';
+  })();
 
   try {
     if (rawPayload.startsWith('magic_')) {
