@@ -466,6 +466,20 @@ async function layerNetworkIntercept(targetUrl: string, page: Page): Promise<Buf
 // ══════════════════════════════════════════════
 async function layerDomParser(page: Page): Promise<Buffer | null> {
   console.log('[L5-DOM] Parsing...');
+  const currentUrl = page.url();
+  if (currentUrl.includes('magnific.com') || currentUrl.includes('freepik.com')) {
+    try {
+      const html = await page.content();
+      const allMatches = [...html.matchAll(/["'](https:\/\/img\.(?:magnific|freepik)\.com\/[^"']+\.(?:jpg|jpeg|png|webp))[^"']*/gi)];
+      for (const m of allMatches) {
+        const src = m[1];
+        if (/logo|brand|icon|favicon/i.test(src)) continue;
+        console.log(`🎯 [MAGNIFIC-L5] Found: ${src}`);
+        const buf = await safeFetch(src, MIN_SIZE);
+        if (buf) { console.log(`✅ [MAGNIFIC-L5] ${(buf.length / 1024).toFixed(1)}KB`); return buf; }
+      }
+    } catch (e) { console.warn('[MAGNIFIC-L5]', (e as Error).message); }
+  }
   try {
     const candidates: ImageCandidate[] = await page.evaluate((): ImageCandidate[] => {
       const results: ImageCandidate[] = [];
@@ -518,6 +532,11 @@ async function layerDomParser(page: Page): Promise<Buffer | null> {
 // ══════════════════════════════════════════════
 async function layerScreenshot(page: Page): Promise<Buffer | null> {
   console.log('[L6-SCREENSHOT] Last resort...');
+  const pageUrl = page.url();
+  if (pageUrl.includes('magnific.com') || pageUrl.includes('freepik.com')) {
+    console.warn('[L6] Magnific/Freepik screenshot blocked — logo risk');
+    return null;
+  }
   try {
     const isBlocked: boolean = await page.evaluate((): boolean => {
       const t = (document.body?.innerText ?? '').toLowerCase();
