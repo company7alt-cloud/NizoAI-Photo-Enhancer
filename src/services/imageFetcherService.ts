@@ -466,20 +466,46 @@ async function layerNetworkIntercept(targetUrl: string, page: Page): Promise<Buf
 // ══════════════════════════════════════════════
 async function layerDomParser(page: Page): Promise<Buffer | null> {
   console.log('[L5-DOM] Parsing...');
-  const currentUrl = page.url();
-  if (currentUrl.includes('magnific.com') || currentUrl.includes('freepik.com')) {
-    try {
-      const html = await page.content();
-      const allMatches = [...html.matchAll(/["'](https:\/\/img\.(?:magnific|freepik)\.com\/[^"']+\.(?:jpg|jpeg|png|webp))[^"']*/gi)];
-      for (const m of allMatches) {
-        const src = m[1];
+  // ── MAGNIFIC/FREEPIK GHOST EXTRACTOR ──
+  try {
+    const html = await page.content();
+
+    // Strategy 1: scan entire HTML for img.magnific.com or img.freepik.com URLs
+    const allImgMatches = [...html.matchAll(/https:\/\/img\.(?:magnific|freepik)\.com\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp)/gi)];
+    const uniqueImgs = [...new Set(allImgMatches.map(m => m[0].split('"')[0].split("'")[0].split('<')[0]))];
+    for (const src of uniqueImgs) {
+      if (/logo|brand|icon|favicon|magnific-logo/i.test(src)) continue;
+      console.log(`🎯 [GHOST-L5] img.cdn found: ${src}`);
+      const buf = await safeFetch(src, MIN_SIZE);
+      if (buf) { console.log(`✅ [GHOST-L5] ${(buf.length/1024).toFixed(1)}KB`); return buf; }
+    }
+
+    // Strategy 2: __NEXT_DATA__ JSON extraction
+    const nextDataMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    if (nextDataMatch) {
+      const jsonStr = nextDataMatch[1];
+      const cdnMatches = [...jsonStr.matchAll(/https:\\?\/\\?\/img\.(?:magnific|freepik)\.com\\?\/[^"\\]+\.(?:jpg|jpeg|png|webp)/gi)];
+      for (const m of cdnMatches) {
+        const src = m[0].replace(/\\\/\//g, '//').replace(/\\\//g, '/');
         if (/logo|brand|icon|favicon/i.test(src)) continue;
-        console.log(`🎯 [MAGNIFIC-L5] Found: ${src}`);
+        console.log(`🎯 [GHOST-L5] __NEXT_DATA__: ${src}`);
         const buf = await safeFetch(src, MIN_SIZE);
-        if (buf) { console.log(`✅ [MAGNIFIC-L5] ${(buf.length / 1024).toFixed(1)}KB`); return buf; }
+        if (buf) { console.log(`✅ [GHOST-L5] ${(buf.length/1024).toFixed(1)}KB`); return buf; }
       }
-    } catch (e) { console.warn('[MAGNIFIC-L5]', (e as Error).message); }
-  }
+    }
+
+    // Strategy 3: og:image from HTML string (bypass page.evaluate)
+    const ogMatch = html.match(/property="og:image"\s+content="([^"]+)"/i) ||
+                    html.match(/content="([^"]+)"\s+property="og:image"/i);
+    if (ogMatch) {
+      const src = ogMatch[1];
+      if (!/logo|brand|icon|favicon/i.test(src) && /img\.(magnific|freepik)\.com/i.test(src)) {
+        console.log(`🎯 [GHOST-L5] og:image: ${src}`);
+        const buf = await safeFetch(src, MIN_SIZE);
+        if (buf) { console.log(`✅ [GHOST-L5] ${(buf.length/1024).toFixed(1)}KB`); return buf; }
+      }
+    }
+  } catch (e) { console.warn('[GHOST-L5]', (e as Error).message); }
   try {
     const candidates: ImageCandidate[] = await page.evaluate((): ImageCandidate[] => {
       const results: ImageCandidate[] = [];
