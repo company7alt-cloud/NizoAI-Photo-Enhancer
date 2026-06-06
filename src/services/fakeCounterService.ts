@@ -11,7 +11,7 @@ export async function startFakeCounterEngine() {
     try {
       // 1. Fetch config to check if active
       const config = await GlobalStat.findOne({ key: 'total_processed' });
-      
+
       if (config && config.isFakeCounterActive) {
         // 2. Increment the ACTUAL global total counter field by 1 safely
         await GlobalStat.updateOne({ key: 'total_processed' }, { $inc: { count: 1 } });
