@@ -40,15 +40,15 @@ async function showFormatSelection(ctx: any, count: number, _upscale: boolean): 
   const keyboard: any[] = [
     [
       // @ts-ignore
-      { text: '🖼️ PNG', callback_data: 'fconv_png', style: 'primary' as const },
-      { text: '🖼️ JPG', callback_data: 'fconv_jpg', style: 'primary' as const },
+      { text: '✅ PNG', callback_data: 'fconv_png', style: 'primary' as const },
+      { text: '✅ JPG', callback_data: 'fconv_jpg', style: 'primary' as const },
       // @ts-ignore
-      { text: '🖼️ WEBP', callback_data: 'fconv_webp', style: 'primary' as const },
+      { text: '✅ WEBP', callback_data: 'fconv_webp', style: 'primary' as const },
     ],
     [
       // @ts-ignore
-      { text: '🖼️ AVIF', callback_data: 'fconv_avif', style: 'primary' as const },
-      { text: '🖼️ TIFF', callback_data: 'fconv_tiff', style: 'primary' as const },
+      { text: '✅ AVIF', callback_data: 'fconv_avif', style: 'primary' as const },
+      { text: '✅ TIFF', callback_data: 'fconv_tiff', style: 'primary' as const },
     ],
   ];
 
@@ -80,41 +80,21 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── [KILL-SWITCH — ABSOLUTE TOP] Admin Toggle Internet Fetcher ──
   if (data === 'admin_toggle_internet_fetcher') {
-    await ctx.answerCallbackQuery().catch(() => {});
-    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-    if (!adminIds.includes(ctx.from!.id.toString())) return;
-
-    try {
-      const { toggleInternetFetcher, getFetcherStatus } = await import('../../utils/internetFetcherSettings');
-      const newEnabled = toggleInternetFetcher();
-      const info = getFetcherStatus();
-      const changedAt = new Date(info.lastChanged).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
-
-      const stateText = newEnabled ? '✅ مفعّل للجميع' : '🔴 مطفي للجميع';
-      const btnText   = newEnabled ? '🟢 إيقاف تحميل الإنترنت' : '🔴 تشغيل تحميل الإنترنت';
-
-      if (ctx.callbackQuery?.message?.text?.includes('لوحة التحكم — إدارة الميزات')) {
-        await ctx.editMessageText(
-          `⚙️ <b>لوحة التحكم — إدارة الميزات</b>\n\n` +
-          `<b>تحميل الصور من الإنترنت:</b> ${stateText}\n\n` +
-          `🕐 آخر تغيير: ${changedAt}`,
-          {
-            parse_mode: 'HTML',
-            reply_markup: {
-              // @ts-ignore
-              inline_keyboard: [[{ text: btnText, callback_data: 'admin_toggle_internet_fetcher', style: 'primary' as const }]]
-            }
-          }
-        ).catch(() => {});
-      } else {
-        await ctx.reply(
-          `🌐 <b>حالة تحميل الإنترنت تغيرت</b>\n\nالحالة الآن: <b>${stateText}</b>`,
-          { parse_mode: 'HTML' }
-        );
-      }
-    } catch (e) {
-      console.error('[Toggle Internet Error]', e);
+    if (!isAdmin(ctx.from!.id)) {
+      await ctx.answerCallbackQuery({ text: '⛔ غير مصرح' }).catch(() => {});
+      return;
     }
+    await ctx.answerCallbackQuery().catch(() => {});
+    const { toggleInternetFetcher, getFetcherStatus } = await import('../../utils/internetFetcherSettings');
+    const newEnabled = toggleInternetFetcher();
+    const status = getFetcherStatus();
+    const stateText = newEnabled ? '✅ مفعّل' : '🔴 مطفي';
+    await ctx.reply(
+      `🌐 <b>تحميل الصور من الإنترنت</b>\n\n` +
+      `الحالة الآن: <b>${stateText}</b>\n` +
+      `آخر تغيير: ${new Date(status.lastChanged).toLocaleString('ar-SA')}`,
+      { parse_mode: 'HTML' }
+    );
     return;
   }
   // ── [END KILL-SWITCH] ──
@@ -505,15 +485,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' as const },
-              { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
+              { text: '✅ PNG', callback_data: 'conv_png', style: 'primary' as const },
+              { text: '✅ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
               // @ts-ignore
-              { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
+              { text: '✅ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
-              { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
+              { text: '✅ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
+              { text: '✅ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
             ],
           ],
         },
@@ -580,15 +560,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: '🖼️ PNG', callback_data: 'conv_png', style: 'primary' as const },
-              { text: '🖼️ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
+              { text: '✅ PNG', callback_data: 'conv_png', style: 'primary' as const },
+              { text: '✅ JPG', callback_data: 'conv_jpg', style: 'primary' as const },
               // @ts-ignore
-              { text: '🖼️ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
+              { text: '✅ WEBP', callback_data: 'conv_webp', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '🖼️ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
-              { text: '🖼️ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
+              { text: '✅ AVIF', callback_data: 'conv_avif', style: 'primary' as const },
+              { text: '✅ TIFF', callback_data: 'conv_tiff', style: 'primary' as const },
             ],
           ],
         },
@@ -1525,9 +1505,20 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
 
   if (data === 'admin_grant_vip' && isAdminUser) {
+    await ctx.answerCallbackQuery().catch(() => { });
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from.id.toString() },
+      { $set: { adminAwaitingInput: 'grant_vip_id', adminTargetUserId: null } }
+    );
+    await ctx.reply('🔑 <b>تجاوز أقفال الميزات</b>\n\nأرسل الـ ID الخاص بالمستخدم الذي تريد منحه صلاحية تجاوز الإغلاق:', { parse_mode: 'HTML' });
+    return;
+  }
+
+
+  if (data === 'admin_grant_vip' && isAdminUser) {
     await ctx.answerCallbackQuery().catch(() => {});
     await User.findOneAndUpdate(
-      { telegramId: ctx.from!.id.toString() },
+      { telegramId: ctx.from.id.toString() },
       { $set: { adminAwaitingInput: 'grant_vip_id', adminTargetUserId: null } }
     );
     await ctx.reply('🔑 <b>تجاوز أقفال الميزات</b>\n\nأرسل الـ ID الخاص بالمستخدم الذي تريد منحه صلاحية تجاوز الإغلاق:', { parse_mode: 'HTML' });
@@ -1679,31 +1670,31 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ── Internet Image Fetcher Handlers ──────────────────────────────────────────
 
   if (data === 'menu_internet_download') {
-    // STRICT GUARD: Only Admin or when enabled
-    const { isInternetFetcherEnabled } = await import('../../utils/internetFetcherSettings');
-    const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
-    const isFetcherAdmin = adminIds.includes(ctx.from!.id.toString());
-
-    if (!isInternetFetcherEnabled() && !isFetcherAdmin) {
-      await ctx.answerCallbackQuery({
-        text: '🔧 هذه الميزة تحت الصيانة حالياً\n\n✨ سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n💙 نعتذر عن الإزعاج',
-        show_alert: true,
-      }).catch(() => {});
-      return; // HARD STOP
+    // ── [GUARD-A] Kill-Switch — Button Click ──
+    const { isInternetFetcherEnabled: _ifeA } = await import('../../utils/internetFetcherSettings');
+    const _adminA: boolean = ctx.from?.id?.toString() === process.env.ADMIN_ID;
+    if (!_ifeA() && !_adminA) {
+      await ctx.answerCallbackQuery().catch(() => {});
+      await ctx.reply(
+        `🔧 *تحميل الصور من الإنترنت*\n\n` +
+        `✨ هذه الميزة تحت الصيانة حالياً لتقديم تجربة أفضل لك!\n\n` +
+        `🚀 سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n` +
+        `💙 نعتذر عن الإزعاج ونقدّر صبرك الجميل`,
+        { parse_mode: 'Markdown' },
+      );
+      return;
     }
-
+    // ── [END GUARD-A] ──
     await ctx.answerCallbackQuery().catch(() => {});
     await ctx.reply(
-      '🧞 <b>تحميل صورة من الإنترنت</b>\n\nاختر ما تريد:',
+      '🧞‍♂️ <b>تحميل صورة من الإنترنت</b>\n\nاختر ما تريد:',
       {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            // @ts-ignore
-            [{ text: '📥 تحميل صورة من رابط', callback_data: 'ask_internet_link', style: 'primary' as const }],
-            [{ text: '🔍 بحث عن صورة 🔒',     callback_data: 'locked_search_feature', style: 'primary' as const }],
-            // @ts-ignore
-            [{ text: '🔙 رجوع',               callback_data: 'show_welcome', style: 'danger' as const }],
+            [{ text: '📥 تحميل صورة من رابط', callback_data: 'ask_internet_link', style: 'primary' as any }],
+            [{ text: '🔍 بحث عن صورة 🔒',    callback_data: 'locked_search_feature', style: 'primary' as any }],
+            [{ text: '🔙 رجوع',               callback_data: 'show_welcome', style: 'danger' as any }],
           ]
         }
       }
@@ -2733,12 +2724,12 @@ function buildCellKeyboard(
       await ctx.reply("🔄 <b>تحويل الصيغة:</b>", {
         parse_mode: 'HTML',
         reply_markup: new InlineKeyboard()
-          .text({ text: '🖼️ JPG', style: 'primary' as const }, 'eraser_fmt_jpg')
-          .text({ text: '🖼️ PNG', style: 'primary' as const }, 'eraser_fmt_png')
-          .text({ text: '🖼️ WEBP', style: 'primary' as const }, 'eraser_fmt_webp')
+          .text({ text: 'JPG ✅', style: 'primary' as const }, 'eraser_fmt_jpg')
+          .text({ text: 'PNG ✅', style: 'primary' as const }, 'eraser_fmt_png')
+          .text({ text: 'WEBP ✅', style: 'primary' as const }, 'eraser_fmt_webp')
           .row()
-          .text({ text: '🖼️ GIF', style: 'primary' as const }, 'eraser_fmt_gif')
-          .text({ text: '🖼️ TIFF', style: 'primary' as const }, 'eraser_fmt_tiff')
+          .text({ text: 'GIF ✅', style: 'primary' as const }, 'eraser_fmt_gif')
+          .text({ text: 'TIFF ✅', style: 'primary' as const }, 'eraser_fmt_tiff')
       });
 
       const archiveChannel = process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;

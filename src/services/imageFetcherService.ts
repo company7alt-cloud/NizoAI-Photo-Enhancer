@@ -23,24 +23,6 @@ const NOISE_KEYWORDS = [
 // Multiple proxies per VIP site — fallback chain
 const VIP_MAP: VipEntry[] = [
   {
-    match: 'magnific.com',
-    proxies: [
-      'https://downloader.la/freepik-downloader.html',
-      'https://freepikdownloader.com/',
-      'https://www.freepikdownload.com/'
-    ],
-    timeout: 45_000,
-  },
-  {
-    match: 'freepik.com',
-    proxies: [
-      'https://downloader.la/freepik-downloader.html',
-      'https://freepikdownloader.com/',
-      'https://www.freepikdownload.com/',
-    ],
-    timeout: 45_000,
-  },
-  {
     match: 'stock.adobe.com',
     proxies: [
       'https://stockbeaver.com/',
@@ -135,8 +117,6 @@ export function resolveCdnToPageUrl(raw: string): string {
     const m = url.match(/(\d{6,12})\.(jpg|jpeg|png)/i);
     if (m?.[1]) return `https://www.shutterstock.com/image-photo/x-${m[1]}`;
   }
-  if (url.includes('freepik.com') || url.includes('magnific.com'))
-    return url.split('?')[0];
   return url;
 }
 
@@ -398,24 +378,13 @@ async function layerNetworkIntercept(targetUrl: string, page: Page): Promise<Buf
     try {
       const ct: string     = response.headers()['content-type'] ?? '';
       const resUrl: string = response.url();
-      const lowerResUrl = resUrl.toLowerCase();
-  const isLogoOrIcon =
-    lowerResUrl.includes('logo') ||
-    lowerResUrl.includes('favicon') ||
-    lowerResUrl.includes('brand') ||
-    lowerResUrl.includes('avatar') ||
-    lowerResUrl.includes('/icon');
-
-  if (
-    ct.startsWith('image/') && !ct.includes('svg+xml') &&
-    response.status() === 200 &&
-    !isLogoOrIcon &&
-    !NOISE_KEYWORDS.some(n => lowerResUrl.includes(n))
-  ) {
+      if (
+        ct.startsWith('image/') && !ct.includes('svg+xml') &&
+        response.status() === 200 &&
+        !NOISE_KEYWORDS.some(n => resUrl.toLowerCase().includes(n))
+      ) {
         const buf: Buffer = await response.buffer();
-        // Reject images smaller than 80KB for VIP sites
-          if (buf.length < 80_000 && NOISE_KEYWORDS.some(n => resUrl.includes(n))) return;
-          if (buf.length > MIN_SIZE && (!largestBuf || buf.length > largestBuf.length)) {
+        if (buf.length > MIN_SIZE && (!largestBuf || buf.length > largestBuf.length)) {
           largestBuf = buf;
           console.log(`📸 [L4] ${(buf.length / 1024).toFixed(1)}KB`);
         }
@@ -452,72 +421,6 @@ async function layerNetworkIntercept(targetUrl: string, page: Page): Promise<Buf
 // ══════════════════════════════════════════════
 async function layerDomParser(page: Page): Promise<Buffer | null> {
   console.log('[L5-DOM] Parsing...');
-  // ── MAGNIFIC (formerly Freepik) EXTRACTOR ──
-  try {
-    const pageUrl: string = page.url();
-    const isMagnific = pageUrl.includes('freepik.com') || pageUrl.includes('magnific.com');
-    if (isMagnific) {
-      const html: string = await page.content();
-
-      // Strategy 1: __NEXT_DATA__ JSON state
-      const nextMatch = html.match(
-        /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i
-      );
-      if (nextMatch) {
-        try {
-          const jsonStr = JSON.stringify(JSON.parse(nextMatch[1]));
-          const imgMatch = jsonStr.match(
-            /https:\/\/(?:img|cdn|cdni|preview)\.(?:freepik|magnific)\.com\/[^\s"\\]+\.(?:jpg|jpeg|png|webp)/i
-          );
-          if (imgMatch) {
-            const buf = await safeFetch(imgMatch[0], MIN_SIZE);
-            if (buf) {
-              console.log(`✅ [L5-MAGNIFIC-JSON] ${(buf.length / 1024).toFixed(1)}KB`);
-              return buf;
-            }
-          }
-        } catch { /* continue */ }
-      }
-
-      // Strategy 2: OpenGraph with Anti-Logo Guard
-      const ogMatches = [...html.matchAll(
-        /<meta[^>]+property="og:image"[^>]+content="([^"]+)"/gi
-      )];
-      for (const match of ogMatches) {
-        const imgUrl = match[1];
-        const lower = imgUrl.toLowerCase();
-        if (
-          imgUrl.startsWith('http') &&
-          !lower.includes('logo') &&
-          !lower.includes('avatar') &&
-          !lower.includes('favicon') &&
-          !lower.includes('brand') &&
-          !lower.includes('icon')
-        ) {
-          const buf = await safeFetch(imgUrl, MIN_SIZE);
-          if (buf) {
-            console.log(`✅ [L5-MAGNIFIC-OG] ${(buf.length / 1024).toFixed(1)}KB`);
-            return buf;
-          }
-        }
-      }
-
-      // Strategy 3: data-cy attribute
-      const dataCy = html.match(
-        /data-cy="image-detail-img"[^>]*src="([^"]+)"/i
-      );
-      if (dataCy) {
-        const buf = await safeFetch(dataCy[1], MIN_SIZE);
-        if (buf) {
-          console.log(`✅ [L5-MAGNIFIC-DATACY] ${(buf.length / 1024).toFixed(1)}KB`);
-          return buf;
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('[L5-MAGNIFIC]', (e as Error).message);
-  }
-  // ── END MAGNIFIC EXTRACTOR ──
   try {
     const candidates: ImageCandidate[] = await page.evaluate((): ImageCandidate[] => {
       const results: ImageCandidate[] = [];
@@ -631,18 +534,57 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
     const page = await browser.newPage();
     await page.setViewport({ width: viewportWidth, height: viewportHeight });
 
-    // ╔═══════════════════════════════════════════════════════╗
-    // ║   👻 PHANTOM STEALTH INIT — MUST RUN BEFORE goto()   ║
-    // ║   Applied globally before ANY navigation attempt      ║
-    // ╚═══════════════════════════════════════════════════════╝
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
 
-    // STEP A: Identity Mask — Real Chrome on Windows
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-    );
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => {
+          const arr: Plugin[] = [
+            { name: 'Chrome PDF Plugin',  filename: 'internal-pdf-viewer'             } as unknown as Plugin,
+            { name: 'Chrome PDF Viewer',  filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' } as unknown as Plugin,
+            { name: 'Native Client',      filename: 'internal-nacl-plugin'             } as unknown as Plugin,
+          ];
+          Object.setPrototypeOf(arr, PluginArray.prototype);
+          return arr;
+        },
+      });
 
-    // STEP B: HTTP Headers — Identical to real Chrome browser
+      Object.defineProperty(navigator, 'languages',           { get: () => ['en-US', 'en', 'ar'] });
+      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+      Object.defineProperty(navigator, 'deviceMemory',        { get: () => 8 });
+
+      const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function(type?: string, quality?: unknown): string {
+        const ctx2d = this.getContext('2d');
+        if (ctx2d) {
+          const imageData = ctx2d.getImageData(0, 0, this.width, this.height);
+          for (let i = 0; i < 8; i++) {
+            imageData.data[Math.floor(Math.random() * imageData.data.length)] ^= 1;
+          }
+          ctx2d.putImageData(imageData, 0, 0);
+        }
+        return origToDataURL.call(this, type, quality as number | undefined);
+      };
+
+      const getParam = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function(parameter: number): unknown {
+        if (parameter === 37445) return 'Intel Inc.';
+        if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+        return getParam.call(this, parameter);
+      };
+
+      (window as unknown as Record<string, unknown>)['chrome'] = { runtime: {}, loadTimes: () => ({}), csi: () => ({}) };
+
+      const origQuery = window.navigator.permissions.query.bind(window.navigator.permissions);
+      (window.navigator.permissions as unknown as Record<string, unknown>)['query'] =
+        (parameters: PermissionDescriptor): Promise<PermissionStatus> =>
+          parameters.name === 'notifications'
+            ? Promise.resolve({ state: Notification.permission } as PermissionStatus)
+            : origQuery(parameters);
+    });
+
+    await page.setUserAgent(UA);
+
     await page.setExtraHTTPHeaders({
       'Accept-Language':           'en-US,en;q=0.9,ar;q=0.8',
       'Accept':                    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -657,146 +599,6 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
       'sec-ch-ua-mobile':          '?0',
       'sec-ch-ua-platform':        '"Windows"',
     });
-
-    // STEP C: JavaScript-level fingerprint erasure
-    await page.evaluateOnNewDocument((): void => {
-      // C1: Kill automation flag
-      Object.defineProperty(navigator, 'webdriver', { get: (): undefined => undefined });
-
-      // C2: Realistic plugin list
-      Object.defineProperty(navigator, 'plugins', {
-        get: (): Plugin[] => {
-          const arr = [
-            { name: 'Chrome PDF Plugin',  filename: 'internal-pdf-viewer'             },
-            { name: 'Chrome PDF Viewer',  filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
-            { name: 'Native Client',      filename: 'internal-nacl-plugin'             },
-          ] as unknown as Plugin[];
-          Object.setPrototypeOf(arr, PluginArray.prototype);
-          return arr;
-        },
-      });
-
-      // C3: Realistic system properties
-      Object.defineProperty(navigator, 'languages',           { get: () => ['en-US', 'en', 'ar'] });
-      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-      Object.defineProperty(navigator, 'deviceMemory',        { get: () => 8 });
-      Object.defineProperty(navigator, 'platform',            { get: () => 'Win32' });
-      Object.defineProperty(navigator, 'vendor',              { get: () => 'Google Inc.' });
-
-      // C4: Screen resolution — matches our viewport
-      Object.defineProperty(screen, 'width',       { get: () => 1920 });
-      Object.defineProperty(screen, 'height',      { get: () => 1080 });
-      Object.defineProperty(screen, 'availWidth',  { get: () => 1920 });
-      Object.defineProperty(screen, 'availHeight', { get: () => 1040 });
-      Object.defineProperty(screen, 'colorDepth',  { get: () => 24 });
-      Object.defineProperty(screen, 'pixelDepth',  { get: () => 24 });
-
-      // C5: Canvas noise injection — defeats fingerprinting
-      const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-      HTMLCanvasElement.prototype.toDataURL = function(type?: string, quality?: unknown): string {
-        const ctx2d = this.getContext('2d');
-        if (ctx2d) {
-          const imageData = ctx2d.getImageData(0, 0, this.width, this.height);
-          for (let i = 0; i < 8; i++) {
-            imageData.data[Math.floor(Math.random() * imageData.data.length)] ^= 1;
-          }
-          ctx2d.putImageData(imageData, 0, 0);
-        }
-        return origToDataURL.call(this, type, quality as number | undefined);
-      };
-
-      // C6: WebGL vendor spoof
-      const getParam = WebGLRenderingContext.prototype.getParameter;
-      WebGLRenderingContext.prototype.getParameter = function(parameter: number): unknown {
-        if (parameter === 37445) return 'Intel Inc.';
-        if (parameter === 37446) return 'Intel Iris OpenGL Engine';
-        return getParam.call(this, parameter);
-      };
-
-      // C7: Chrome runtime object — proves we are "real Chrome"
-      (window as any)['chrome'] = {
-        runtime: { connect: () => {}, sendMessage: () => {} },
-        loadTimes: () => ({}),
-        csi: () => ({}),
-      };
-
-      // C8: Permissions API — normal browser behavior
-      const origQuery = window.navigator.permissions.query.bind(window.navigator.permissions);
-      (window.navigator.permissions as any)['query'] =
-        (parameters: PermissionDescriptor): Promise<PermissionStatus> =>
-          parameters.name === 'notifications'
-            ? Promise.resolve({ state: Notification.permission } as PermissionStatus)
-            : origQuery(parameters);
-    });
-
-    // ╔═══════════════════════════════════════════════════════╗
-    // ║   🎯 FREEPIK / MAGNIFIC — GHOST DIRECT EXTRACTION    ║
-    // ║   Runs AFTER full stealth init — zero detection risk  ║
-    // ╚═══════════════════════════════════════════════════════╝
-    if (targetUrl.includes('freepik.com') || targetUrl.includes('magnific.com')) {
-      try {
-        console.log('[GHOST v3.0] Initiating Googlebot Cloak extraction...');
-        
-        // Step 1: Deep Googlebot Identity Spoofing
-        await page.setUserAgent('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)');
-        await page.setExtraHTTPHeaders({
-          'X-Forwarded-For': '66.249.66.1', // Google IP
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        });
-
-        // Step 2: Disable JS to skip CF challenges, fetch raw HTML
-        await page.setJavaScriptEnabled(false);
-        const rawResponse = await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
-        const htmlContent = await rawResponse?.text() || '';
-        await page.setJavaScriptEnabled(true);
-
-        let imgUrl: string | null = null;
-
-        // Step 3: Extract from OpenGraph (Premium Vectors expose high-res preview here)
-        const ogMatch = htmlContent.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
-        if (ogMatch && ogMatch[1].startsWith('http')) {
-          imgUrl = ogMatch[1];
-        }
-
-        // Step 4: Extract from JSON-LD fallback
-        if (!imgUrl) {
-          const jsonLdMatches = htmlContent.match(/<script\s+type="application\/ld\+json">([\s\S]*?)<\/script>/gi);
-          if (jsonLdMatches) {
-            for (const match of jsonLdMatches) {
-              try {
-                const data: any = JSON.parse(match.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, ''));
-                if (data.image) {
-                  imgUrl = typeof data.image === 'string' ? data.image : (Array.isArray(data.image) ? data.image[0] : null);
-                  if (imgUrl) break;
-                }
-              } catch (e) { /* skip */ }
-            }
-          }
-        }
-
-        if (imgUrl && imgUrl.startsWith('http')) {
-          console.log(`[GHOST v3.0] Target acquired via Googlebot: ${imgUrl.substring(0, 80)}...`);
-          
-          // Step 5: Fetch image binary bypassing CF
-          const imgResponse = await page.goto(imgUrl, { waitUntil: 'networkidle0', timeout: 30000 });
-          if (imgResponse) {
-            const buf = await imgResponse.buffer();
-            if (buf.length > 20_000 && !buf.toString('utf8', 0, 10).toLowerCase().includes('<html')) {
-              console.log(`✅ [GHOST v3.0] Extraction success: ${(buf.length / 1024).toFixed(1)}KB`);
-              state.success = true;
-              return buf;
-            }
-          }
-        }
-        console.warn('[GHOST v3.0] Googlebot cloak failed, falling back to VIP proxy...');
-      } catch (e) {
-        console.error('[GHOST v3.0] Bypass error:', (e as Error).message);
-      }
-    }
-    // ══════════════════════════════════════════════════════════
 
     state.layer = 'L2'; result = await layerVipRouter(targetUrl, page); if (result) { state.success = true; return result; }
     state.layer = 'L3'; result = await layerPicsave(targetUrl, page);   if (result) { state.success = true; return result; }

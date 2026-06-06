@@ -88,7 +88,7 @@ async function forceSubMiddleware(ctx, next) {
     }
     catch (err) {
         console.error('[ForceSubMiddleware] Unexpected error:', err);
-        return;
+        return await next(); // On unexpected error, allow through
     }
 }
 //# sourceMappingURL=forceSubMiddleware.js.map
