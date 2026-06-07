@@ -235,8 +235,8 @@ export async function process4KAi(imageUrl: string): Promise<Buffer> {
     {
       input: {
         image: base64Image,
-        scale: 2,
-        face_enhance: false
+        scale: 4,
+        face_enhance: false,
       }
     }
   );
@@ -246,9 +246,8 @@ export async function process4KAi(imageUrl: string): Promise<Buffer> {
   const response = await fetch(imageOutput.toString());
   const arrayBuffer = await response.arrayBuffer();
   const resultBuffer = await sharp(Buffer.from(new Uint8Array(arrayBuffer)))
-    .sharpen({ sigma: 0.6, m1: 0.2, m2: 0.2 })
     .jpeg({
-      quality: 97,
+      quality: 99,
       chromaSubsampling: '4:4:4',
       force: true,
       mozjpeg: true,
