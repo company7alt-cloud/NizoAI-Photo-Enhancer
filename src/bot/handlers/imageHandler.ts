@@ -828,17 +828,65 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
     // ── WALL 2: Queue position status message ─────────────────────────────────
     const queuePos = getQueuePosition();
+
+    const waveFrames: string[] = [
+      '⏳ جاري تحسين صورتك بتقنية NizoAI ●○○',
+      '⏳ جاري تحسين صورتك بتقنية NizoAI ○●○',
+      '⏳ جاري تحسين صورتك بتقنية NizoAI ○○●',
+      '🔍 يتم الآن تحليل تفاصيل الصورة ●○○',
+      '🔍 يتم الآن تحليل تفاصيل الصورة ○●○',
+      '🔍 يتم الآن تحليل تفاصيل الصورة ○○●',
+      '🎨 يتم تحسين الألوان والإضاءة ●○○',
+      '🎨 يتم تحسين الألوان والإضاءة ○●○',
+      '🎨 يتم تحسين الألوان والإضاءة ○○●',
+      '✨ يتم رفع الدقة وإبراز التفاصيل ●○○',
+      '✨ يتم رفع الدقة وإبراز التفاصيل ○●○',
+      '✨ يتم رفع الدقة وإبراز التفاصيل ○○●',
+      '⚡ الذكاء الاصطناعي يعمل بأقصى طاقته ●○○',
+      '⚡ الذكاء الاصطناعي يعمل بأقصى طاقته ○●○',
+      '⚡ الذكاء الاصطناعي يعمل بأقصى طاقته ○○●',
+      '🖼 جاري معالجة البكسلات بدقة فائقة ●○○',
+      '🖼 جاري معالجة البكسلات بدقة فائقة ○●○',
+      '🖼 جاري معالجة البكسلات بدقة فائقة ○○●',
+      '🚀 اللمسات الأخيرة على صورتك ●○○',
+      '🚀 اللمسات الأخيرة على صورتك ○●○',
+      '🚀 اللمسات الأخيرة على صورتك ○○●',
+      '🌟 تقنية NizoAI تصنع الفارق ●○○',
+      '🌟 تقنية NizoAI تصنع الفارق ○●○',
+      '🌟 تقنية NizoAI تصنع الفارق ○○●',
+      '💎 جودة احترافية في طريقها إليك ●○○',
+      '💎 جودة احترافية في طريقها إليك ○●○',
+      '💎 جودة احترافية في طريقها إليك ○○●',
+      '🔬 تحليل دقيق لكل تفصيل في صورتك ●○○',
+      '🔬 تحليل دقيق لكل تفصيل في صورتك ○●○',
+      '🔬 تحليل دقيق لكل تفصيل في صورتك ○○●',
+      '⏰ صبرك جميل، النتيجة ستبهرك ●○○',
+      '⏰ صبرك جميل، النتيجة ستبهرك ○●○',
+      '⏰ صبرك جميل، النتيجة ستبهرك ○○●',
+    ];
+
+    const initMsg = queuePos > 0
+      ? `⏳ تم وضعك في طابور الانتظار...\n(${queuePos} طلب قبلك) ●○○`
+      : '⏳ جاري تحسين صورتك بتقنية NizoAI الخاصة ●○○';
+
     let processingMsg: { chat: { id: number }; message_id: number };
-    if (queuePos > 0) {
-      processingMsg = await ctx.reply(
-        `⏳ تم وضعك في طابور الانتظار لضمان أعلى جودة...\n` +
-        `(${queuePos} طلب قبلك) سيتم معالجة صورتك قريباً `
-      );
-    } else {
-      processingMsg = await ctx.reply(
-        ' جاري تحسين صورتك بتقنية NizoAI الخاصة...\nقد يستغرق 30-60 ثانية 🌟'
-      );
-    }
+    processingMsg = await ctx.reply(initMsg);
+
+    // Typing indicator (النقاط المموجة في شريط تليجرام)
+    await ctx.api.sendChatAction(ctx.chat!.id, 'upload_document').catch(() => {});
+    const typingInterval = setInterval(async () => {
+      await ctx.api.sendChatAction(ctx.chat!.id, 'upload_document').catch(() => {});
+    }, 4000);
+
+    // Wave messages
+    let waveIdx = 0;
+    const waveInterval = setInterval(async () => {
+      await ctx.api.editMessageText(
+        processingMsg.chat.id,
+        processingMsg.message_id,
+        waveFrames[waveIdx++ % waveFrames.length]
+      ).catch(() => {});
+    }, 2000);
 
     try {
       // ── STEP: Download image as Buffer (no temp files) ────────────────────
@@ -850,20 +898,15 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
       const inputBuffer = Buffer.from(await fetchRes.arrayBuffer());
 
-      // ── Update processing message ─────────────────────────────────────────
-      await ctx.api
-        .editMessageText(
-          processingMsg.chat.id,
-          processingMsg.message_id,
-          '⚡ الذكاء الاصطناعي يعمل الآن...\nجاري رفع الدقة وتحسين التفاصيل '
-        )
-        .catch(() => { });
+      // waveInterval handles all message updates — no manual edit needed
 
       // ── STEP: Run local AI enhancement ───────────────────────────────────
       const resultBuffer = await enhanceWithONNX(inputBuffer);
       const fileName = `NizoAI_Enhanced_${Date.now()}.jpg`;
 
       // Delete processing message
+      clearInterval(waveInterval);
+      clearInterval(typingInterval);
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       // ── STEP: Deliver to user ─────────────────────────────────────────────
@@ -923,6 +966,8 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       }
 
     } catch (error: unknown) {
+      clearInterval(waveInterval);
+      clearInterval(typingInterval);
       // ── Refund 3 points on ANY failure (except file_too_large, already caught above)
       if (!isNanoAdminUser) {
         await User.findOneAndUpdate(
@@ -935,6 +980,8 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 2 من محاولات  تلقائياً ');
 
     } finally {
+      clearInterval(waveInterval);
+      clearInterval(typingInterval);
       // ── Release processing lock — ALWAYS, no exceptions ──────────────────
       if (!isNanoAdminUser) {
         await User.findOneAndUpdate(
