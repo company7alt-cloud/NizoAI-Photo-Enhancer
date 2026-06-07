@@ -637,7 +637,7 @@ async function layerRapidApi(targetUrl: string): Promise<Buffer | null> {
       return null;
     }
 
-    const buf = await safeFetch(finalUrl, MIN_SIZE);
+    const buf = await safeFetch(finalUrl, 1000);
     if (buf) {
       console.log(`✅ [L0-RAPIDAPI] ${(buf.length / 1024).toFixed(1)}KB`);
       return buf;
