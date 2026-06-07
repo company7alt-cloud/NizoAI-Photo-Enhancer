@@ -805,25 +805,18 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ══════════════════════════════════════
   if (data === 'notifications_menu') {
     await ctx.answerCallbackQuery().catch(() => {});
-    const text = 'قائمة الإشعارات 🔔\n\nاختر الإشعارات التي تود تفعيلها:';
-    const opts = {
+    await ctx.reply('قائمة الإشعارات 🔔\n\nاختر الإشعارات التي تود تفعيلها:', {
       reply_markup: {
         inline_keyboard: [
           [
-            // @ts-ignore
-            { text: '🔔 إشعارات الهدية اليومية', callback_data: 'toggle_daily_reminder', style: 'primary' },
-            // @ts-ignore
-            { text: '🔒 إشعارات مهمة — قريباً', callback_data: 'coming_soon_reminder', style: 'primary' }
+            { text: '🔔 إشعارات الهدية اليومية', callback_data: 'toggle_daily_reminder', style: 'primary' } as any,
+            { text: '🔒 إشعارات مهمة — قريباً', callback_data: 'coming_soon_reminder', style: 'primary' } as any,
           ],
           [
-            // @ts-ignore
-            { text: '🔴 رجوع', callback_data: 'back_to_main', style: 'danger' }
-          ]
-        ]
-      }
-    };
-    await ctx.editMessageText(text, opts).catch(async () => {
-      await ctx.reply(text, opts);
+            { text: '🔴 رجوع', callback_data: 'back_to_main', style: 'danger' } as any,
+          ],
+        ],
+      } as any,
     });
     return;
   }
