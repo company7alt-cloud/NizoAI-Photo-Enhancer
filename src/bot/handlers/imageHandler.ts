@@ -762,6 +762,23 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       fileSize = ctx.message.document.file_size ?? 0;
     }
 
+    // STRICT SINGLE IMAGE GUARD
+    const isAlbum = ctx.message?.media_group_id != null;
+
+    if (isAlbum) {
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { awaitingNanoBananaImage: false } }
+      );
+      await ctx.reply(
+        '❌ <b>يُسمح بصورة واحدة فقط!</b>\n\n' +
+        'أرسلت أكثر من صورة في نفس الوقت.\n' +
+        '📌 يرجى العودة واختيار الخدمة مجدداً وإرسال صورة واحدة فقط.',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
     if (!fileId) {
       // Do NOT reset state — let user try again with a valid image
       await ctx.reply('⚠️ يرجى إرسال صورة صالحة للمتابعة.');
