@@ -1156,15 +1156,9 @@ imageBot.on('message:text', async (ctx, next) => {
 
     // ── Guard B: Kill-Switch ──
     const { isInternetFetcherEnabled: _ifeB } = await import('./utils/internetFetcherSettings');
-    const _adminB: boolean = ctx.from?.id?.toString() === process.env.ADMIN_ID;
+    const _adminBIds: string[] = (process.env.ADMIN_IDS ?? '').split(',').map(id => id.trim()).filter(Boolean);
+    const _adminB: boolean = _adminBIds.includes(ctx.from?.id?.toString() ?? '');
     if (!_ifeB() && !_adminB) {
-      await ctx.reply(
-        `🔧 *تحميل الصور من الإنترنت*\n\n` +
-        `✨ هذه الميزة تحت الصيانة حالياً لتقديم تجربة أفضل لك!\n\n` +
-        `🚀 سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n` +
-        `💙 نعتذر عن الإزعاج ونقدّر صبرك الجميل`,
-        { parse_mode: 'Markdown' },
-      );
       return;
     }
 
