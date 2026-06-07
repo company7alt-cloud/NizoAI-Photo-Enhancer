@@ -1018,7 +1018,7 @@ imageBot.on('message:text', async (ctx, next) => {
         await ctx.reply(
           `❌ <b>فشل النشر!</b>\n\n` +
           `تأكد أن البوت مشرف في القناة وأن المعرف صحيح.\n` +
-          `<code>${err.message}</code>`,
+          `<code>حدث خطأ، يرجى المحاولة مرة أخرى.</code>`,
           { parse_mode: 'HTML' }
         );
         await User.updateOne({ telegramId }, { $set: { 'giveawaySetup.step': null } });
@@ -1180,7 +1180,7 @@ imageBot.on('message:text', async (ctx, next) => {
       );
       link = resolvedLink;
       await new Promise(r => setTimeout(r, 1_500));
-      await ctx.api.deleteMessage(cdnMsg.chat.id, cdnMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(cdnMsg.chat.id, cdnMsg.message_id).catch(() => { });
     } else if (
       /istockphoto\.com\/.*\.(jpg|jpeg|png)/i.test(link) ||
       /shutterstock\.com\/.*\.(jpg|jpeg|png)/i.test(link)
@@ -1217,11 +1217,11 @@ imageBot.on('message:text', async (ctx, next) => {
       const { fetchHighResImage } = await import('./services/imageFetcherService');
       const imageBuffer: Buffer = await fetchHighResImage(link);
 
-      user.dailyQuota        -= 2;
-      user.totalEnhancements  = (user.totalEnhancements ?? 0) + 1;
+      user.dailyQuota -= 2;
+      user.totalEnhancements = (user.totalEnhancements ?? 0) + 1;
       await user.save();
 
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       try {
         const { incrementGlobalCounter } = await import('./services/statsService');
@@ -1229,14 +1229,14 @@ imageBot.on('message:text', async (ctx, next) => {
       } catch { /* non-critical */ }
 
       const { InputFile } = await import('grammy');
-      const fileName       = `Nizo_HighRes_${Date.now()}.jpg`;
+      const fileName = `Nizo_HighRes_${Date.now()}.jpg`;
 
       // ── GREEN FORMAT BUTTONS using ✅ emoji ──
       const formatKeyboard = {
         inline_keyboard: [
           [
-            { text: '✅ JPG',  callback_data: 'magic_fmt_jpg'  },
-            { text: '✅ PNG',  callback_data: 'magic_fmt_png'  },
+            { text: '✅ JPG', callback_data: 'magic_fmt_jpg' },
+            { text: '✅ PNG', callback_data: 'magic_fmt_png' },
             { text: '✅ WEBP', callback_data: 'magic_fmt_webp' },
           ],
           [
@@ -1252,7 +1252,7 @@ imageBot.on('message:text', async (ctx, next) => {
           '✅ جُلبت الصورة مباشرة بأعلى دقة\n' +
           '💎 تكلفة العملية: <b>2 محاولة</b>\n' +
           '📦 تم الإرسال كملف للحفاظ على الجودة الكاملة',
-        parse_mode:   'HTML',
+        parse_mode: 'HTML',
         reply_markup: formatKeyboard,
       });
 
@@ -1265,8 +1265,8 @@ imageBot.on('message:text', async (ctx, next) => {
 
       if (ARCHIVE_ID) {
         const userTag: string = ctx.from!.username ? `@${ctx.from!.username}` : ctx.from!.first_name ?? 'مجهول';
-        const domainMatch       = link.match(/^https?:\/\/(?:www\.)?([^/?#]+)/i);
-        const domain: string    = domainMatch?.[1] ?? 'غير معروف';
+        const domainMatch = link.match(/^https?:\/\/(?:www\.)?([^/?#]+)/i);
+        const domain: string = domainMatch?.[1] ?? 'غير معروف';
         const shortLink: string = link.length > 60 ? `${link.substring(0, 60)}...` : link;
 
         ctx.api.sendDocument(ARCHIVE_ID, new InputFile(imageBuffer, fileName), {
@@ -1281,16 +1281,16 @@ imageBot.on('message:text', async (ctx, next) => {
             `📅 الوقت: ${new Date().toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })}\n` +
             `━━━━━━━━━━━━━━━━━━`,
           parse_mode: 'HTML', disable_notification: true,
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
     } catch (err: unknown) {
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
       console.error('[ImageFetcher-v10]', (err as Error).message);
-      
+
       const errMsg = (err as Error).message;
       let errorReply = '❌ <b>لم أتمكن من سحب الصورة.</b>\n\nتأكد من صحة الرابط وأنه رابط صفحة وليس رابط صورة مباشر 🔗';
-      
+
       if (errMsg.includes('VIP_PROXIES_EXHAUSTED')) {
         errorReply = '❌ <b>لم أتمكن من اختراق حماية الموقع!</b>\n\nالسيرفرات المدفوعة ترفض الاتصال حالياً، يرجى المحاولة في وقت لاحق ⏳';
       }
@@ -1744,7 +1744,7 @@ registerDocCallback('edit_pdf_doc', 'edit_pdf_doc', handleEditPdfDocCallback);
 
 // ─── docBot: Copy Generated Text ─────────────────────────────────────────────
 registerDocCallback('copy_generated_text', 'copy_generated_text', async (ctx) => {
-  await ctx.answerCallbackQuery().catch(() => {});
+  await ctx.answerCallbackQuery().catch(() => { });
   const text = ctx.session?.lastAiGeneratedText || ctx.session?.lastGeneratedDoc?.text;
   if (!text) {
     await ctx.reply('❌ النص غير متاح، يرجى إعادة إنشاء المستند.');
@@ -2084,7 +2084,7 @@ ${ctx.session.combinedText}`;
     if (ctx.callbackQuery?.message?.message_id) {
       await ctx.api.deleteMessage(ctx.chat!.id, ctx.callbackQuery.message.message_id).catch(() => { });
     }
-    await ctx.reply(`❌ فشل إنشاء المستند: ${err.message || 'خطأ غير معروف'}\nيرجى المحاولة مرة أخرى.`);
+    await ctx.reply(`❌ فشل إنشاء المستند، يرجى المحاولة مرة أخرى.`);
   } finally {
     // Cleanup rules
     ctx.session.textBuffer = [];
@@ -2343,7 +2343,7 @@ registerDocCallback(/^pages_(.*)$/, 'pages', async (ctx) => {
       }
       console.error('[Paid PDF] Error:', err);
       if (err.message !== 'Insufficient balance for auto mode') {
-        await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message}</code>`, { parse_mode: 'HTML' });
+        await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>`, { parse_mode: 'HTML' });
       }
       ctx.session.awaitingStyleSelect = false;
       ctx.session.isGenerating = false;
@@ -2426,7 +2426,7 @@ registerDocCallback('pages_locked', 'pages_locked', async (ctx) => {
   await ctx.answerCallbackQuery({
     text: '🔒 هذا الزر مقفل من قبل الادمن — اختر زر تلقائي',
     show_alert: true
-  }).catch(() => {});
+  }).catch(() => { });
 });
 
 registerDocCallback('cancel', 'cancel', async (ctx) => {
@@ -2652,7 +2652,7 @@ registerDocCallback('pro_confirm', 'pro_confirm', async (ctx) => {
 
   } catch (err: any) {
     console.error('[ProMode PDF Error]', err);
-    await ctx.reply(`❌ فشل إنشاء المستند: ${err?.message || 'خطأ غير معروف'}`);
+    await ctx.reply(`❌ فشل إنشاء المستند، يرجى المحاولة مرة أخرى.`);
   }
 });
 
@@ -3145,11 +3145,11 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
     const _isProMode = ctx.session.proImageMode === true;
     const _proImageRule = _isProMode
       ? '\nCRITICAL RULE FOR IMAGES: You are integrated with the Unsplash API.\n' +
-        'To insert an image, you MUST output exactly this format on its own line: [IMAGE: english_search_keyword]\n' +
-        'Example: [IMAGE: modern corporate office] or [IMAGE: apple logo]\n' +
-        'If the request mentions Arabic placeholders like "(\u0623\u062f\u062e\u0644 \u0635\u0648\u0631\u0629 \u0644\u0639\u0644\u0627\u0645\u0629 \u0646\u0627\u064a\u0643)", replace with: [IMAGE: nike logo]\n' +
-        'NEVER output literal Arabic image instructions like "(\u0635\u0648\u0631\u0629)" or "(\u0635\u0648\u0631\u0629: \u0643\u0630\u0627)".\n' +
-        'ONLY use [IMAGE: english_keyword] tags. Use maximum 2 per document.\n'
+      'To insert an image, you MUST output exactly this format on its own line: [IMAGE: english_search_keyword]\n' +
+      'Example: [IMAGE: modern corporate office] or [IMAGE: apple logo]\n' +
+      'If the request mentions Arabic placeholders like "(\u0623\u062f\u062e\u0644 \u0635\u0648\u0631\u0629 \u0644\u0639\u0644\u0627\u0645\u0629 \u0646\u0627\u064a\u0643)", replace with: [IMAGE: nike logo]\n' +
+      'NEVER output literal Arabic image instructions like "(\u0635\u0648\u0631\u0629)" or "(\u0635\u0648\u0631\u0629: \u0643\u0630\u0627)".\n' +
+      'ONLY use [IMAGE: english_keyword] tags. Use maximum 2 per document.\n'
       : '';
     const _systemPrompt = promptAnalysis.enhancedPrompt + _proImageRule;
     // ─────────────────────────────────────────────────────────────────────
@@ -3213,7 +3213,7 @@ docBot.on('message:text', withDocBotHandler('text_input', async (ctx, next) => {
     } catch (err: any) {
       await loadingState.stop();
       console.error('[DocBot Free AI] Error:', err);
-      await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>\n<code>${err?.message ?? 'unknown error'}</code>`, { parse_mode: 'HTML' });
+      await ctx.reply(`❌ <b>فشل إنشاء المستند.</b>`, { parse_mode: 'HTML' });
     }
     return;
   }
@@ -3459,7 +3459,7 @@ async function bootstrap(): Promise<void> {
     // Only close DB on actual termination signals
     process.removeAllListeners('SIGTERM');
     process.removeAllListeners('SIGINT');
-    process.once('SIGINT',  () => gracefulShutdown('SIGINT'));
+    process.once('SIGINT', () => gracefulShutdown('SIGINT'));
     process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
   } catch (error: unknown) {
@@ -3490,7 +3490,7 @@ registerDocCallback('pages_locked', 'pages_locked', async (ctx) => {
   await ctx.answerCallbackQuery({
     text: '🔒 هذا الزر مقفل من قبل الادمن — اختر زر تلقائي',
     show_alert: true
-  }).catch(() => {});
+  }).catch(() => { });
 });
 
 bootstrap();
