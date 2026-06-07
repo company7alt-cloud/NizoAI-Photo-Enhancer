@@ -768,13 +768,16 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    if (fileSize > 2 * 1024 * 1024) {
-      // Reject BEFORE touching DB — no refund needed since no deduction yet
+    if (fileSize > 10 * 1024 * 1024) {
       await User.findOneAndUpdate(
         { telegramId: userId.toString() },
         { $set: { awaitingNanoBananaImage: false } }
       );
-      await ctx.reply('❌ حجم الصورة يتجاوز 2 ميجابايت. يرجى إرسال صورة أصغر.');
+      await ctx.reply(
+        '❌ <b>حجم الصورة يتجاوز 10MB!</b>\n\n' +
+        'يرجى إرسال صورة أصغر حجماً للحصول على أفضل النتائج.',
+        { parse_mode: 'HTML' }
+      );
       return;
     }
 
@@ -786,12 +789,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const lockedUser = await User.findOneAndUpdate(
         {
           telegramId: userId.toString(),
-          dailyQuota: { $gte: 2 },          // must have 2 points
+          dailyQuota: { $gte: 3 },          // must have 3 points
           awaitingNanoBananaImage: true,            // still in waiting state
           isProcessingImage: { $ne: true },         // not already processing
         },
         {
-          $inc: { dailyQuota: -2 },
+          $inc: { dailyQuota: -3 },
           $set: {
             awaitingNanoBananaImage: false,
             isProcessingImage: true,
@@ -972,12 +975,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       if (!isNanoAdminUser) {
         await User.findOneAndUpdate(
           { telegramId: userId.toString() },
-          { $inc: { dailyQuota: 2 } }
+          { $inc: { dailyQuota: 3 } }
         );
       }
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
       console.error('[NanoAI] Error:', error instanceof Error ? error.message : error);
-      await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 2 من محاولات  تلقائياً ');
+      await ctx.reply('❌ عذراً، حدث خطأ. تم إعادة 3 محاولات لرصيدك تلقائياً ✅');
 
     } finally {
       clearInterval(waveInterval);
