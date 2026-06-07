@@ -64,6 +64,44 @@ cron.schedule('0 0 * * *', async () => {
   console.log('[CRON] Daily free PDF counters reset.');
 }, { timezone: 'Asia/Riyadh' });
 
+cron.schedule('*/5 * * * *', async () => {
+  try {
+    const eligibleUsers = await User.find({
+      dailyReminderEnabled: true,
+      lastRewardDate: { $ne: null },
+      dailyReminderSent: false,
+    });
+
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
+    for (const user of eligibleUsers) {
+      if (user.lastRewardDate && (now - new Date(user.lastRewardDate).getTime()) >= TWENTY_FOUR_HOURS) {
+        try {
+          await imageBot.api.sendMessage(
+            user.telegramId,
+            '🎁 صديقي، هديتك اليومية جاهزة!\n\nيمكنك الآن استلام 5 محاولات مجانية 💎\n\nاضغط على الزر أدناه لاستلامها الآن 👇',
+            {
+              reply_markup: {
+                inline_keyboard: [[{ text: '🎁 استلم هديتك الآن', callback_data: 'claim_daily_reward' }]]
+              }
+            }
+          );
+          
+          await User.updateOne(
+            { _id: user._id },
+            { $set: { dailyReminderSent: true } }
+          );
+        } catch (err) {
+          // Ignore silently
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[CRON] Daily reminder error:', err);
+  }
+});
+
 function rateLimitMiddleware(limitMs: number, map: Map<number, number>) {
   return async (ctx: BotContext, next: NextFunction): Promise<void> => {
     const userId = ctx.from?.id;

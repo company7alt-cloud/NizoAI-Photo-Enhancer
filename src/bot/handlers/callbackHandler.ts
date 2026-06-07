@@ -803,6 +803,59 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ══════════════════════════════════════
   // 🎁 الهدية اليومية
   // ══════════════════════════════════════
+  if (data === 'notifications_menu') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const text = '🔔 <b>قائمة الإشعارات</b>\n\nاختر الإشعارات التي تود تفعيلها:';
+    const opts = {
+      parse_mode: 'HTML' as const,
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🔔 إشعارات الهدية اليومية', callback_data: 'toggle_daily_reminder' },
+            { text: '🔒 إشعارات مهمة — قريباً', callback_data: 'coming_soon_reminder' }
+          ],
+          [
+            { text: '🔴 رجوع', callback_data: 'back_to_main' }
+          ]
+        ]
+      }
+    };
+    await ctx.editMessageText(text, opts).catch(async () => {
+      await ctx.reply(text, opts);
+    });
+    return;
+  }
+
+  if (data === 'toggle_daily_reminder') {
+    const telegramId = ctx.from?.id.toString();
+    if (!telegramId) return;
+    const user = await User.findOne({ telegramId });
+    if (!user) return;
+
+    if (!user.dailyReminderEnabled) {
+      await User.findOneAndUpdate({ telegramId }, { $set: { dailyReminderEnabled: true } });
+      await ctx.answerCallbackQuery({
+        text: '✅ تم تفعيل إشعار الهدية اليومية!\n\nسنذكرك عندما تكون هديتك اليومية جاهزة للاستلام 🎁',
+        show_alert: true
+      }).catch(() => {});
+    } else {
+      await User.findOneAndUpdate({ telegramId }, { $set: { dailyReminderEnabled: false } });
+      await ctx.answerCallbackQuery({
+        text: '🔕 تم إيقاف إشعار الهدية اليومية.',
+        show_alert: true
+      }).catch(() => {});
+    }
+    return;
+  }
+
+  if (data === 'coming_soon_reminder') {
+    await ctx.answerCallbackQuery({
+      text: '🔒 هذه الميزة تحت الصيانة حالياً، ترقبها قريباً!',
+      show_alert: true
+    }).catch(() => {});
+    return;
+  }
+
   if (data === 'claim_daily_reward') {
     try {
       const telegramId = ctx.from?.id.toString();
@@ -866,7 +919,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         { telegramId },
         {
           $inc: { dailyQuota: 5 },
-          $set: { lastRewardDate: now },
+          $set: { lastRewardDate: now, dailyReminderSent: false },
         },
         { new: true }
       );

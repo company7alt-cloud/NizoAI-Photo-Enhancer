@@ -277,6 +277,12 @@ export async function startCommand(ctx: BotContext): Promise<void> {
           { text: '🧞‍♂️ تحميل صورة من الإنترنت', callback_data: 'menu_internet_download', style: 'primary' as any },
         ],
 
+        // ROW 6.5 — Notifications (green)
+        [
+          // @ts-ignore
+          { text: '🔔 الإشعارات', callback_data: 'notifications_menu', pay: false, style: 'success' },
+        ],
+
         // ROW 7 — Statistics (green)
         [
           // @ts-ignore

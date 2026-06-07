@@ -37,6 +37,9 @@ export interface IUser extends Document {
   adminTargetUserId: string | null;
   isBlocked: boolean;
   lastSeenAt: Date | null;
+  dailyReminderEnabled: boolean;
+  dailyReminderJobId?: string | null;
+  dailyReminderSent: boolean;
   awaitingNanoBananaImage: boolean;
   awaitingMagicEnhanceImage: boolean;
   lastMagicEnhanceBuffer: string;
@@ -248,6 +251,9 @@ const UserSchema = new Schema<IUser>(
     adminTargetUserId: { type: String, default: null },
     isBlocked: { type: Boolean, default: false },
     lastSeenAt: { type: Date, default: null },
+    dailyReminderEnabled: { type: Boolean, default: false },
+    dailyReminderJobId: { type: String, default: null },
+    dailyReminderSent: { type: Boolean, default: false },
     awaitingNanoBananaImage: { type: Boolean, default: false },
     awaitingMagicEnhanceImage: { type: Boolean, default: false },
     lastMagicEnhanceBuffer: { type: String, default: '' },
