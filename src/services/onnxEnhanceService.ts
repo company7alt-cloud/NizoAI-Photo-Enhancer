@@ -7,7 +7,7 @@ const MODEL_PATH = path.join(process.cwd(), 'RealESRGAN_x4.onnx');
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_CONCURRENT = 2;
 const JPEG_QUALITY = 99;
-const TILE_SIZE = 128;
+const TILE_SIZE = 64;
 const SCALE = 4;
 
 let sessionCache: ort.InferenceSession | null = null;
