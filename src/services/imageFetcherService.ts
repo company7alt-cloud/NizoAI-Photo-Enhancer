@@ -594,60 +594,6 @@ async function layerScreenshot(page: Page): Promise<Buffer | null> {
   return null;
 }
 
-async function layerRapidApi(targetUrl: string): Promise<Buffer | null> {
-  const rapidApiKey = process.env.RAPIDAPI_KEY;
-  if (!rapidApiKey) return null;
-
-  const isSupported =
-    targetUrl.includes('freepik.com') ||
-    targetUrl.includes('magnific.com');
-  if (!isSupported) return null;
-
-  console.log(`⚡ [L0-RAPIDAPI] Attempting for: ${targetUrl}`);
-
-  try {
-    const apiRes = await fetch('https://api-freepik-magnific-downloader.p.rapidapi.com/', {
-      method: 'POST',
-      headers: {
-        'x-rapidapi-key': rapidApiKey,
-        'x-rapidapi-host': 'api-freepik-magnific-downloader.p.rapidapi.com',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url: targetUrl }),
-    });
-
-    if (!apiRes.ok) {
-      console.warn(`[L0-RAPIDAPI] API error: ${apiRes.status}`);
-      return null;
-    }
-
-    const data = await apiRes.json() as any;
-    console.log('[L0-RAPIDAPI] Response:', JSON.stringify(data));
-
-    const finalUrl =
-      data?.url ||
-      data?.download_url ||
-      data?.result ||
-      data?.image ||
-      data?.file_url ||
-      null;
-
-    if (!finalUrl) {
-      console.warn('[L0-RAPIDAPI] No URL found in response');
-      return null;
-    }
-
-    const buf = await safeFetch(finalUrl, 1000);
-    if (buf) {
-      console.log(`✅ [L0-RAPIDAPI] ${(buf.length / 1024).toFixed(1)}KB`);
-      return buf;
-    }
-  } catch (err) {
-    console.warn('[L0-RAPIDAPI] Failed:', (err as Error).message);
-  }
-  return null;
-}
-
 // ══════════════════════════════════════════════
 // MAIN EXPORT — fetchHighResImage v10.0 FINAL
 // ══════════════════════════════════════════════
@@ -662,12 +608,8 @@ export async function fetchHighResImage(rawUrl: string): Promise<Buffer> {
   const isVipUrl = VIP_MAP.some(v => targetUrl.includes(v.match));
 
   try {
-    state.layer = 'L0';
-    let result = await layerRapidApi(targetUrl);
-    if (result) { state.success = true; return result; }
-
     state.layer = 'L1';
-    result = await layerDirectFetch(targetUrl);
+    let result = await layerDirectFetch(targetUrl);
     if (result) { state.success = true; return result; }
 
     const viewportWidth = 1900 + Math.floor(Math.random() * 21);

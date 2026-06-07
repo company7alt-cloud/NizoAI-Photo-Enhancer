@@ -1288,11 +1288,14 @@ imageBot.on('message:text', async (ctx, next) => {
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
       console.error('[ImageFetcher-v10]', (err as Error).message);
       
-      await ctx.reply(
-        '⚠️ تعذّر جلب الصورة من هذا الرابط.\n\n' +
-        '📌 تأكد أن الرابط يؤدي مباشرة لصفحة الصورة وليس نتيجة بحث.\n' +
-        '🔄 يمكنك المحاولة مرة أخرى برابط مختلف.'
-      );
+      const errMsg = (err as Error).message;
+      let errorReply = '❌ <b>لم أتمكن من سحب الصورة.</b>\n\nتأكد من صحة الرابط وأنه رابط صفحة وليس رابط صورة مباشر 🔗';
+      
+      if (errMsg.includes('VIP_PROXIES_EXHAUSTED')) {
+        errorReply = '❌ <b>لم أتمكن من اختراق حماية الموقع!</b>\n\nالسيرفرات المدفوعة ترفض الاتصال حالياً، يرجى المحاولة في وقت لاحق ⏳';
+      }
+
+      await ctx.reply(errorReply, { parse_mode: 'HTML' });
     }
     return;
   }

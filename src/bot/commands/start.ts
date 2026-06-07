@@ -7,7 +7,9 @@ import { safeReplyWithPhoto } from '../../utils/assetGuard';
 import { getSettings } from '../../services/settingsService';
 import { getGlobalCounter } from '../../services/statsService';
 
+
 // ─── /start ───────────────────────────────────────────────────────────────────
+
 export async function startCommand(ctx: BotContext): Promise<void> {
   const telegramId = ctx.from!.id;
   const firstName = ctx.from!.first_name ?? 'User';
@@ -90,6 +92,10 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     // ── 1. Referrer detection ──────────────────────────────────────────────────
     const referrerId = parseReferralPayload(rawPayload);
 
+    // ── 2. Check if user is brand-new (not in DB) ──────────────────────────────
+    const existingUser = await User.findOne({ telegramId });
+    const isActuallyNew = !existingUser;
+
     const now = new Date();
     const userId = ctx.from?.id;
     const displayFirstName = ctx.from?.first_name || 'مجهول';
@@ -97,17 +103,9 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     const userLink = `tg://user?id=${userId}`;
     const timeStr = now.toLocaleString('ar-SA');
 
-    // 🔥 FIX 1: Merge findOne and findOneAndUpdate for existingUser
-    const existingUser = await User.findOneAndUpdate(
-      { telegramId: userId?.toString() },
-      { $set: { lastSeenAt: now } },
-      { new: false } // Returns the document BEFORE the update (null if not exists)
-    );
-    const isActuallyNew = !existingUser;
-
-    // ── 2. Check if user is brand-new (not in DB) ──────────────────────────────
-    if (isActuallyNew) {
+    if (!existingUser) {
       // Count total users AFTER creating the new user
+      // Since this runs before user creation in the DB, we add +1 to reflect the true count
       const totalUsers = (await User.countDocuments()) + 1;
 
       const notifMessage =
@@ -125,6 +123,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
       const targets: (string | number)[] = [];
 
       if (alertChannelRaw) {
+        // Correctly parse negative channel IDs for Telegram API
         const channelIdNum = Number(alertChannelRaw);
         targets.push(!isNaN(channelIdNum) ? channelIdNum : alertChannelRaw);
       } else {
@@ -139,6 +138,12 @@ export async function startCommand(ctx: BotContext): Promise<void> {
         }
       }
     }
+
+    // Update lastSeenAt every visit
+    await User.findOneAndUpdate(
+      { telegramId: userId?.toString() },
+      { $set: { lastSeenAt: now } }
+    );
 
     // ── 3. Find or create user ─────────────────────────────────────────────────
     const { user } = await User.findOrCreate({
@@ -185,19 +190,48 @@ export async function startCommand(ctx: BotContext): Promise<void> {
       }
     }
 
-    // 🔥 FIX 3: Remove the duplicate query and use the in-memory user
-    const freshUser = user;
+    // ── 5. Admin notification for new joins ────────────────────────────────────
+    // Legacy notification removed.
 
-    // 🔥 FIX 2: Parallelize DB queries for Settings and Stats
-    const [devLink, chanLink, sharedSettings, totalStats] = await Promise.all([
-      Settings.get('developerLink') as Promise<string | null>,
-      Settings.get('channelLink') as Promise<string | null>,
-      getSettings(),
-      getGlobalCounter(),
-    ]);
+    // ── 6. Reload fresh user to get updated quota after any reward ─────────────
+    const freshUser = (await User.findOne({ telegramId })) ?? user;
 
-    const nanoLocks = sharedSettings.locks;
-    const eraserLocks = sharedSettings.locks;
+    // ── 7. Build greeting ──────────────────────────────────────────────────────
+    // const botUsername = ctx.me.username;
+
+    // let quotaLine: string;
+    // if (freshUser.dailyQuota < 0) {
+    //   quotaLine =
+    //     `⚠️ رصيدك: ${freshUser.dailyQuota} محاولة ` +
+    //     `(دين متراكم — يُخصم من مكافآتك القادمة)`;
+    // } else {
+    //   quotaLine = `🎁 محاولاتك اليومية: ${freshUser.dailyQuota}`;
+    // }
+
+    // const joinDate = freshUser.joinedAt
+    //   ? new Date(freshUser.joinedAt).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' })
+    //   : 'غير محدد';
+
+    // const greeting =
+    //   `- مرحباً ( ${firstName} ) 🎃\n\n` +
+    //   `📅 تاريخ انضمامك: ${joinDate}\n\n` +
+    //   `• هل ترغب في تحسين جودة الصور القديمة الى . 2k - 4k - 8k ؟\n\n` +
+    //   `• من خلال بوت رفع جودة الصور يمكنك تحقيق ذالك بكل سهولة وتحسين جودة الصورة بذكاء الاصطناعي دون الحاجة لتطبيق او موقع 🙂🤍\n\n` +
+    //   `👇👇👇\n\n` +
+    //   `► فقط قم بإرسال الصورة واترك الباقي علينا 🤍 ◄\n\n` +
+    //   `🔗 رابط الإحالة الخاص بك:\n` +
+    //   `https://t.me/${botUsername}?start=${telegramId}\n\n` +
+    //   quotaLine;
+
+    // ── 8. Inline keyboard (developer / channel links) ─────────────────────────
+    const devLink = (await Settings.get('developerLink')) as string | null;
+    const chanLink = (await Settings.get('channelLink')) as string | null;
+
+    const nanoSettings = await getSettings();
+    const nanoLocks = nanoSettings.locks;
+    const eraserSettingsData = await getSettings();
+    const eraserLocks = eraserSettingsData.locks;
+    const totalStats = await getGlobalCounter();
 
     const keyboard = {
       inline_keyboard: [
@@ -258,6 +292,8 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     };
 
     // ── 9. Send welcome message with image (bulletproof path) ─────────────────
+    // NOTE: This file must be committed to GitHub.
+    // Files only on the server will be wiped by git reset --hard.
     const welcomeImagePath = path.join(process.cwd(), 'assets', 'welcome_image.jpg');
 
     const caption = 
@@ -284,6 +320,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
 }
 
 // ─── /invite ──────────────────────────────────────────────────────────────────
+
 export async function inviteCommand(ctx: BotContext): Promise<void> {
   const telegramId = ctx.from!.id;
   const botUsername = ctx.me.username;
@@ -302,6 +339,7 @@ export async function inviteCommand(ctx: BotContext): Promise<void> {
 }
 
 // ─── Internal helper ──────────────────────────────────────────────────────────
+
 function parseReferralPayload(payload: string): number | null {
   if (!payload) return null;
   const id = parseInt(payload, 10);
