@@ -584,14 +584,15 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         },
         body: JSON.stringify({
           input: {
-            image:        imageUrl,
-            scale_factor: 2,
-            resemblance:  0.6,
-            creativity:   0.35,
-            dynamic:      6,
-            sharpen:      2,
+            image:         imageUrl,
+            scale_factor:  2,
+            resemblance:   0.9,
+            creativity:    0.2,
+            dynamic:       8,
+            sharpen:       3,
             tiling_width:  112,
             tiling_height: 144,
+            output_format: 'jpg',
           }
         })
       });
