@@ -4,10 +4,10 @@ import sharp from 'sharp';
 import path from 'path';
 
 const MODEL_PATH = path.join(process.cwd(), 'RealESRGAN_x4.onnx');
-const MAX_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_CONCURRENT = 2;
-const JPEG_QUALITY = 95;
-const TILE_SIZE = 64;
+const JPEG_QUALITY = 99;
+const TILE_SIZE = 128;
 const SCALE = 4;
 
 let sessionCache: ort.InferenceSession | null = null;
@@ -87,8 +87,8 @@ export async function enhanceWithONNX(inputBuffer: Buffer): Promise<Buffer> {
     const origW = metadata.width ?? 256;
     const origH = metadata.height ?? 256;
 
-    // Resize to max 512 on longest edge
-    const scale = Math.min(1, 512 / Math.max(origW, origH));
+    // Resize to max 1024 on longest edge for better quality
+    const scale = Math.min(1, 1024 / Math.max(origW, origH));
     const procW = Math.round(origW * scale);
     const procH = Math.round(origH * scale);
 
