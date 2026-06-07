@@ -805,17 +805,19 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ══════════════════════════════════════
   if (data === 'notifications_menu') {
     await ctx.answerCallbackQuery().catch(() => {});
-    const text = '🔔 <b>قائمة الإشعارات</b>\n\nاختر الإشعارات التي تود تفعيلها:';
+    const text = 'قائمة الإشعارات 🔔\n\nاختر الإشعارات التي تود تفعيلها:';
     const opts = {
-      parse_mode: 'HTML' as const,
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '🔔 إشعارات الهدية اليومية', callback_data: 'toggle_daily_reminder' },
-            { text: '🔒 إشعارات مهمة — قريباً', callback_data: 'coming_soon_reminder' }
+            // @ts-ignore
+            { text: '🔔 إشعارات الهدية اليومية', callback_data: 'toggle_daily_reminder', style: 'primary' },
+            // @ts-ignore
+            { text: '🔒 إشعارات مهمة — قريباً', callback_data: 'coming_soon_reminder', style: 'primary' }
           ],
           [
-            { text: '🔴 رجوع', callback_data: 'back_to_main' }
+            // @ts-ignore
+            { text: '🔴 رجوع', callback_data: 'back_to_main', style: 'danger' }
           ]
         ]
       }
