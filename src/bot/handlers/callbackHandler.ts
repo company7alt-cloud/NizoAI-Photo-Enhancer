@@ -1626,10 +1626,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const nanoAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => id.trim());
     const isNanoAdmin = nanoAdminIds.includes(ctx.from!.id.toString());
 
-    if (!isNanoAdmin && nanoUser.dailyQuota < 2) {
+    if (!isNanoAdmin && nanoUser.dailyQuota < 3) {
       await ctx.reply(
         `⚠️ رصيدك غير كافٍ!\n` +
-        `تحتاج <b>2 محاولات</b> لاستخدام هذه الميزة \n` +
+        `تحتاج <b>3 محاولات</b> لاستخدام هذه الميزة \n` +
         `رصيدك الحالي: <b>${nanoUser.dailyQuota}</b> محاولة`,
         { parse_mode: 'HTML' }
       );
