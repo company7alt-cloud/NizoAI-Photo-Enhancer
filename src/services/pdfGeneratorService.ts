@@ -310,7 +310,7 @@ function renderRichLine(
   const lineGap     = typeof (line as any).lineSpacing    === 'number' ? (line as any).lineSpacing    : 18;
   doc.lineGap(lineGap - fontSize); // pdfkit lineGap is extra space; subtract fontSize for net gap
 
-  const newY = drawArabicParagraph(
+  drawArabicParagraph(
     doc,
     line.text,
     effectiveX,
@@ -349,7 +349,10 @@ function renderRichLine(
   // italic note: pdfkit with a non-italic font variant cannot tilt glyphs;
   // we skip the effect silently to avoid font registration errors.
 
-  return newY > currentY ? (newY - currentY) : lineH;
+  // Always return a flat lineH so the caller advances by exactly one line.
+  // drawArabicParagraph already tracks its own Y internally; returning
+  // (newY - currentY) was double-counting and pushing every line onto a new page.
+  return lineH;
 }
 
 // ─── Main generator (wizard flow) ─────────────────────────────────────────────
@@ -464,12 +467,20 @@ function drawArabicParagraph(
       continue;
     }
 
-    const isArabic = /[\u0600-\u06FF]/.test(inputLine);
+    const isArabic = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(inputLine);
     const prepared = isArabic ? prepareArabicText(inputLine) : inputLine;
 
-    const pdfAlign = align === 'center' ? 'center'
-      : align === 'left' ? 'left'
-      : 'right';
+    let pdfAlign: 'right' | 'center' | 'left';
+    if (align === 'center') {
+      pdfAlign = 'center';
+    } else if (align === 'left') {
+      pdfAlign = 'left';
+    } else if (align === 'right') {
+      pdfAlign = 'right';
+    } else {
+      // auto-detect: Arabic defaults right, Latin defaults left
+      pdfAlign = isArabic ? 'right' : 'left';
+    }
 
     const lineHeight = doc._fontSize * 1.6;
 
