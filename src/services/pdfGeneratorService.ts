@@ -460,45 +460,31 @@ function drawArabicParagraph(
 
   for (const inputLine of inputLines) {
     if (!inputLine.trim()) {
-      currentY += (doc.currentLineHeight ? doc.currentLineHeight(true) : 20);
+      currentY += doc._fontSize * 1.4;
       continue;
     }
 
     const isArabic = /[\u0600-\u06FF]/.test(inputLine);
+    const prepared = isArabic ? prepareArabicText(inputLine) : inputLine;
 
-    // FIX 1: Reshape Arabic so glyphs connect, then reverse the character order
-    // so PDFKit receives the correct visual (left-to-right storage) order.
-    // arabicReshaper already produces visual order; reversing again lets PDFKit
-    // render without double-applying its own bidi algorithm.
-    const shaped = isArabic ? prepareArabicText(inputLine) : inputLine;
-    const visualText = isArabic ? Array.from(shaped).reverse().join('') : shaped;
+    const pdfAlign = align === 'center' ? 'center'
+      : align === 'left' ? 'left'
+      : 'right';
 
-    // FIX 2: Always honour the caller's alignment. Default is 'right'.
-    // Remove content-based auto-detection — the user's choice is the source of truth.
-    let pdfAlign: string;
-    if (align === 'center') {
-      pdfAlign = 'center';
-    } else if (align === 'left') {
-      pdfAlign = 'left';
-    } else {
-      pdfAlign = 'right'; // default (covers 'right' and any unrecognised value)
-    }
+    const lineHeight = doc._fontSize * 1.6;
 
     try {
-      // FIX 3: Keep lineBreak:false to prevent PDFKit from splitting one line
-      // into multiple text-stream objects (which caused 39 pages).
-      doc.text(visualText, startX, currentY, {
+      doc.text(prepared, startX, currentY, {
         width,
         align: pdfAlign,
-        lineBreak: false
+        lineBreak: false,
+        continued: false,
       });
+      currentY += lineHeight;
     } catch (e) {
-      console.error('[PDF] doc.text crash, skipping line:', e);
+      console.error('[PDF] doc.text crash:', e);
+      currentY += lineHeight;
     }
-
-    // FIX 3: Advance Y manually after lineBreak:false — doc.y is unreliable
-    // for RTL/lineBreak:false combinations.
-    currentY += doc.currentLineHeight(true) + 2;
   }
 
   return currentY;
@@ -572,12 +558,6 @@ export async function generateDocumentFromLines(
       const txtColor = docTextColor || '#000000';
 
       let pageCount = 0;
-      doc.on('pageAdded', () => {
-        pageCount++;
-        // NOTE: pageAdded fires BEFORE drawBackground() fills the background.
-        // Font/color are re-applied explicitly at the END of addPage() after
-        // drawBackground(), so we only count the page here.
-      });
 
       const drawBackground = () => {
         if (bgColor !== '#FFFFFF') {
@@ -589,15 +569,12 @@ export async function generateDocumentFromLines(
 
       const addPage = () => {
         doc.addPage();
-        // BUG 3 FIX: drawBackground() FIRST, then restore font/color so the
-        // fill() call inside drawBackground() cannot clobber our text color.
+        pageCount++;
         drawBackground();
         const W = doc.page.width;
         const H = doc.page.height;
-        // BUG 3 FIX: Explicitly re-apply font, size, and color after every new page.
         try { doc.font(chosenFont); } catch (e) { console.error('[PDF] addPage font restore failed:', e); }
         doc.fontSize(BASE_SIZE).fillColor(txtColor);
-        // No border box — clean pages only
         return { W, H };
       };
 
