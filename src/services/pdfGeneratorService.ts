@@ -485,16 +485,21 @@ function drawArabicParagraph(
     }
 
     try {
+      // BUG 1 & 4 FIX: lineBreak:true lets PDFKit handle RTL + center alignment
+      // correctly. Y is advanced naturally by PDFKit; we read doc.y afterwards.
       doc.text(finalLine, startX, currentY, {
         width,
         align: pdfAlign,
-        lineBreak: false
+        lineBreak: true
       });
     } catch (e) {
       console.error('[PDF] doc.text crash, skipping line:', e);
     }
 
-    currentY = doc.y || (currentY + (doc._fontSize || 18) * 1.6);
+    // Let PDFKit advance Y naturally; fall back to a manual estimate only if doc.y
+    // didn't move (e.g. empty string edge-case).
+    const afterY = doc.y;
+    currentY = afterY > currentY ? afterY : currentY + (doc._fontSize || 18) * 1.6;
   }
 
   return currentY;
@@ -570,8 +575,9 @@ export async function generateDocumentFromLines(
       let pageCount = 0;
       doc.on('pageAdded', () => {
         pageCount++;
-        try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font on pageAdded:', error); }
-        doc.fontSize(BASE_SIZE).fillColor(txtColor);
+        // NOTE: pageAdded fires BEFORE drawBackground() fills the background.
+        // Font/color are re-applied explicitly at the END of addPage() after
+        // drawBackground(), so we only count the page here.
       });
 
       const drawBackground = () => {
@@ -584,9 +590,14 @@ export async function generateDocumentFromLines(
 
       const addPage = () => {
         doc.addPage();
+        // BUG 3 FIX: drawBackground() FIRST, then restore font/color so the
+        // fill() call inside drawBackground() cannot clobber our text color.
         drawBackground();
         const W = doc.page.width;
         const H = doc.page.height;
+        // BUG 3 FIX: Explicitly re-apply font, size, and color after every new page.
+        try { doc.font(chosenFont); } catch (e) { console.error('[PDF] addPage font restore failed:', e); }
+        doc.fontSize(BASE_SIZE).fillColor(txtColor);
         // No border box — clean pages only
         return { W, H };
       };
@@ -792,10 +803,11 @@ export async function generateDocumentFromLines(
         // Auto-paginate
         if (currentY + effectiveLineH > maxY) {
           ({ W, H } = addPage());
-          currentY = doc.page.margins.top ?? PADDING;
+          // BUG 2 FIX: always reset to PADDING (not doc.page.margins.top which
+          // may be 0 when margin:0 is set), so text never touches the top edge.
+          currentY = PADDING;
           doc.y = currentY;
-          try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font during pagination:', error); }
-          doc.fontSize(BASE_SIZE).fillColor(txtColor);
+          // Font/color already restored by addPage() — no need to repeat here.
         }
 
         if (raw === '') {
