@@ -460,46 +460,45 @@ function drawArabicParagraph(
 
   for (const inputLine of inputLines) {
     if (!inputLine.trim()) {
-      currentY += (doc.currentLineHeight ? doc.currentLineHeight() : 20);
+      currentY += (doc.currentLineHeight ? doc.currentLineHeight(true) : 20);
       continue;
     }
 
     const isArabic = /[\u0600-\u06FF]/.test(inputLine);
 
-    // Reshape Arabic letters so they connect properly
-    // PDFKit handles RTL direction and bracket mirroring natively via align:'right'
-    const finalLine = isArabic
-      ? prepareArabicText(inputLine)
-      : inputLine;
+    // FIX 1: Reshape Arabic so glyphs connect, then reverse the character order
+    // so PDFKit receives the correct visual (left-to-right storage) order.
+    // arabicReshaper already produces visual order; reversing again lets PDFKit
+    // render without double-applying its own bidi algorithm.
+    const shaped = isArabic ? prepareArabicText(inputLine) : inputLine;
+    const visualText = isArabic ? Array.from(shaped).reverse().join('') : shaped;
 
-    // Alignment: user's choice overrides auto-detection for center,
-    // otherwise Arabic=right, English=left
+    // FIX 2: Always honour the caller's alignment. Default is 'right'.
+    // Remove content-based auto-detection — the user's choice is the source of truth.
     let pdfAlign: string;
     if (align === 'center') {
       pdfAlign = 'center';
     } else if (align === 'left') {
       pdfAlign = 'left';
     } else {
-      // default: Arabic→right, English→left
-      pdfAlign = isArabic ? 'right' : 'left';
+      pdfAlign = 'right'; // default (covers 'right' and any unrecognised value)
     }
 
     try {
-      // BUG 1 & 4 FIX: lineBreak:true lets PDFKit handle RTL + center alignment
-      // correctly. Y is advanced naturally by PDFKit; we read doc.y afterwards.
-      doc.text(finalLine, startX, currentY, {
+      // FIX 3: Keep lineBreak:false to prevent PDFKit from splitting one line
+      // into multiple text-stream objects (which caused 39 pages).
+      doc.text(visualText, startX, currentY, {
         width,
         align: pdfAlign,
-        lineBreak: true
+        lineBreak: false
       });
     } catch (e) {
       console.error('[PDF] doc.text crash, skipping line:', e);
     }
 
-    // Let PDFKit advance Y naturally; fall back to a manual estimate only if doc.y
-    // didn't move (e.g. empty string edge-case).
-    const afterY = doc.y;
-    currentY = afterY > currentY ? afterY : currentY + (doc._fontSize || 18) * 1.6;
+    // FIX 3: Advance Y manually after lineBreak:false — doc.y is unreliable
+    // for RTL/lineBreak:false combinations.
+    currentY += doc.currentLineHeight(true) + 2;
   }
 
   return currentY;
