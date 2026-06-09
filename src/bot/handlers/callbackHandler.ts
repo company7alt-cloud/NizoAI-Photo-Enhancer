@@ -22,6 +22,13 @@ import {
 } from '../../services/onnxEnhanceService';
 import { ForceSubChannel } from '../../database/models/ForceSubChannel';
 
+import { execFile } from 'child_process';
+import util from 'util';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+const execFileAsync = util.promisify(execFile);
+
 const GRID_CONFIGS: Record<number, { cols: number; rows: number }> = {
   30:  { cols: 5,  rows: 6  },
   40:  { cols: 5,  rows: 8  },
@@ -35,61 +42,110 @@ const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
 const BACKUP_CHANNEL_ID = ARCHIVE_GROUP_ID || CHANNEL_ID;
 
+async function convertWithImageMagick(
+  inputBuffer: Buffer,
+  sourceFormat: string,
+  targetFormat: string
+): Promise<Buffer> {
+  const jobId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  const src = sourceFormat.toLowerCase();
+  const tgt = targetFormat.toLowerCase();
+  const inputPath = path.join(os.tmpdir(), `nizo_${jobId}_in.${src}`);
+  const outputPath = path.join(os.tmpdir(), `nizo_${jobId}_out.${tgt}`);
+
+  fs.writeFileSync(inputPath, inputBuffer);
+
+  try {
+    const rawFormats = ['cr2', 'nef', 'arw', 'dng', 'sr2', 'raw'];
+    const heicFormats = ['heic', 'heif'];
+    const adobeFormats = ['psd', 'ai', 'eps'];
+
+    if (rawFormats.includes(src)) {
+      const { stdout } = await execFileAsync('dcraw', ['-c', '-w', inputPath], { encoding: 'buffer' });
+      const tempPpm = `${inputPath}.ppm`;
+      fs.writeFileSync(tempPpm, stdout as unknown as Buffer);
+      await execFileAsync('convert', [tempPpm, outputPath]);
+      if (fs.existsSync(tempPpm)) fs.unlinkSync(tempPpm);
+    } else if (heicFormats.includes(src)) {
+      await execFileAsync('heif-convert', [inputPath, outputPath]);
+    } else if (adobeFormats.includes(src)) {
+      await execFileAsync('convert', [
+        '-density', '300',
+        `${inputPath}[0]`,
+        '-flatten',
+        '-quality', '95',
+        outputPath,
+      ]);
+    } else {
+      await execFileAsync('convert', [inputPath, '-quality', '95', outputPath]);
+    }
+
+    const result = fs.readFileSync(outputPath);
+    return result;
+  } finally {
+    if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+    if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+  }
+}
+
 async function showFormatSelection(ctx: any, count: number, _upscale: boolean, sourceFormat?: string): Promise<void> {
   const isSingle = count === 1;
   const src = sourceFormat ? sourceFormat.toUpperCase() : '';
+  const srcLower = sourceFormat ? sourceFormat.toLowerCase() : '';
   const label = (fmt: string) => src ? `${src} ➜ ${fmt}` : `🔄 ${fmt}`;
+  const btnStyle = (fmt: string): 'danger' | 'primary' => 
+    srcLower && fmt.toLowerCase() === srcLower ? 'danger' : 'primary';
 
   const keyboard: any[] = [
     [
-      { text: label('JPG'), callback_data: 'fconv_jpg', style: 'primary' as const },
-      { text: label('PNG'), callback_data: 'fconv_png', style: 'primary' as const },
-      { text: label('WEBP'), callback_data: 'fconv_webp', style: 'primary' as const },
+      { text: label('JPG'), callback_data: 'fconv_jpg', style: btnStyle('jpg') as any },
+      { text: label('PNG'), callback_data: 'fconv_png', style: btnStyle('png') as any },
+      { text: label('WEBP'), callback_data: 'fconv_webp', style: btnStyle('webp') as any },
     ],
     [
-      { text: label('AVIF'), callback_data: 'fconv_avif', style: 'primary' as const },
-      { text: label('TIFF'), callback_data: 'fconv_tiff', style: 'primary' as const },
-      { text: label('GIF'), callback_data: 'fconv_gif', style: 'primary' as const },
+      { text: label('AVIF'), callback_data: 'fconv_avif', style: btnStyle('avif') as any },
+      { text: label('TIFF'), callback_data: 'fconv_tiff', style: btnStyle('tiff') as any },
+      { text: label('GIF'), callback_data: 'fconv_gif', style: btnStyle('gif') as any },
     ],
     [
-      { text: label('BMP'), callback_data: 'fconv_bmp', style: 'primary' as const },
-      { text: label('PDF'), callback_data: 'fconv_pdf', style: 'primary' as const },
-      { text: label('SVG'), callback_data: 'fconv_svg', style: 'primary' as const },
+      { text: label('BMP'), callback_data: 'fconv_bmp', style: btnStyle('bmp') as any },
+      { text: label('PDF'), callback_data: 'fconv_pdf', style: btnStyle('pdf') as any },
+      { text: label('SVG'), callback_data: 'fconv_svg', style: btnStyle('svg') as any },
     ],
     [
-      { text: label('PSD'), callback_data: 'fconv_psd', style: 'primary' as const },
-      { text: label('ICO'), callback_data: 'fconv_ico', style: 'primary' as const },
-      { text: label('HEIC'), callback_data: 'fconv_heic', style: 'primary' as const },
+      { text: label('PSD'), callback_data: 'fconv_psd', style: btnStyle('psd') as any },
+      { text: label('ICO'), callback_data: 'fconv_ico', style: btnStyle('ico') as any },
+      { text: label('HEIC'), callback_data: 'fconv_heic', style: btnStyle('heic') as any },
     ],
     [
-      { text: label('EPS'), callback_data: 'fconv_eps', style: 'primary' as const },
-      { text: label('AI'), callback_data: 'fconv_ai', style: 'primary' as const },
-      { text: label('RAW'), callback_data: 'fconv_raw', style: 'primary' as const },
+      { text: label('EPS'), callback_data: 'fconv_eps', style: btnStyle('eps') as any },
+      { text: label('AI'), callback_data: 'fconv_ai', style: btnStyle('ai') as any },
+      { text: label('RAW'), callback_data: 'fconv_raw', style: btnStyle('raw') as any },
     ],
     [
-      { text: label('CR2'), callback_data: 'fconv_cr2', style: 'primary' as const },
-      { text: label('NEF'), callback_data: 'fconv_nef', style: 'primary' as const },
-      { text: label('SR2'), callback_data: 'fconv_sr2', style: 'primary' as const },
+      { text: label('CR2'), callback_data: 'fconv_cr2', style: btnStyle('cr2') as any },
+      { text: label('NEF'), callback_data: 'fconv_nef', style: btnStyle('nef') as any },
+      { text: label('SR2'), callback_data: 'fconv_sr2', style: btnStyle('sr2') as any },
     ],
     [
-      { text: label('DNG'), callback_data: 'fconv_dng', style: 'primary' as const },
-      { text: label('ARW'), callback_data: 'fconv_arw', style: 'primary' as const },
-      { text: label('JP2'), callback_data: 'fconv_jp2', style: 'primary' as const },
+      { text: label('DNG'), callback_data: 'fconv_dng', style: btnStyle('dng') as any },
+      { text: label('ARW'), callback_data: 'fconv_arw', style: btnStyle('arw') as any },
+      { text: label('JP2'), callback_data: 'fconv_jp2', style: btnStyle('jp2') as any },
     ],
     [
-      { text: label('DDS'), callback_data: 'fconv_dds', style: 'primary' as const },
-      { text: label('TGA'), callback_data: 'fconv_tga', style: 'primary' as const },
-      { text: label('PPM'), callback_data: 'fconv_ppm', style: 'primary' as const },
+      { text: label('DDS'), callback_data: 'fconv_dds', style: btnStyle('dds') as any },
+      { text: label('TGA'), callback_data: 'fconv_tga', style: btnStyle('tga') as any },
+      { text: label('PPM'), callback_data: 'fconv_ppm', style: btnStyle('ppm') as any },
     ],
     [
-      { text: label('PGM'), callback_data: 'fconv_pgm', style: 'primary' as const },
-      { text: label('PBM'), callback_data: 'fconv_pbm', style: 'primary' as const },
-      { text: label('PNM'), callback_data: 'fconv_pnm', style: 'primary' as const },
+      { text: label('PGM'), callback_data: 'fconv_pgm', style: btnStyle('pgm') as any },
+      { text: label('PBM'), callback_data: 'fconv_pbm', style: btnStyle('pbm') as any },
+      { text: label('PNM'), callback_data: 'fconv_pnm', style: btnStyle('pnm') as any },
     ],
     [
-      { text: label('HDR'), callback_data: 'fconv_hdr', style: 'primary' as const },
-      { text: label('EXR'), callback_data: 'fconv_exr', style: 'primary' as const },
-      { text: label('DIB'), callback_data: 'fconv_dib', style: 'primary' as const },
+      { text: label('HDR'), callback_data: 'fconv_hdr', style: btnStyle('hdr') as any },
+      { text: label('EXR'), callback_data: 'fconv_exr', style: btnStyle('exr') as any },
+      { text: label('DIB'), callback_data: 'fconv_dib', style: btnStyle('dib') as any },
     ],
   ];
 
@@ -2117,8 +2173,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const currentUser = await User.findOne({ telegramId });
     const currentCount = currentUser?.pendingConversionFiles?.length || 0;
 
-    if (currentCount >= 5) {
-      await ctx.answerCallbackQuery({ text: '⚠️ وصلت للحد الأقصى (5 صور)', show_alert: true });
+    if (currentCount >= 1) {
+      await ctx.answerCallbackQuery({ text: '🔒 ميزة الدفعات متاحة قريباً', show_alert: true });
       return;
     }
 
@@ -2243,17 +2299,6 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   const allFormats = ['fconv_jpg', 'fconv_png', 'fconv_webp', 'fconv_avif', 'fconv_tiff', 'fconv_gif', 'fconv_bmp', 'fconv_pdf', 'fconv_svg', 'fconv_psd', 'fconv_ico', 'fconv_heic', 'fconv_eps', 'fconv_ai', 'fconv_raw', 'fconv_cr2', 'fconv_nef', 'fconv_sr2', 'fconv_dng', 'fconv_arw', 'fconv_jp2', 'fconv_dds', 'fconv_tga', 'fconv_ppm', 'fconv_pgm', 'fconv_pbm', 'fconv_pnm', 'fconv_hdr', 'fconv_exr', 'fconv_dib'];
   
   if (allFormats.includes(data)) {
-    const unsupported = ['fconv_pdf', 'fconv_svg', 'fconv_psd', 'fconv_ico', 'fconv_heic', 'fconv_eps', 'fconv_ai', 'fconv_raw', 'fconv_cr2', 'fconv_nef', 'fconv_sr2', 'fconv_dng', 'fconv_arw', 'fconv_jp2', 'fconv_dds', 'fconv_tga', 'fconv_ppm', 'fconv_pgm', 'fconv_pbm', 'fconv_pnm', 'fconv_hdr', 'fconv_exr', 'fconv_dib'];
-    
-    // ── MAINTENANCE GUARD ──
-    if (unsupported.includes(data)) {
-      await ctx.answerCallbackQuery({
-        text: '⚠️ عذراً، هذه الصيغة تحت الصيانة والتطوير حالياً وسيتم توفيرها قريباً!',
-        show_alert: true
-      });
-      return;
-    }
-
     await ctx.answerCallbackQuery({ text: 'جاري المعالجة... ⏳' });
 
     const format = data.replace('fconv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'svg' | 'bmp' | 'gif' | 'ico' | 'heic' | 'psd';
@@ -2266,6 +2311,26 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
+    // Detect source format from uploaded file extension
+    let detectedSourceFormat = 'jpg';
+    try {
+      const firstFileId = fileIds[0];
+      const tgFileMeta = await ctx.api.getFile(firstFileId);
+      const ext = tgFileMeta.file_path?.split('.').pop()?.toLowerCase();
+      if (ext) detectedSourceFormat = ext;
+    } catch { /* silent */ }
+
+    // Notify user if they selected the same format as source
+    if (String(format) === String(detectedSourceFormat) || 
+       (format === 'jpg' && detectedSourceFormat === 'jpeg') ||
+       (format as string === 'jpeg' && detectedSourceFormat === 'jpg')) {
+      await ctx.answerCallbackQuery({
+        text: `⚠️ صيغة الصورة حقك هي ${detectedSourceFormat.toUpperCase()} بالفعل!\nاختر صيغة مختلفة للتحويل.`,
+        show_alert: true
+      });
+      return;
+    }
+
     const loadingMsg = await ctx.reply(
       `⏳ جاري تحويل ${fileIds.length} صورة إلى ${format.toUpperCase()}...`
     );
@@ -2274,76 +2339,66 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       const ext = format === 'jpg' ? 'jpeg' : format;
 
       // Helper: convert single buffer to chosen format
-      const convertBuffer = async (inputBuffer: Buffer): Promise<Buffer> => {
-        switch (format) {
-          case 'png':
-            return sharp(inputBuffer).png({ compressionLevel: 6 }).toBuffer();
-          case 'jpg':
-            return sharp(inputBuffer)
-              .jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true }).toBuffer();
-          case 'webp':
-            return sharp(inputBuffer)
-              .webp({ quality: 95, lossless: false, force: true }).toBuffer();
-          case 'avif':
-            return sharp(inputBuffer)
-              .avif({ quality: 80, effort: 4, force: true }).toBuffer();
-          case 'tiff':
-            return sharp(inputBuffer)
-              .tiff({ quality: 90, compression: 'lzw', force: true }).toBuffer();
-          case 'pdf': {
-            // Convert image to PDF using pdfkit
-            const metadata = await sharp(inputBuffer).metadata();
-            const imgWidth = metadata.width || 800;
-            const imgHeight = metadata.height || 600;
+      const convertBuffer = async (inputBuffer: Buffer, sourceFormat: string = detectedSourceFormat): Promise<Buffer> => {
+        const fastFormats = ['jpg', 'jpeg', 'png', 'webp', 'avif', 'tiff', 'gif', 'bmp'];
+        const useSharp = fastFormats.includes(format) && fastFormats.includes(sourceFormat.toLowerCase());
 
-            const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
-              const doc = new PDFDocument({
-                size: [imgWidth, imgHeight],
-                margin: 0,
-                autoFirstPage: true,
-              });
-              const chunks: Buffer[] = [];
-              doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-              doc.on('end', () => resolve(Buffer.concat(chunks)));
-              doc.on('error', reject);
-
-              // Convert image to PNG first for PDF embedding
-              sharp(inputBuffer).png().toBuffer().then((pngBuffer) => {
-                doc.image(pngBuffer, 0, 0, { width: imgWidth, height: imgHeight });
-                doc.end();
-              }).catch(reject);
-            });
-            return pdfBuffer;
+        if (useSharp) {
+          switch (format) {
+            case 'png':
+              return sharp(inputBuffer).png({ compressionLevel: 6 }).toBuffer();
+            case 'jpg':
+              return sharp(inputBuffer).jpeg({ quality: 95, chromaSubsampling: '4:4:4', force: true }).toBuffer();
+            case 'webp':
+              return sharp(inputBuffer).webp({ quality: 95, lossless: false, force: true }).toBuffer();
+            case 'avif':
+              return sharp(inputBuffer).avif({ quality: 80, effort: 4, force: true }).toBuffer();
+            case 'tiff':
+              return sharp(inputBuffer).tiff({ quality: 90, compression: 'lzw', force: true }).toBuffer();
+            case 'gif':
+              return sharp(inputBuffer).gif({ force: true }).toBuffer();
+            case 'bmp':
+              return sharp(inputBuffer).toFormat('bmp' as any).toBuffer();
+            default:
+              return convertWithImageMagick(inputBuffer, sourceFormat, format);
           }
-          case 'svg': {
-            // Wrap image in SVG (embed as base64)
-            const metadata = await sharp(inputBuffer).metadata();
-            const imgWidth = metadata.width || 800;
-            const imgHeight = metadata.height || 600;
-
-            // Convert to PNG first for embedding
-            const pngBuffer = await sharp(inputBuffer).png().toBuffer();
-            const base64 = pngBuffer.toString('base64');
-
-            const svgContent =
-              `<?xml version="1.0" encoding="UTF-8"?>\n` +
-              `<svg xmlns="http://www.w3.org/2000/svg" ` +
-              `xmlns:xlink="http://www.w3.org/1999/xlink" ` +
-              `width="${imgWidth}" height="${imgHeight}" ` +
-              `viewBox="0 0 ${imgWidth} ${imgHeight}">\n` +
-              `  <image xlink:href="data:image/png;base64,${base64}" ` +
-              `x="0" y="0" width="${imgWidth}" height="${imgHeight}"/>\n` +
-              `</svg>`;
-
-            return Buffer.from(svgContent, 'utf-8');
-          }
-          case 'bmp':
-            return sharp(inputBuffer).toFormat('bmp' as any).toBuffer();
-          case 'gif':
-            return sharp(inputBuffer).gif({ force: true }).toBuffer();
-          default:
-            throw new Error('صيغة غير مدعومة');
         }
+
+        if (format === 'pdf') {
+          const metadata = await sharp(inputBuffer).metadata();
+          const imgWidth = metadata.width || 800;
+          const imgHeight = metadata.height || 600;
+          const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
+            const doc = new PDFDocument({ size: [imgWidth, imgHeight], margin: 0, autoFirstPage: true });
+            const chunks: Buffer[] = [];
+            doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+            doc.on('end', () => resolve(Buffer.concat(chunks)));
+            doc.on('error', reject);
+            sharp(inputBuffer).png().toBuffer().then((pngBuffer) => {
+              doc.image(pngBuffer, 0, 0, { width: imgWidth, height: imgHeight });
+              doc.end();
+            }).catch(reject);
+          });
+          return pdfBuffer;
+        }
+
+        if (format === 'svg') {
+          const metadata = await sharp(inputBuffer).metadata();
+          const imgWidth = metadata.width || 800;
+          const imgHeight = metadata.height || 600;
+          const pngBuffer = await sharp(inputBuffer).png().toBuffer();
+          const base64 = pngBuffer.toString('base64');
+          const svgContent =
+            `<?xml version="1.0" encoding="UTF-8"?>\n` +
+            `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
+            `width="${imgWidth}" height="${imgHeight}" viewBox="0 0 ${imgWidth} ${imgHeight}">\n` +
+            `  <image xlink:href="data:image/png;base64,${base64}" x="0" y="0" width="${imgWidth}" height="${imgHeight}"/>\n` +
+            `</svg>`;
+          return Buffer.from(svgContent, 'utf-8');
+        }
+
+        // All complex formats → ImageMagick
+        return convertWithImageMagick(inputBuffer, sourceFormat, format);
       };
 
       // Download and convert all files
@@ -2374,7 +2429,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
               .toBuffer();
           }
 
-          const converted = await convertBuffer(processBuffer) as any;
+          const converted = await convertBuffer(processBuffer, detectedSourceFormat) as any;
           // const _mimeOk = !['pdf', 'svg'].includes(format);
           convertedFiles.push({ buffer: converted as any, name: `image_${i + 1}.${ext}` });
         } catch (e) {
