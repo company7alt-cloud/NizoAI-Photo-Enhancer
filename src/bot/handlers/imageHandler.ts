@@ -44,6 +44,17 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 
   if (userRecord?.awaitingFormatConversion &&
     !userRecord.awaitingCustomEraserImage) {
+
+    // ── STRICT GUARD: Reject plain photos, force document upload ──
+    if (ctx.message?.photo && !ctx.message?.document) {
+      await ctx.reply(
+        '📎 يرجى إرسال الصورة كـ <b>ملف (مستند)</b> وليس كصورة عادية.\n\n' +
+        'في تيليجرام: اضغط على مشاركة ← اختر <b>ملف</b> بدلاً من <b>صورة</b>',
+        { parse_mode: 'HTML' }
+      );
+      return; // STRICT RETURN
+    }
+
     const doc = ctx.message?.document;
     if (doc) {
       const mimeType = doc.mime_type || '';
