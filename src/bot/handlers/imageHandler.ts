@@ -120,9 +120,9 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
             reply_markup: {
               inline_keyboard: [
                 [
+                  { text: '✅ اختر الصيغة', callback_data: 'conv_batch_finish', style: 'primary' as const },
                   // @ts-ignore
-                  { text: `✅ نعم (${5 - count} متبقي)`, callback_data: 'conv_batch_add', style: 'success' as const },
-                  { text: '❌ لا، اختر الصيغة', callback_data: 'conv_batch_finish', style: 'primary' as const },
+                  { text: `🔄 المزيد (${5 - count} متبقي)`, callback_data: 'conv_batch_add', style: 'primary' as const },
                 ],
                 // @ts-ignore
                 [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' , style: 'danger' as const}],
