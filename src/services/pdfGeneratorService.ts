@@ -6,24 +6,16 @@ import sharp from 'sharp';
 import arabicReshaper from 'arabic-reshaper';
 import https from 'https';
 
-/**
- * Reshapes Arabic characters so they connect properly, then
- * applies the Unicode Bidirectional Algorithm so RTL text is
- * stored in the correct visual order for pdfkit.
- * FIXED: null/undefined guard + try/catch to prevent forEach crash.
- */
 function prepareArabicText(text: string): string {
   if (!text || typeof text !== 'string' || text.trim() === '') return '';
   try {
-    // ── Strip invisible/broken Unicode characters that render as □ boxes ──
     const cleaned = text
-      .replace(/[\uFFFD\uFFFC\uFFFB\uFFFA]/g, '')   // replacement chars
-      .replace(/[\u200B\u200C\u200D\u200E\u200F]/g, '') // zero-width chars
-      .replace(/[\u202A\u202B\u202C\u202D\u202E]/g, '') // bidi override chars
-      .replace(/[\uFEFF]/g, '')                      // BOM
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '') // control chars
+      .replace(/[\uFFFD\uFFFC\uFFFB\uFFFA]/g, '')
+      .replace(/[\u200B\u200C\u200D\u200E\u200F]/g, '')
+      .replace(/[\u202A\u202B\u202C\u202D\u202E]/g, '')
+      .replace(/[\uFEFF]/g, '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
       .trim();
-
     const hasArabic = /[\u0600-\u06FF]/.test(cleaned);
     if (!hasArabic) return cleaned;
     return arabicReshaper.convertArabic(cleaned);
@@ -32,9 +24,6 @@ function prepareArabicText(text: string): string {
     return text;
   }
 }
-
-// ─── Font Registration ─────────────────────────────────────────────────────────
-// Uses process.cwd() — NOT __dirname — so fonts load correctly after npm run build.
 
 function registerAllFonts(doc: PDFKit.PDFDocument): string {
   const possibleBases = [
@@ -46,16 +35,16 @@ function registerAllFonts(doc: PDFKit.PDFDocument): string {
   ];
 
   const fonts = [
-    { name: 'Omnia',      file: 'Omnia.ttf' },
-    { name: 'ModernPro',  file: 'ModernPro.ttf' },
-    { name: 'Thamanya',   file: 'Thamanya.ttf' },
-    { name: 'Amiri',      file: 'Amiri.ttf' },
+    { name: 'Omnia', file: 'Omnia.ttf' },
+    { name: 'ModernPro', file: 'ModernPro.ttf' },
+    { name: 'Thamanya', file: 'Thamanya.ttf' },
+    { name: 'Amiri', file: 'Amiri.ttf' },
     { name: 'Amiri-Regular', file: 'Amiri-Regular.ttf' },
     { name: 'Amiri-Bold', file: 'Amiri-Bold.ttf' },
-    { name: 'Cairo',      file: 'Cairo.ttf' },
-    { name: 'Almarai',    file: 'Almarai.ttf' },
-    { name: 'NotoNaskh',  file: 'NotoNaskh.ttf' },
-    { name: 'NotoEmoji',  file: 'NotoEmoji.ttf' },
+    { name: 'Cairo', file: 'Cairo.ttf' },
+    { name: 'Almarai', file: 'Almarai.ttf' },
+    { name: 'NotoNaskh', file: 'NotoNaskh.ttf' },
+    { name: 'NotoEmoji', file: 'NotoEmoji.ttf' },
   ];
 
   let fontsDir: string | null = null;
@@ -80,27 +69,20 @@ function registerAllFonts(doc: PDFKit.PDFDocument): string {
       try {
         doc.registerFont(f.name, fullPath);
         registeredAny = true;
-        console.log('[FONTS] Registered:', f.name);
       } catch (e) {
         console.error('[FONTS] Failed to register', f.name, ':', e);
       }
-    } else {
-      console.warn('[FONTS] File not found:', fullPath);
     }
   }
   return registeredAny ? 'registered' : 'Helvetica';
 }
 
-// ─── Telegram File URL (pure REST — no bot instance needed) ────────────────────
-
 async function getTelegramFileUrl(fileId: string): Promise<string> {
-  console.log(`[Image Debug] fileId: ${fileId}`);
   let token = process.env.BOT_TOKEN;
   let apiRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
   let json = await apiRes.json() as { ok: boolean; result?: { file_path?: string } };
 
   if (!json.ok || !json.result?.file_path) {
-    console.log(`[Image Debug] BOT_TOKEN failed, trying DOC_BOT_TOKEN`);
     token = process.env.DOC_BOT_TOKEN;
     if (token) {
       apiRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
@@ -114,31 +96,18 @@ async function getTelegramFileUrl(fileId: string): Promise<string> {
   return `https://api.telegram.org/file/bot${token}/${json.result.file_path}`;
 }
 
-// ─── Font Downloader ───────────────────────────────────────────────────────────
-
 async function ensureFontExists(fontPath: string): Promise<boolean> {
   if (fs.existsSync(fontPath)) return true;
-
   const fontDir = path.dirname(fontPath);
-  if (!fs.existsSync(fontDir)) {
-    fs.mkdirSync(fontDir, { recursive: true });
-  }
-
+  if (!fs.existsSync(fontDir)) fs.mkdirSync(fontDir, { recursive: true });
   const fontUrl = 'https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Regular.ttf';
-
   return new Promise((resolve) => {
     https.get(fontUrl, (res) => {
       if (res.statusCode === 200) {
         const fileStream = fs.createWriteStream(fontPath);
         res.pipe(fileStream);
         fileStream.on('finish', () => { fileStream.close(); resolve(true); });
-        fileStream.on('error', () => { resolve(false); });
-      } else if (res.statusCode === 302 || res.statusCode === 301) {
-        https.get(res.headers.location!, (redirectRes) => {
-          const fileStream = fs.createWriteStream(fontPath);
-          redirectRes.pipe(fileStream);
-          fileStream.on('finish', () => { fileStream.close(); resolve(true); });
-        }).on('error', () => resolve(false));
+        fileStream.on('error', () => resolve(false));
       } else {
         resolve(false);
       }
@@ -146,20 +115,10 @@ async function ensureFontExists(fontPath: string): Promise<boolean> {
   });
 }
 
-// ─── Template line-capacity map ────────────────────────────────────────────────
-const TEMPLATE_LINE_CAPACITY: Record<number, number> = {
-  1: 30,
-  2: 25,
-  3: 20,
-  4: 35,
-  5: 28,
-};
-
+const TEMPLATE_LINE_CAPACITY: Record<number, number> = { 1: 30, 2: 25, 3: 20, 4: 35, 5: 28 };
 export function getLineCapacity(templateId: number): number {
   return TEMPLATE_LINE_CAPACITY[templateId] ?? 25;
 }
-
-// ─── Types ─────────────────────────────────────────────────────────────────────
 
 export interface PdfPageParams {
   type: 'text' | 'image';
@@ -176,8 +135,6 @@ export interface PdfGeneratorParams {
   pages: PdfPageParams[];
 }
 
-// ─── Rich line type (matches DocLine in validators.ts) ─────────────────────────
-
 export interface RichLine {
   text: string;
   align: 'right' | 'center' | 'left';
@@ -190,21 +147,14 @@ export interface RichLine {
   lineSpacing?: number;
 }
 
-// ─── Template renderers ────────────────────────────────────────────────────────
-
 function applyTemplate(doc: PDFKit.PDFDocument, templateId: number, pageWidth: number, pageHeight: number): void {
   doc.save();
-
   switch (templateId) {
-    case 1: {
-      doc.rect(20, 20, pageWidth - 40, pageHeight - 40).stroke('#CCCCCC');
-      break;
-    }
-    case 2: {
+    case 1: doc.rect(20, 20, pageWidth - 40, pageHeight - 40).stroke('#CCCCCC'); break;
+    case 2:
       doc.rect(0, 0, pageWidth, 50).fill('#1A1A2E').stroke('#1A1A2E');
       doc.rect(0, pageHeight - 40, pageWidth, 40).fill('#1A1A2E').stroke('#1A1A2E');
       break;
-    }
     case 3: {
       const sz = 30;
       doc.moveTo(20, 20 + sz).lineTo(20, 20).lineTo(20 + sz, 20).stroke('#E63946');
@@ -213,20 +163,16 @@ function applyTemplate(doc: PDFKit.PDFDocument, templateId: number, pageWidth: n
       doc.moveTo(pageWidth - 20 - sz, pageHeight - 20).lineTo(pageWidth - 20, pageHeight - 20).lineTo(pageWidth - 20, pageHeight - 20 - sz).stroke('#E63946');
       break;
     }
-    case 4: {
+    case 4:
       doc.rect(0, 0, 8, pageHeight).fill('#457B9D').stroke('#457B9D');
       doc.rect(pageWidth - 8, 0, 8, pageHeight).fill('#457B9D').stroke('#457B9D');
       break;
-    }
-    case 5: {
+    case 5:
       doc.rect(10, 10, pageWidth - 20, pageHeight - 20).lineWidth(3).stroke('#2D6A4F');
       doc.rect(16, 16, pageWidth - 32, pageHeight - 32).lineWidth(1).stroke('#95D5B2');
       break;
-    }
-    default:
-      break;
+    default: break;
   }
-
   doc.restore();
 }
 
@@ -238,125 +184,110 @@ function getContentBounds(templateId: number, pageWidth: number, pageHeight: num
   }
 }
 
-// ─── Rich line renderer (used by generateDocumentFromLines) ────────────────────
+// ─── THE CORE FIX: drawArabicText renders ONE line, returns its height ────────
+// Does NOT track pages, does NOT use doc.y — purely renders at (x, y) and returns lineHeight.
+function drawArabicText(
+  doc: any,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  align: 'right' | 'center' | 'left',
+  fontSize: number
+): number {
+  if (!text || !text.trim()) return fontSize * 1.6;
 
-/**
- * Renders a single RichLine onto the PDF at (x, currentY).
- * FONT SAFETY: Only Amiri-Regular is ever called. Bold/italic are simulated.
- * Returns the Y advance (lineHeight for the line).
- */
+  const isArabic = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(text);
+  const prepared = isArabic ? prepareArabicText(text) : text;
+
+  // Auto-detect alignment if not specified
+  let pdfAlign: 'right' | 'center' | 'left' = align;
+  if (!align || align === 'right') {
+    pdfAlign = isArabic ? 'right' : 'left';
+  }
+
+  try {
+    doc.fontSize(fontSize);
+    doc.text(prepared, x, y, {
+      width,
+      align: pdfAlign,
+      lineBreak: false,
+      continued: false,
+    });
+  } catch (e) {
+    console.error('[PDF] drawArabicText crash:', e);
+  }
+
+  return fontSize * 1.6;
+}
+
+// ─── renderRichLine: applies styling, calls drawArabicText, returns height ────
 function renderRichLine(
   doc: PDFKit.PDFDocument,
   line: RichLine,
   x: number,
-  currentY: number,
+  y: number,
   contentW: number,
   baseSize: number,
   textColor: string = 'black'
 ): number {
   const style = line.style ?? 'normal';
 
-  // ── divider: draw line, skip text ───────────────────────────────────────────
+  // divider
   if (style === 'divider') {
     doc.save()
-      .moveTo(x, currentY + baseSize / 2)
-      .lineTo(x + contentW, currentY + baseSize / 2)
-      .lineWidth(0.8)
-      .stroke('#888888')
+      .moveTo(x, y + baseSize / 2)
+      .lineTo(x + contentW, y + baseSize / 2)
+      .lineWidth(0.8).stroke('#888888')
       .restore();
     return baseSize * 1.6;
   }
 
-  // ── size variant ─────────────────────────────────────────────────────────────
-  const sizeMap: Record<string, number> = {
-    small: baseSize - 4,
-    normal: baseSize,
-    large: baseSize + 6,
-  };
+  const sizeMap: Record<string, number> = { small: baseSize - 4, normal: baseSize, large: baseSize + 6 };
   const fontSize = sizeMap[line.size ?? 'normal'] ?? baseSize;
   const lineH = fontSize * 1.6;
 
-  // ── highlight: fill rect behind text ─────────────────────────────────────────
+  // highlight background
   if (style === 'highlight') {
-    doc.save()
-      .rect(x, currentY, contentW, lineH)
-      .fill('#FFF9C4')
-      .restore();
+    doc.save().rect(x, y, contentW, lineH).fill('#FFF9C4').restore();
   }
 
-  // ── quote: right-side border + indent ────────────────────────────────────────
+  // quote border
   const quoteIndent = style === 'quote' ? 20 : 0;
   if (style === 'quote') {
     doc.save()
-      .moveTo(x + contentW - 4, currentY)
-      .lineTo(x + contentW - 4, currentY + lineH)
-      .lineWidth(3)
-      .stroke('#457B9D')
+      .moveTo(x + contentW - 4, y)
+      .lineTo(x + contentW - 4, y + lineH)
+      .lineWidth(3).stroke('#457B9D')
       .restore();
   }
 
   const effectiveW = contentW - quoteIndent;
   const effectiveX = x + quoteIndent;
-
-  // ── bold simulation: slight lineWidth increase (no extra font file needed) ───
-  if (line.bold) {
-    doc.save().lineWidth(0.4);
-  }
-
   const lineColor = (line as any).color || textColor;
-  doc.fontSize(fontSize).fillColor(lineColor);
 
-  // ── Typography controls ────────────────────────────────────────────────────
-  const lineGap     = typeof (line as any).lineSpacing    === 'number' ? (line as any).lineSpacing    : 18;
-  doc.lineGap(lineGap - fontSize); // pdfkit lineGap is extra space; subtract fontSize for net gap
+  doc.fillColor(lineColor);
 
-  drawArabicParagraph(
-    doc,
-    line.text,
-    effectiveX,
-    currentY,
-    effectiveW,
-    line.align ?? 'right'
-  );
+  const align = line.align ?? 'right';
+  drawArabicText(doc as any, line.text, effectiveX, y, effectiveW, align, fontSize);
 
-  // Reset typography to defaults
-  doc.lineGap(0);
-
-  if (line.bold) doc.restore();
-
-  // ── underline: draw line beneath text ────────────────────────────────────────
+  // underline
   if (line.underline) {
     try {
       const prepared = prepareArabicText(line.text);
-      const tw = Math.min(doc.widthOfString(prepared), effectiveW);
-      const lineY = currentY + fontSize + 1;
-      // For RTL text the rendered start depends on alignment; approximate
+      const tw = Math.min((doc as any).widthOfString(prepared), effectiveW);
+      const lineY = y + fontSize + 1;
       let lx = effectiveX;
-      if ((line.align ?? 'right') === 'right') lx = effectiveX + effectiveW - tw;
-      else if ((line.align ?? 'right') === 'center') lx = effectiveX + (effectiveW - tw) / 2;
-
-      doc.save()
-        .moveTo(lx, lineY)
-        .lineTo(lx + tw, lineY)
-        .lineWidth(0.6)
-        .stroke('black')
-        .restore();
-    } catch {
-      // underline calc failed — safe to skip
-    }
+      if (align === 'right') lx = effectiveX + effectiveW - tw;
+      else if (align === 'center') lx = effectiveX + (effectiveW - tw) / 2;
+      doc.save().moveTo(lx, lineY).lineTo(lx + tw, lineY).lineWidth(0.6).stroke('black').restore();
+    } catch { /* skip */ }
   }
 
-  // italic note: pdfkit with a non-italic font variant cannot tilt glyphs;
-  // we skip the effect silently to avoid font registration errors.
-
-  // Always return a flat lineH so the caller advances by exactly one line.
-  // drawArabicParagraph already tracks its own Y internally; returning
-  // (newY - currentY) was double-counting and pushing every line onto a new page.
   return lineH;
 }
 
 // ─── Main generator (wizard flow) ─────────────────────────────────────────────
-
 export async function generateDocument(params: PdfGeneratorParams): Promise<Buffer> {
   const fontPath = path.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
   await ensureFontExists(fontPath);
@@ -369,7 +300,6 @@ export async function generateDocument(params: PdfGeneratorParams): Promise<Buff
         : ((params.pageSize ?? 'A4') as any);
 
       const doc = new PDFDocument({ autoFirstPage: false, size: sizeOption, margin: 0 });
-
       const fontPathInner = path.join(process.cwd(), 'assets', 'fonts', 'Amiri-Regular.ttf');
       const hasArabicFont = fs.existsSync(fontPathInner);
       if (hasArabicFont) doc.registerFont('Arabic', fontPathInner);
@@ -393,116 +323,45 @@ export async function generateDocument(params: PdfGeneratorParams): Promise<Buff
           doc.fillColor('black');
 
           if (page.type === 'text' && page.lines && page.lines.length > 0) {
-            // +5 to original sizes: 3→18 became 23, 4→12 became 17, default 14 became 19
             const fontSize = templateId === 3 ? 23 : (templateId === 4 ? 17 : 19);
             doc.fontSize(fontSize);
             let currentY = bounds.y;
             const lineHeight = fontSize * 1.6;
 
             for (const rawLine of page.lines) {
-              // CRASH FIX: skip null/undefined/non-string entries
               if (rawLine === null || rawLine === undefined) continue;
               const raw = String(rawLine).trim();
               if (currentY + lineHeight > bounds.y + bounds.height) break;
               if (raw === '---PAGE_BREAK---') { doc.addPage(); currentY = bounds.y; continue; }
               if (raw === '') { currentY += lineHeight; continue; }
-              
-              currentY = drawArabicParagraph(
-                doc,
-                raw,
-                bounds.x,
-                currentY,
-                bounds.width,
-                'right'
-              );
+              drawArabicText(doc as any, raw, bounds.x, currentY, bounds.width, 'right', fontSize);
+              currentY += lineHeight;
             }
           } else if (page.type === 'image' && page.imageBuffer) {
             const imgBuf = typeof page.imageBuffer === 'string'
               ? Buffer.from(page.imageBuffer, 'base64')
               : page.imageBuffer;
             const maxImgHeight = page.captionText ? bounds.height - 60 : bounds.height - 20;
-            doc.image(imgBuf, bounds.x, bounds.y, {
-              fit: [bounds.width, maxImgHeight], align: 'center', valign: 'center',
-            });
+            doc.image(imgBuf, bounds.x, bounds.y, { fit: [bounds.width, maxImgHeight], align: 'center', valign: 'center' });
             if (page.overlayText) {
               doc.fontSize(27).fillColor('#CC0000');
-              const overlayProcessed = prepareArabicText(page.overlayText);
-              doc.text(overlayProcessed, bounds.x, bounds.y + maxImgHeight / 2 - 14, {
-                width: bounds.width, align: 'center', lineBreak: false,
-              });
+              const op = prepareArabicText(page.overlayText);
+              doc.text(op, bounds.x, bounds.y + maxImgHeight / 2 - 14, { width: bounds.width, align: 'center', lineBreak: false });
             }
             if (page.captionText) {
               doc.fontSize(17).fillColor('#333333');
-              const captionProcessed = prepareArabicText(page.captionText);
-              doc.text(captionProcessed, bounds.x, bounds.y + bounds.height - 45, {
-                width: bounds.width, align: 'center', lineBreak: false,
-              });
+              const cp = prepareArabicText(page.captionText);
+              doc.text(cp, bounds.x, bounds.y + bounds.height - 45, { width: bounds.width, align: 'center', lineBreak: false });
             }
           }
         }
       }
-
       doc.end();
     } catch (err) {
       reject(err);
     }
   });
 }
-
-function drawArabicParagraph(
-  doc: any,
-  rawText: string,
-  startX: number,
-  startY: number,
-  width: number,
-  align: string
-): number {
-  if (!rawText) return startY;
-  const inputLines = rawText.split('\n');
-  let currentY = startY;
-
-  for (const inputLine of inputLines) {
-    if (!inputLine.trim()) {
-      currentY += doc._fontSize * 1.4;
-      continue;
-    }
-
-    const isArabic = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(inputLine);
-    const prepared = isArabic ? prepareArabicText(inputLine) : inputLine;
-
-    let pdfAlign: 'right' | 'center' | 'left';
-    if (align === 'center') {
-      pdfAlign = 'center';
-    } else if (align === 'left') {
-      pdfAlign = 'left';
-    } else if (align === 'right') {
-      pdfAlign = 'right';
-    } else {
-      // auto-detect: Arabic defaults right, Latin defaults left
-      pdfAlign = isArabic ? 'right' : 'left';
-    }
-
-    const lineHeight = doc._fontSize * 1.6;
-
-    try {
-      doc.text(prepared, startX, currentY, {
-        width,
-        align: pdfAlign,
-        lineBreak: false,
-        continued: false,
-      });
-      currentY += lineHeight;
-    } catch (e) {
-      console.error('[PDF] doc.text crash:', e);
-      currentY += lineHeight;
-    }
-  }
-
-  return currentY;
-}
-
-
-// ─── Aligned-line document generator (doc maker flow) ─────────────────────────
 
 export interface AlignedLine {
   text: string;
@@ -522,9 +381,8 @@ export async function generateDocumentFromLines(
 
   return new Promise(async (resolve, reject) => {
     try {
-      const PADDING   = 40;
-      const BASE_SIZE = 18; // was 13, +5
-      const LINE_H    = BASE_SIZE * 1.6;
+      const PADDING = 50;
+      const BASE_SIZE = 16;
 
       let safePageSize: any = 'A4';
       if (['A3', 'A4', 'A5', 'Letter', 'Legal', 'B5', 'Executive'].includes(pageSize)) {
@@ -532,31 +390,19 @@ export async function generateDocumentFromLines(
       }
 
       const doc = new PDFDocument({ autoFirstPage: false, size: safePageSize, margin: 0 });
-
       const fontStatus = registerAllFonts(doc);
 
-      // Map session font names to registered PDF font names
       const fontMap: Record<string, string> = {
-        'Almarai':    'Almarai',
-        'almarai':    'Almarai',
-        'NotoNaskh':  'NotoNaskh',
-        'noto':       'NotoNaskh',
-        'Noto':       'NotoNaskh',
-        'ModernPro':  'ModernPro',
-        'AndoPro':    'ModernPro',
-        'ando_pro':   'ModernPro',
-        'Amiri':      'Amiri',
-        'Cairo':      'Cairo',
-        'Omnia':      'Omnia',
-        'Thamanya':   'Thamanya',
+        'Almarai': 'Almarai', 'almarai': 'Almarai',
+        'NotoNaskh': 'NotoNaskh', 'noto': 'NotoNaskh', 'Noto': 'NotoNaskh',
+        'ModernPro': 'ModernPro', 'AndoPro': 'ModernPro', 'ando_pro': 'ModernPro',
+        'Amiri': 'Amiri', 'Cairo': 'Cairo', 'Omnia': 'Omnia', 'Thamanya': 'Thamanya',
       };
 
       const resolvedFont = selectedFont ? (fontMap[selectedFont] ?? selectedFont) : 'Amiri';
       const chosenFont = fontStatus === 'Helvetica' ? 'Helvetica' : resolvedFont;
-      try {
-        doc.font(chosenFont);
-        console.log('[PDF] Using font:', chosenFont);
-      } catch (e) {
+
+      try { doc.font(chosenFont); } catch (e) {
         console.error('[PDF] Font apply failed, fallback Helvetica:', e);
         doc.font('Helvetica');
       }
@@ -564,261 +410,187 @@ export async function generateDocumentFromLines(
       const buffers: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => buffers.push(chunk));
 
-      // Declare colors BEFORE pageAdded listener so txtColor is defined when it fires
-      const bgColor  = docBgColor  || '#FFFFFF';
+      const bgColor = docBgColor || '#FFFFFF';
       const txtColor = docTextColor || '#000000';
-
       let pageCount = 0;
 
-      const drawBackground = () => {
+      // ── addPage: adds page, draws bg, resets font/color, returns dimensions ──
+      const addPage = (): { W: number; H: number } => {
+        doc.addPage();
+        pageCount++;
+        // Draw background
         if (bgColor !== '#FFFFFF') {
           doc.save();
+          const hex = bgColor.replace('#', '');
           doc.rect(0, 0, doc.page.width, doc.page.height).fill(bgColor);
           doc.restore();
         }
-      };
-
-      const addPage = () => {
-        doc.addPage();
-        pageCount++;
-        drawBackground();
-        const W = doc.page.width;
-        const H = doc.page.height;
-        try { doc.font(chosenFont); } catch (e) { console.error('[PDF] addPage font restore failed:', e); }
+        // CRITICAL: restore font and color AFTER background draw
+        try { doc.font(chosenFont); } catch (e) { /* skip */ }
         doc.fontSize(BASE_SIZE).fillColor(txtColor);
-        return { W, H };
+        return { W: doc.page.width, H: doc.page.height };
       };
 
       let { W, H } = addPage();
       const contentW = W - PADDING * 2;
-      const BOTTOM_MARGIN = PADDING + (BASE_SIZE * 1.6 * 2); // 2 extra lines
-      const maxY     = H - BOTTOM_MARGIN;
-      let currentY   = PADDING;
+      // maxY: leave PADDING at bottom
+      const maxY = H - PADDING;
+      let currentY = PADDING;
 
-      try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to set initial font:', error); }
-
+      // Ensure font set after first page
+      try { doc.font(chosenFont); } catch (_) { }
       doc.fontSize(BASE_SIZE).fillColor(txtColor);
 
       for (const line of lines) {
-        // CRASH FIX: skip null/undefined entries
         if (!line || (line.text === undefined && (line as any).type === undefined)) continue;
 
         const richLine = line as any;
 
-        // ── Full-bleed cover image ───────────────────────────────────────────────
+        // ── Cover image ──────────────────────────────────────────────────────
         if (richLine.type === 'image_cover' && richLine.fileId) {
           try {
             const fileUrl = await getTelegramFileUrl(richLine.fileId);
-            const imgRes  = await fetch(fileUrl);
+            const imgRes = await fetch(fileUrl);
             if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`);
             const imgBuffer = Buffer.from(new Uint8Array(await imgRes.arrayBuffer()));
-
-            // Push to a fresh page if we are not at the very start
             if (currentY > PADDING + 5) {
               ({ W, H } = addPage());
               currentY = 0;
             }
-
-            // Full-bleed: draw from (0,0) to full page dimensions, ignoring margins
             doc.image(imgBuffer, 0, 0, { width: doc.page.width, height: doc.page.height });
-
-            // Start a fresh page for content that follows
             ({ W, H } = addPage());
             currentY = PADDING;
-            doc.y = currentY;
-            try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font after cover:', error); }
-            doc.fontSize(BASE_SIZE).fillColor(txtColor);
           } catch (err) {
             console.error('[PDF] Cover render failed:', err);
           }
           continue;
         }
 
-        // ── Image / Image-Row line ───────────────────────────────────────────────
+        // ── Image row ────────────────────────────────────────────────────────
         if ((richLine.type === 'image' || richLine.type === 'image_row') && (richLine.fileId || richLine.rowImages)) {
-          // Normalise: single image or array of row images
           const images: Array<{ fileId: string; lines: number; align: string; mask?: string; caption?: string }> =
             (richLine.rowImages && Array.isArray(richLine.rowImages) && richLine.rowImages.length > 0)
               ? richLine.rowImages
               : (richLine.fileId ? [{
-                  fileId:  richLine.fileId,
-                  lines:   richLine.imageLines || 5,
-                  align:   richLine.align || 'center',
-                  mask:    richLine.imageMask,
-                  caption: undefined,
-                }] : []);
+                fileId: richLine.fileId, lines: richLine.imageLines || 5,
+                align: richLine.align || 'center', mask: richLine.imageMask, caption: undefined,
+              }] : []);
 
           if (images.length === 0) continue;
 
-          const allocH  = (images[0].lines || 5) * 20;
-          const pageW   = doc.page.width - PADDING * 2;
-          const gap     = 15;
-          const imgW    =
-            images.length === 1 ? pageW :
-            images.length === 2 ? (pageW - gap) / 2 :
-            (pageW - gap * 2) / 3;
+          const allocH = (images[0].lines || 5) * 20;
+          const pageW = doc.page.width - PADDING * 2;
+          const gap = 15;
+          const imgW = images.length === 1 ? pageW : images.length === 2 ? (pageW - gap) / 2 : (pageW - gap * 2) / 3;
 
-          // Paginate if needed
           if (currentY + allocH > maxY) {
             ({ W, H } = addPage());
             currentY = PADDING;
-            doc.y = currentY;
-            try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font before image row:', error); }
-            doc.fontSize(BASE_SIZE).fillColor(txtColor);
           }
 
           for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
             const img = images[imgIdx];
             if (!img) continue;
-            
-            // X position:
-            //  - Single image: respect per-image alignment setting
-            //  - Multiple images: lay out left-to-right (index 0 = leftmost)
-            let alignX: number;
-            if (images.length === 1) {
-              alignX =
-                img.align === 'left'   ? PADDING :
-                img.align === 'center' ? PADDING + (pageW / 2) - (imgW / 2) :
-                /* right */              PADDING + pageW - imgW;
-            } else {
-              alignX = PADDING + imgIdx * (imgW + gap);
-            }
+            let alignX = images.length === 1
+              ? (img.align === 'left' ? PADDING : img.align === 'center' ? PADDING + (pageW / 2) - (imgW / 2) : PADDING + pageW - imgW)
+              : PADDING + imgIdx * (imgW + gap);
 
             try {
               const fileUrl = await getTelegramFileUrl(img.fileId);
-              const imgRes  = await fetch(fileUrl);
-              if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status} fetching image`);
+              const imgRes = await fetch(fileUrl);
+              if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`);
               let imgBuffer = Buffer.from(new Uint8Array(await imgRes.arrayBuffer()));
-              console.log(`[Image Debug] buffer size:`, imgBuffer?.length);
 
               const imgMeta = await sharp(imgBuffer).metadata();
-              const iw   = imgMeta.width  ?? 500;
-              const ih   = imgMeta.height ?? 500;
+              const iw = imgMeta.width ?? 500;
+              const ih = imgMeta.height ?? 500;
 
               if (img.mask === 'circle') {
                 const size = Math.min(iw, ih);
-                const r    = Math.floor(size / 2);
-                const svg  = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">` +
-                             `<circle cx="${r}" cy="${r}" r="${r}"/></svg>`;
-                imgBuffer = (await sharp(imgBuffer)
-                  .resize(size, size, { fit: 'cover', position: 'centre' })
-                  .composite([{ input: Buffer.from(svg), blend: 'dest-in' }])
-                  .png().toBuffer()) as any;
+                const r = Math.floor(size / 2);
+                const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg"><circle cx="${r}" cy="${r}" r="${r}"/></svg>`;
+                imgBuffer = (await sharp(imgBuffer).resize(size, size, { fit: 'cover', position: 'centre' }).composite([{ input: Buffer.from(svg), blend: 'dest-in' }]).png().toBuffer()) as any;
               } else if (img.mask === 'rounded') {
-                const rx  = Math.round(Math.min(iw, ih) * 0.1);
-                const svg = `<svg width="${iw}" height="${ih}" xmlns="http://www.w3.org/2000/svg">` +
-                            `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${rx}" ry="${rx}"/></svg>`;
-                imgBuffer = (await sharp(imgBuffer)
-                  .composite([{ input: Buffer.from(svg), blend: 'dest-in' }])
-                  .png().toBuffer()) as any;
+                const rx = Math.round(Math.min(iw, ih) * 0.1);
+                const svg = `<svg width="${iw}" height="${ih}" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="${iw}" height="${ih}" rx="${rx}" ry="${rx}"/></svg>`;
+                imgBuffer = (await sharp(imgBuffer).composite([{ input: Buffer.from(svg), blend: 'dest-in' }]).png().toBuffer()) as any;
               }
 
               const exportMeta = await sharp(imgBuffer).metadata();
-              const originalWidth = exportMeta.width || 1;
-              const originalHeight = exportMeta.height || 1;
-              const aspectRatio = originalWidth / originalHeight;
+              const ow = exportMeta.width || 1;
+              const oh = exportMeta.height || 1;
+              const ar = ow / oh;
+              let finalW = Math.min(imgW, ow);
+              let finalH = finalW / ar;
+              if (finalH > allocH) { finalH = allocH; finalW = finalH * ar; }
 
-              // User requested formula:
-              const scaledWidth = Math.min(imgW, originalWidth);
-              const scaledHeight = scaledWidth / aspectRatio;
-
-              // Fit within allocH if still too tall
-              let finalW = scaledWidth;
-              let finalH = scaledHeight;
-              if (finalH > allocH) {
-                finalH = allocH;
-                finalW = finalH * aspectRatio;
-              }
-
-              // Center the image in its box [alignX, currentY, imgW, allocH]
               const finalX = alignX + (imgW - finalW) / 2;
               const finalY = currentY + (allocH - finalH) / 2;
-
               doc.image(imgBuffer, finalX, finalY, { width: finalW, height: finalH });
-
-              // Record the actual height used in this row for Y advance
               (richLine as any).rowActualH = Math.max((richLine as any).rowActualH || 0, finalH);
 
-              // Per-image caption
               if (img.caption) {
                 doc.fontSize(10).fillColor('#444444');
-                drawArabicParagraph(
-                  doc, 
-                  img.caption, 
-                  alignX, 
-                  currentY + allocH + 2, 
-                  imgW, 
-                  'center'
-                );
+                drawArabicText(doc as any, img.caption, alignX, currentY + allocH + 2, imgW, 'center', 10);
                 doc.fontSize(BASE_SIZE).fillColor(txtColor);
               }
             } catch (err) {
-              console.error('[PDF] Row image embed failed, skipping:', err);
-              // Add placeholder text so user knows image was there
-              doc.fillColor('#cccccc')
-                 .fontSize(10)
-                 .text('[صورة]', alignX, currentY + allocH / 2 - 5, { align: 'center', width: imgW });
+              console.error('[PDF] Image embed failed:', err);
+              doc.fillColor('#cccccc').fontSize(10).text('[صورة]', alignX, currentY + allocH / 2 - 5, { align: 'center', width: imgW });
             }
           }
 
           const rowActualH = (richLine as any).rowActualH || allocH;
           const hasCaption = images.some(i => i.caption);
           currentY += rowActualH + (hasCaption ? 18 : 0) + 12;
-          doc.y = currentY;
           continue;
         }
 
-
+        // ── Text lines ───────────────────────────────────────────────────────
         if (!line || (!('text' in line) && !(line as any).type)) continue;
         if ((line as any).type === 'image' || (line as any).type === 'image_row' || (line as any).type === 'image_cover') continue;
         if (line.text === null || line.text === undefined) continue;
+
         const raw = String(line.text).trim();
 
+        // PAGE_BREAK
         if (raw === '---PAGE_BREAK---') {
           ({ W, H } = addPage());
           currentY = PADDING;
-          try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font after page break:', error); }
-          doc.fontSize(BASE_SIZE).fillColor(txtColor);
           continue;
         }
 
-        // Determine effective line height for this line (may vary by size)
+        // Font size for this line
         const sizeMap: Record<string, number> = { small: BASE_SIZE - 4, normal: BASE_SIZE, large: BASE_SIZE + 6 };
         const effectiveFontSize = sizeMap[richLine.size ?? 'normal'] ?? BASE_SIZE;
         const effectiveLineH = effectiveFontSize * 1.6;
 
-        // Auto-paginate
+        // ── PAGINATION: only trigger when currentY truly exceeds page ────────
         if (currentY + effectiveLineH > maxY) {
           ({ W, H } = addPage());
-          // BUG 2 FIX: always reset to PADDING (not doc.page.margins.top which
-          // may be 0 when margin:0 is set), so text never touches the top edge.
           currentY = PADDING;
-          doc.y = currentY;
-          // Font/color already restored by addPage() — no need to repeat here.
         }
 
+        // Empty line = blank space
         if (raw === '') {
-          currentY += LINE_H;
+          currentY += effectiveLineH;
           continue;
         }
 
-        // Restore chosen font before each line render
-        // This ensures formatting applies to ALL lines in the batch
-        try { doc.font(chosenFont); } catch (_) {}
-        doc.fontSize(BASE_SIZE);
+        // Restore font before each line
+        try { doc.font(chosenFont); } catch (_) { }
+        doc.fontSize(effectiveFontSize).fillColor(txtColor);
 
-        let advance = BASE_SIZE * 1.6;
-        try {
-          advance = renderRichLine(doc, richLine, PADDING, currentY, contentW, BASE_SIZE, txtColor);
-        } catch (e) {
-          console.error('[PDF] renderRichLine crash, skipping line:', e);
-        }
+        // ── RENDER: use renderRichLine which calls drawArabicText ─────────────
+        // renderRichLine returns the lineHeight — we add it to currentY ONCE
+        const lineH = renderRichLine(doc, richLine, PADDING, currentY, contentW, BASE_SIZE, txtColor);
 
-        // Reset font and color after each line to prevent bleed-through
-        try { doc.font(chosenFont); } catch (_) {}
+        // Restore font/color after render
+        try { doc.font(chosenFont); } catch (_) { }
         doc.fontSize(BASE_SIZE).fillColor(txtColor);
 
-        currentY += advance;
+        // Advance by exactly one line height — NO double-counting
+        currentY += lineH;
       }
 
       await new Promise<void>((res, rej) => {
@@ -828,13 +600,11 @@ export async function generateDocumentFromLines(
       });
 
       const pdfBuffer = Buffer.concat(buffers);
-      if (!pdfBuffer || pdfBuffer.length === 0) {
-        throw new Error('PDF buffer is empty after generation');
-      }
+      if (!pdfBuffer || pdfBuffer.length === 0) throw new Error('PDF buffer is empty');
       resolve({ buffer: pdfBuffer, pageCount });
 
     } catch (err) {
-      console.error('[pdfGeneratorService] Error in generateDocumentFromLines:', err);
+      console.error('[pdfGeneratorService] Error:', err);
       reject(err);
     }
   });
