@@ -2166,6 +2166,17 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     // Show format selection
     const currentUser = await User.findOne({ telegramId });
     const count = currentUser?.pendingConversionFiles?.length || 0;
+
+    let detectedFormat: string | undefined;
+    const lastFileId = currentUser?.pendingConversionFiles?.slice(-1)[0];
+    if (lastFileId) {
+      try {
+        const tgFileMeta = await ctx.api.getFile(lastFileId);
+        const ext = tgFileMeta.file_path?.split('.').pop()?.toUpperCase();
+        if (ext) detectedFormat = ext;
+      } catch { /* silent */ }
+    }
+
     await showFormatSelection(ctx, count, true, detectedFormat);
     return;
   }
@@ -2179,6 +2190,17 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
     const currentUser = await User.findOne({ telegramId });
     const count = currentUser?.pendingConversionFiles?.length || 0;
+
+    let detectedFormat: string | undefined;
+    const lastFileId = currentUser?.pendingConversionFiles?.slice(-1)[0];
+    if (lastFileId) {
+      try {
+        const tgFileMeta = await ctx.api.getFile(lastFileId);
+        const ext = tgFileMeta.file_path?.split('.').pop()?.toUpperCase();
+        if (ext) detectedFormat = ext;
+      } catch { /* silent */ }
+    }
+
     await showFormatSelection(ctx, count, false, detectedFormat);
     return;
   }
@@ -2277,7 +2299,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
             return Buffer.from(svgContent, 'utf-8');
           }
           case 'bmp':
-            return sharp(inputBuffer).bmp({ force: true }).toBuffer();
+            return sharp(inputBuffer).toFormat('bmp').toBuffer();
           case 'gif':
             return sharp(inputBuffer).gif({ force: true }).toBuffer();
           default:
