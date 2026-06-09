@@ -421,7 +421,7 @@ export async function generateDocumentFromLines(
         // Draw background
         if (bgColor !== '#FFFFFF') {
           doc.save();
-          const hex = bgColor.replace('#', '');
+          // const hex = bgColor.replace('#', '');
           doc.rect(0, 0, doc.page.width, doc.page.height).fill(bgColor);
           doc.restore();
         }
