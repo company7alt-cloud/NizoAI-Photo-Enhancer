@@ -2338,7 +2338,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
             return Buffer.from(svgContent, 'utf-8');
           }
           case 'bmp':
-            return sharp(inputBuffer).toFormat('bmp').toBuffer();
+            return sharp(inputBuffer).toFormat('bmp' as any).toBuffer();
           case 'gif':
             return sharp(inputBuffer).gif({ force: true }).toBuffer();
           default:
