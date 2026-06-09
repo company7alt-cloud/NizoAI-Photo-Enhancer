@@ -2459,15 +2459,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
               `✅ <b>تم تحويل الصيغة بنجاح!</b>\n\n` +
               `📄 <b>الصيغة الجديدة:</b> ${format.toUpperCase()}\n` +
               `🔢 <b>كود العملية:</b> #${jobId}\n\n` +
-              `👇 <i>يتم إرسال الصورة كـ (ملف) للحفاظ على الدقة الكاملة.</i>` +
-              `\n\n🤖 <a href="https://t.me/Z7Z_NBOT">تم التحويل بواسطة @Z7Z_NBOT</a>`,
+              `👇 <i>يتم إرسال الصورة كـ (ملف) للحفاظ على الدقة الكاملة.</i>`,
             parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
-                [{
-                  text: '↗️ شارك أو احفظ الملف',
-                  url: 'https://t.me/Z7Z_NBOT',
-                }]
+                [
+                  { text: '👍 جيد', callback_data: `fconv_good_${jobId}`, style: 'success' as any },
+                  { text: '👎 سيئ', callback_data: `fconv_bad_${jobId}`, style: 'danger' as any },
+                ]
               ]
             }
           }
@@ -2572,6 +2571,60 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           }
         }
       );
+    }
+    return;
+  }
+
+  // ── Feedback: Good ──
+  if (data.startsWith('fconv_good_')) {
+    await ctx.answerCallbackQuery({
+      text: '💙 شكراً لك صديقي! لقد سرّني أن نتائج البوت نالت إعجابك 🌟',
+      show_alert: true,
+    }).catch(() => {});
+    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+    return;
+  }
+
+  // ── Feedback: Bad — silent report to admin channel ──
+  if (data.startsWith('fconv_bad_')) {
+    await ctx.answerCallbackQuery({
+      text: '🙏 نعتذر عن المشكلة التي واجهتها يا صديقي.\nتم رفع بلاغ للمطور وسيتم حل مشكلتك.\nإذا تظن أن الخلل في البوت قم بفتح بلاغ وسيتم وصلك مع أحد العملاء 💙',
+      show_alert: true,
+    }).catch(() => {});
+
+    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+
+    // Silent report to archive channel
+    const badUser = ctx.from;
+    const badUserLink = badUser?.username
+      ? `@${badUser.username}`
+      : `<a href="tg://user?id=${badUser?.id}">${badUser?.first_name || 'مجهول'}</a>`;
+
+    // Get the file from the message
+    const badMsg = ctx.callbackQuery?.message;
+    const badDocument = (badMsg as any)?.document;
+
+    const reportCaption =
+      `😡 <b>تقييم سلبي — العميل غير راضٍ</b>\n` +
+      `━━━━━━━━━━━━━━\n` +
+      `🆔 <b>User ID:</b> <code>${badUser?.id}</code>\n` +
+      `👤 <b>Username:</b> ${badUserLink}\n` +
+      `📅 <b>الوقت:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+      `━━━━━━━━━━━━━━`;
+
+    if (BACKUP_CHANNEL_ID) {
+      try {
+        await ctx.api.sendMessage(BACKUP_CHANNEL_ID, reportCaption, { parse_mode: 'HTML', disable_notification: true });
+        if (badDocument?.file_id) {
+          await ctx.api.sendDocument(
+            BACKUP_CHANNEL_ID,
+            badDocument.file_id,
+            { caption: '📎 الملف المرفق بالتقييم السلبي', disable_notification: true }
+          );
+        }
+      } catch (e) {
+        console.error('[FeedbackBad]', e);
+      }
     }
     return;
   }
