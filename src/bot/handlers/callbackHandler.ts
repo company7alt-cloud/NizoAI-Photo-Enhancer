@@ -42,29 +42,56 @@ async function showFormatSelection(ctx: any, count: number, _upscale: boolean, s
 
   const keyboard: any[] = [
     [
-      { text: label('JPG'),  callback_data: 'fconv_jpg',  style: 'primary' as const },
-      { text: label('PNG'),  callback_data: 'fconv_png',  style: 'primary' as const },
+      { text: label('JPG'), callback_data: 'fconv_jpg', style: 'primary' as const },
+      { text: label('PNG'), callback_data: 'fconv_png', style: 'primary' as const },
       { text: label('WEBP'), callback_data: 'fconv_webp', style: 'primary' as const },
     ],
     [
       { text: label('AVIF'), callback_data: 'fconv_avif', style: 'primary' as const },
       { text: label('TIFF'), callback_data: 'fconv_tiff', style: 'primary' as const },
-      { text: label('BMP'),  callback_data: 'fconv_bmp',  style: 'primary' as const },
+      { text: label('GIF'), callback_data: 'fconv_gif', style: 'primary' as const },
     ],
     [
-      { text: label('GIF'),  callback_data: 'fconv_gif',  style: 'primary' as const },
-      { text: label('ICO'),  callback_data: 'fconv_ico',  style: 'primary' as const },
-      { text: label('HEIC'), callback_data: 'fconv_heic', style: 'primary' as const },
-    ],
-  ];
-
-  if (isSingle) {
-    keyboard.push([
+      { text: label('BMP'), callback_data: 'fconv_bmp', style: 'primary' as const },
       { text: label('PDF'), callback_data: 'fconv_pdf', style: 'primary' as const },
       { text: label('SVG'), callback_data: 'fconv_svg', style: 'primary' as const },
+    ],
+    [
       { text: label('PSD'), callback_data: 'fconv_psd', style: 'primary' as const },
-    ]);
-  }
+      { text: label('ICO'), callback_data: 'fconv_ico', style: 'primary' as const },
+      { text: label('HEIC'), callback_data: 'fconv_heic', style: 'primary' as const },
+    ],
+    [
+      { text: label('EPS'), callback_data: 'fconv_eps', style: 'primary' as const },
+      { text: label('AI'), callback_data: 'fconv_ai', style: 'primary' as const },
+      { text: label('RAW'), callback_data: 'fconv_raw', style: 'primary' as const },
+    ],
+    [
+      { text: label('CR2'), callback_data: 'fconv_cr2', style: 'primary' as const },
+      { text: label('NEF'), callback_data: 'fconv_nef', style: 'primary' as const },
+      { text: label('SR2'), callback_data: 'fconv_sr2', style: 'primary' as const },
+    ],
+    [
+      { text: label('DNG'), callback_data: 'fconv_dng', style: 'primary' as const },
+      { text: label('ARW'), callback_data: 'fconv_arw', style: 'primary' as const },
+      { text: label('JP2'), callback_data: 'fconv_jp2', style: 'primary' as const },
+    ],
+    [
+      { text: label('DDS'), callback_data: 'fconv_dds', style: 'primary' as const },
+      { text: label('TGA'), callback_data: 'fconv_tga', style: 'primary' as const },
+      { text: label('PPM'), callback_data: 'fconv_ppm', style: 'primary' as const },
+    ],
+    [
+      { text: label('PGM'), callback_data: 'fconv_pgm', style: 'primary' as const },
+      { text: label('PBM'), callback_data: 'fconv_pbm', style: 'primary' as const },
+      { text: label('PNM'), callback_data: 'fconv_pnm', style: 'primary' as const },
+    ],
+    [
+      { text: label('HDR'), callback_data: 'fconv_hdr', style: 'primary' as const },
+      { text: label('EXR'), callback_data: 'fconv_exr', style: 'primary' as const },
+      { text: label('DIB'), callback_data: 'fconv_dib', style: 'primary' as const },
+    ],
+  ];
 
   // @ts-ignore
   keyboard.push([{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' as const }]);
@@ -2205,9 +2232,21 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  if (['fconv_png', 'fconv_jpg', 'fconv_webp', 'fconv_avif', 'fconv_tiff', 'fconv_pdf', 'fconv_svg', 'fconv_bmp', 'fconv_gif', 'fconv_ico', 'fconv_heic', 'fconv_psd'].includes(data)) {
+  if (data === 'action_download_guide') {
+    await ctx.answerCallbackQuery({
+      text: '📥 عزيزي، لتحميل الصورة بجودتها الأصلية: اضغط على أيقونة الملف أو السهم الموجود بجانب الصورة مباشرة! ✅',
+      show_alert: true
+    });
+    return;
+  }
+
+  const allFormats = ['fconv_jpg', 'fconv_png', 'fconv_webp', 'fconv_avif', 'fconv_tiff', 'fconv_gif', 'fconv_bmp', 'fconv_pdf', 'fconv_svg', 'fconv_psd', 'fconv_ico', 'fconv_heic', 'fconv_eps', 'fconv_ai', 'fconv_raw', 'fconv_cr2', 'fconv_nef', 'fconv_sr2', 'fconv_dng', 'fconv_arw', 'fconv_jp2', 'fconv_dds', 'fconv_tga', 'fconv_ppm', 'fconv_pgm', 'fconv_pbm', 'fconv_pnm', 'fconv_hdr', 'fconv_exr', 'fconv_dib'];
+  
+  if (allFormats.includes(data)) {
+    const unsupported = ['fconv_pdf', 'fconv_svg', 'fconv_psd', 'fconv_ico', 'fconv_heic', 'fconv_eps', 'fconv_ai', 'fconv_raw', 'fconv_cr2', 'fconv_nef', 'fconv_sr2', 'fconv_dng', 'fconv_arw', 'fconv_jp2', 'fconv_dds', 'fconv_tga', 'fconv_ppm', 'fconv_pgm', 'fconv_pbm', 'fconv_pnm', 'fconv_hdr', 'fconv_exr', 'fconv_dib'];
+    
     // ── MAINTENANCE GUARD ──
-    if (['fconv_ico', 'fconv_heic', 'fconv_psd'].includes(data)) {
+    if (unsupported.includes(data)) {
       await ctx.answerCallbackQuery({
         text: '⚠️ عذراً، هذه الصيغة تحت الصيانة والتطوير حالياً وسيتم توفيرها قريباً!',
         show_alert: true
@@ -2360,14 +2399,22 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
         const { incrementGlobalCounter } = await import('../../services/statsService');
         await incrementGlobalCounter();
+        const jobId = `NZO-${Date.now().toString().slice(-6)}`;
         await ctx.replyWithDocument(
-          new InputFile(buffer, name),
+          new InputFile(buffer, `NizoAI_Converted_${jobId}.${format}`),
           {
-            caption:
-              `✅ تم التحويل إلى <b>${format.toUpperCase()}</b> بنجاح! 🎉\n` +
-              `📦 <b>الحجم:</b> ${sizeMB} MB\n` +
-              `⚡ مجاني — لم يتم خصم أي محاولات`,
+            caption: 
+              `✅ <b>تم تحويل الصيغة بنجاح!</b>\n\n` +
+              `📄 <b>الصيغة الجديدة:</b> ${format.toUpperCase()}\n` +
+              `🔢 <b>كود العملية:</b> #${jobId}\n\n` +
+              `👇 <i>يتم إرسال الصورة كـ (ملف) للحفاظ على الدقة الكاملة.</i>`,
             parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                // @ts-ignore
+                [{ text: '⬇️ تحميل للجهاز', callback_data: 'action_download_guide', style: 'success' as const }]
+              ]
+            }
           }
         );
 
