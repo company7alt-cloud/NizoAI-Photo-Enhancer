@@ -2289,10 +2289,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'action_download_guide') {
-    await ctx.answerCallbackQuery({
-      text: '📥 عزيزي، لتحميل الصورة بجودتها الأصلية: اضغط على أيقونة الملف أو السهم الموجود بجانب الصورة مباشرة! ✅',
-      show_alert: true
-    });
+    await ctx.answerCallbackQuery().catch(() => {});
     return;
   }
 
@@ -2462,12 +2459,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
               `✅ <b>تم تحويل الصيغة بنجاح!</b>\n\n` +
               `📄 <b>الصيغة الجديدة:</b> ${format.toUpperCase()}\n` +
               `🔢 <b>كود العملية:</b> #${jobId}\n\n` +
-              `👇 <i>يتم إرسال الصورة كـ (ملف) للحفاظ على الدقة الكاملة.</i>`,
+              `👇 <i>يتم إرسال الصورة كـ (ملف) للحفاظ على الدقة الكاملة.</i>` +
+              `\n\n🤖 <a href="https://t.me/Z7Z_NBOT">تم التحويل بواسطة @Z7Z_NBOT</a>`,
             parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
-                // @ts-ignore
-                [{ text: '⬇️ تحميل للجهاز', callback_data: 'action_download_guide', style: 'success' as const }]
+                [{
+                  text: '↗️ شارك أو احفظ الملف',
+                  url: 'https://t.me/Z7Z_NBOT',
+                }]
               ]
             }
           }
