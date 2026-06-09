@@ -35,38 +35,44 @@ const ARCHIVE_GROUP_ID = process.env.ARCHIVE_GROUP_ID ?? '';
 const CHANNEL_ID = process.env.CHANNEL_ID ?? '';
 const BACKUP_CHANNEL_ID = ARCHIVE_GROUP_ID || CHANNEL_ID;
 
-async function showFormatSelection(ctx: any, count: number, _upscale: boolean): Promise<void> {
+async function showFormatSelection(ctx: any, count: number, _upscale: boolean, sourceFormat?: string): Promise<void> {
   const isSingle = count === 1;
+  const src = sourceFormat ? sourceFormat.toUpperCase() : '';
+  const label = (fmt: string) => src ? `${src} ➜ ${fmt}` : `🔄 ${fmt}`;
+
   const keyboard: any[] = [
     [
-      // @ts-ignore
-      { text: '✅ PNG', callback_data: 'fconv_png', style: 'primary' as const },
-      { text: '✅ JPG', callback_data: 'fconv_jpg', style: 'primary' as const },
-      // @ts-ignore
-      { text: '✅ WEBP', callback_data: 'fconv_webp', style: 'primary' as const },
+      { text: label('JPG'),  callback_data: 'fconv_jpg',  style: 'primary' as const },
+      { text: label('PNG'),  callback_data: 'fconv_png',  style: 'primary' as const },
+      { text: label('WEBP'), callback_data: 'fconv_webp', style: 'primary' as const },
     ],
     [
-      // @ts-ignore
-      { text: '✅ AVIF', callback_data: 'fconv_avif', style: 'primary' as const },
-      { text: '✅ TIFF', callback_data: 'fconv_tiff', style: 'primary' as const },
+      { text: label('AVIF'), callback_data: 'fconv_avif', style: 'primary' as const },
+      { text: label('TIFF'), callback_data: 'fconv_tiff', style: 'primary' as const },
+      { text: label('BMP'),  callback_data: 'fconv_bmp',  style: 'primary' as const },
+    ],
+    [
+      { text: label('GIF'),  callback_data: 'fconv_gif',  style: 'primary' as const },
+      { text: label('ICO'),  callback_data: 'fconv_ico',  style: 'primary' as const },
+      { text: label('HEIC'), callback_data: 'fconv_heic', style: 'primary' as const },
     ],
   ];
 
-  // Add PDF and SVG only for single image
   if (isSingle) {
     keyboard.push([
-      // @ts-ignore
-      { text: '📄 PDF', callback_data: 'fconv_pdf', style: 'primary' as const },
-      { text: '🎨 SVG', callback_data: 'fconv_svg', style: 'primary' as const },
+      { text: label('PDF'), callback_data: 'fconv_pdf', style: 'primary' as const },
+      { text: label('SVG'), callback_data: 'fconv_svg', style: 'primary' as const },
+      { text: label('PSD'), callback_data: 'fconv_psd', style: 'primary' as const },
     ]);
   }
 
   // @ts-ignore
-  keyboard.push([{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' , style: 'danger' as const}]);
+  keyboard.push([{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' as const }]);
 
   await ctx.reply(
-    `🔄 <b>اختر الصيغة التي تريد التحويل إليها:</b>\n` +
-    (isSingle ? '📄 PDF و SVG متاحان للصورة الواحدة فقط' : ''),
+    `🔄 <b>اختر الصيغة التي تريد التحويل إليها:</b>` +
+    (src ? `\n📂 <b>الصيغة الأصلية:</b> ${src}` : '') +
+    (isSingle ? '\n📄 PDF و SVG و PSD متاحان للصورة الواحدة فقط' : ''),
     {
       parse_mode: 'HTML',
       reply_markup: { inline_keyboard: keyboard },
@@ -2116,10 +2122,20 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const currentUser = await User.findOne({ telegramId });
     const count = currentUser?.pendingConversionFiles?.length || 0;
 
-    await User.findOneAndUpdate(
+    const batchUser = await User.findOneAndUpdate(
       { telegramId },
-      { $set: { awaitingFormatConversion: false } }
+      { $set: { awaitingFormatConversion: false } },
+      { new: true }
     );
+    const lastFileId = batchUser?.pendingConversionFiles?.slice(-1)[0];
+    let detectedFormat: string | undefined;
+    if (lastFileId) {
+      try {
+        const tgFileMeta = await ctx.api.getFile(lastFileId);
+        const ext = tgFileMeta.file_path?.split('.').pop()?.toUpperCase();
+        if (ext) detectedFormat = ext;
+      } catch { /* silent */ }
+    }
 
     await ctx.reply(
       `✅ تم استلام <b>${count}</b> صورة\n\n` +
@@ -2150,7 +2166,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     // Show format selection
     const currentUser = await User.findOne({ telegramId });
     const count = currentUser?.pendingConversionFiles?.length || 0;
-    await showFormatSelection(ctx, count, true);
+    await showFormatSelection(ctx, count, true, detectedFormat);
     return;
   }
 
@@ -2163,14 +2179,23 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
     const currentUser = await User.findOne({ telegramId });
     const count = currentUser?.pendingConversionFiles?.length || 0;
-    await showFormatSelection(ctx, count, false);
+    await showFormatSelection(ctx, count, false, detectedFormat);
     return;
   }
 
-  if (['fconv_png', 'fconv_jpg', 'fconv_webp', 'fconv_avif', 'fconv_tiff', 'fconv_pdf', 'fconv_svg'].includes(data)) {
+  if (['fconv_png', 'fconv_jpg', 'fconv_webp', 'fconv_avif', 'fconv_tiff', 'fconv_pdf', 'fconv_svg', 'fconv_bmp', 'fconv_gif', 'fconv_ico', 'fconv_heic', 'fconv_psd'].includes(data)) {
+    // ── MAINTENANCE GUARD ──
+    if (['fconv_ico', 'fconv_heic', 'fconv_psd'].includes(data)) {
+      await ctx.answerCallbackQuery({
+        text: '⚠️ عذراً، هذه الصيغة تحت الصيانة والتطوير حالياً وسيتم توفيرها قريباً!',
+        show_alert: true
+      });
+      return;
+    }
+
     await ctx.answerCallbackQuery({ text: 'جاري المعالجة... ⏳' });
 
-    const format = data.replace('fconv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'svg';
+    const format = data.replace('fconv_', '') as 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'svg' | 'bmp' | 'gif' | 'ico' | 'heic' | 'psd';
     const telegramId = ctx.from!.id.toString();
     const currentUser = await User.findOne({ telegramId });
     const fileIds = currentUser?.pendingConversionFiles || [];
@@ -2251,6 +2276,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
             return Buffer.from(svgContent, 'utf-8');
           }
+          case 'bmp':
+            return sharp(inputBuffer).bmp({ force: true }).toBuffer();
+          case 'gif':
+            return sharp(inputBuffer).gif({ force: true }).toBuffer();
           default:
             throw new Error('صيغة غير مدعومة');
         }
