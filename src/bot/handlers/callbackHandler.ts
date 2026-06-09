@@ -2588,7 +2588,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ── Feedback: Bad — silent report to admin channel ──
   if (data.startsWith('fconv_bad_')) {
     await ctx.answerCallbackQuery({
-      text: '🙏 نعتذر عن المشكلة التي واجهتها يا صديقي.\nتم رفع بلاغ للمطور وسيتم حل مشكلتك.\nإذا تظن أن الخلل في البوت قم بفتح بلاغ وسيتم وصلك مع أحد العملاء 💙',
+      text: '🙏 نعتذر عن المشكلة التي واجهتها يا صديقي.\nتم رفع بلاغ للمطور وسيتم الرد عليك مع المطور نزار 💙',
       show_alert: true,
     }).catch(() => {});
 
@@ -2609,18 +2609,25 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       `━━━━━━━━━━━━━━\n` +
       `🆔 <b>User ID:</b> <code>${badUser?.id}</code>\n` +
       `👤 <b>Username:</b> ${badUserLink}\n` +
+      `👤 <b>الاسم:</b> ${badUser?.first_name || ''} ${badUser?.last_name || ''}\n` +
+      `🔗 <b>رابط:</b> <a href="tg://user?id=${badUser?.id}">فتح المحادثة</a>\n` +
       `📅 <b>الوقت:</b> ${new Date().toLocaleString('ar-SA')}\n` +
       `━━━━━━━━━━━━━━`;
 
     if (BACKUP_CHANNEL_ID) {
       try {
-        await ctx.api.sendMessage(BACKUP_CHANNEL_ID, reportCaption, { parse_mode: 'HTML', disable_notification: true });
         if (badDocument?.file_id) {
           await ctx.api.sendDocument(
             BACKUP_CHANNEL_ID,
             badDocument.file_id,
-            { caption: '📎 الملف المرفق بالتقييم السلبي', disable_notification: true }
+            {
+              caption: reportCaption,
+              parse_mode: 'HTML',
+              disable_notification: true,
+            }
           );
+        } else {
+          await ctx.api.sendMessage(BACKUP_CHANNEL_ID, reportCaption, { parse_mode: 'HTML', disable_notification: true });
         }
       } catch (e) {
         console.error('[FeedbackBad]', e);
