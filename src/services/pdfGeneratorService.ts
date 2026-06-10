@@ -15,18 +15,14 @@ import https from 'https';
 function prepareArabicText(text: string): string {
   if (!text || typeof text !== 'string' || text.trim() === '') return '';
   try {
-    // ── Strip invisible/broken Unicode characters that render as □ boxes ──
     const cleaned = text
-      .replace(/[\uFFFD\uFFFC\uFFFB\uFFFA]/g, '')   // replacement chars
-      .replace(/[\u200B\u200C\u200D\u200E\u200F]/g, '') // zero-width chars
-      .replace(/[\u202A\u202B\u202C\u202D\u202E]/g, '') // bidi override chars
-      .replace(/[\uFEFF]/g, '')                      // BOM
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '') // control chars
+      .replace(/[\uFFFD\uFFFC\uFFFB\uFFFA]/g, '')
+      .replace(/[\u200B\u200C\u200D\u200E\u200F]/g, '')
+      .replace(/[\u202A\u202B\u202C\u202D\u202E]/g, '')
+      .replace(/[\uFEFF]/g, '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
       .trim();
-
-    const hasArabic = /[\u0600-\u06FF]/.test(cleaned);
-    if (!hasArabic) return cleaned;
-    return arabicReshaper.convertArabic(cleaned);
+    return cleaned;
   } catch (error) {
     console.error('[PDF] Arabic text preparation failed:', error);
     return text;
@@ -465,30 +461,23 @@ function drawArabicParagraph(
     }
 
     const isArabic = /[\u0600-\u06FF]/.test(inputLine);
-
-    // Reshape Arabic letters so they connect properly
-    // PDFKit handles RTL direction and bracket mirroring natively via align:'right'
-    const finalLine = isArabic
-      ? prepareArabicText(inputLine)
-      : inputLine;
-
-    // Alignment: user's choice overrides auto-detection for center,
-    // otherwise Arabic=right, English=left
+    const finalLine = prepareArabicText(inputLine);
     let pdfAlign: string;
     if (align === 'center') {
       pdfAlign = 'center';
     } else if (align === 'left') {
       pdfAlign = 'left';
+    } else if (align === 'right') {
+      pdfAlign = 'right';
     } else {
-      // default: Arabic→right, English→left
       pdfAlign = isArabic ? 'right' : 'left';
     }
-
     try {
       doc.text(finalLine, startX, currentY, {
         width,
         align: pdfAlign,
-        lineBreak: false
+        lineBreak: true,
+        continued: false,
       });
     } catch (e) {
       console.error('[PDF] doc.text crash, skipping line:', e);
