@@ -299,7 +299,7 @@ function renderRichLine(
     doc.save().lineWidth(0.4);
   }
 
-  const lineColor = (line as any).color || textColor;
+  const lineColor = (line as any).color ?? textColor;
   doc.fontSize(fontSize).fillColor(lineColor);
 
   // ── Typography controls ────────────────────────────────────────────────────
@@ -510,7 +510,7 @@ export async function generateDocumentFromLines(
 
   return new Promise(async (resolve, reject) => {
     try {
-      const PADDING   = 60;
+      const PADDING   = 72;
       const BASE_SIZE = 18; // was 13, +5
       const LINE_H    = BASE_SIZE * 1.6;
 
