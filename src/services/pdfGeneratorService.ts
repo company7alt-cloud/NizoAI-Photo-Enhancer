@@ -587,13 +587,12 @@ export async function generateDocumentFromLines(
         drawBackground();
         const W = doc.page.width;
         const H = doc.page.height;
-        // No border box — clean pages only
         return { W, H };
       };
 
       let { W, H } = addPage();
       const contentW = W - PADDING * 2;
-      const BOTTOM_MARGIN = PADDING + (BASE_SIZE * 1.6 * 2); // 2 extra lines
+      const BOTTOM_MARGIN = PADDING * 2;
       const maxY     = H - BOTTOM_MARGIN;
       let currentY   = PADDING;
 
@@ -792,8 +791,8 @@ export async function generateDocumentFromLines(
         // Auto-paginate
         if (currentY + effectiveLineH > maxY) {
           ({ W, H } = addPage());
-          currentY = doc.page.margins.top ?? PADDING;
-          doc.y = currentY;
+          currentY = PADDING;
+          doc.y = PADDING;
           try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font during pagination:', error); }
           // Do NOT reset color/size here — renderRichLine applies per-line settings
         }
