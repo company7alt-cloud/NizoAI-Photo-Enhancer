@@ -795,7 +795,7 @@ export async function generateDocumentFromLines(
           currentY = doc.page.margins.top ?? PADDING;
           doc.y = currentY;
           try { doc.font(chosenFont); } catch (error) { console.error('[PDF] Failed to restore font during pagination:', error); }
-          doc.fontSize(BASE_SIZE).fillColor(txtColor);
+          // Do NOT reset color/size here — renderRichLine applies per-line settings
         }
 
         if (raw === '') {
@@ -804,9 +804,8 @@ export async function generateDocumentFromLines(
         }
 
         // Restore chosen font before each line render
-        // This ensures formatting applies to ALL lines in the batch
         try { doc.font(chosenFont); } catch (_) {}
-        doc.fontSize(BASE_SIZE);
+        // Do NOT set fontSize here — renderRichLine handles per-line size
 
         let advance = BASE_SIZE * 1.6;
         try {
@@ -815,9 +814,9 @@ export async function generateDocumentFromLines(
           console.error('[PDF] renderRichLine crash, skipping line:', e);
         }
 
-        // Reset font and color after each line to prevent bleed-through
+        // Reset font only — do NOT reset color (each line carries its own color)
         try { doc.font(chosenFont); } catch (_) {}
-        doc.fontSize(BASE_SIZE).fillColor(txtColor);
+        doc.fontSize(BASE_SIZE);
 
         currentY += advance;
       }
