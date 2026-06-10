@@ -1782,11 +1782,10 @@ registerDocCallback('copy_generated_text', 'copy_generated_text', async (ctx) =>
     await ctx.reply('❌ النص غير متاح، يرجى إعادة إنشاء المستند.');
     return;
   }
-  const escaped = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  await ctx.reply(`<pre>${escaped}</pre>`, { parse_mode: 'HTML' });
+  const chunks = text.match(/[\s\S]{1,4096}/g) || [];
+  for (const chunk of chunks) {
+    await ctx.reply(chunk).catch(() => {});
+  }
 });
 
 // ─── docBot: Free AI Flow ──────────────────────────────────────────────────────
