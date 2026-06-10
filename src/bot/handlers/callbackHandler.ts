@@ -3889,6 +3889,33 @@ function buildCellKeyboard(
     return;
   }
 
+  // ══════════════════════════════════════
+  // 📋 نسخ النص المولَّد — copy_generated_text
+  // ══════════════════════════════════════
+  if (data === 'copy_generated_text') {
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const generatedText =
+      ctx.session?.lastAiGeneratedText ||
+      ctx.session?.lastGeneratedDoc?.text ||
+      null;
+
+    if (!generatedText || !generatedText.trim()) {
+      await ctx.answerCallbackQuery({
+        text: '⚠️ انتهت صلاحية النص. أعد توليده مجدداً.',
+        show_alert: true,
+      }).catch(() => {});
+      return;
+    }
+
+    // Telegram copyable text — send as plain message so user can long-press to copy
+    const chunks = generatedText.match(/[\s\S]{1,4096}/g) || [];
+    for (const chunk of chunks) {
+      await ctx.reply(chunk, { parse_mode: undefined }).catch(() => {});
+    }
+    return;
+  }
+
   if (data === 'back_to_main_menu') {
     await ctx.answerCallbackQuery().catch(() => {});
     await ctx.deleteMessage().catch(() => {});
