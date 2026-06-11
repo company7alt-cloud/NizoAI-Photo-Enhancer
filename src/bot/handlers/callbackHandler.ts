@@ -6,6 +6,7 @@ import AdmZip from 'adm-zip';
 import PDFDocument from 'pdfkit';
 import { User } from '../../database/models/User';
 import { BotContext, isAdmin } from '../../utils/validators';
+import { setImageAdminState, getImageAdminState, clearImageAdminState } from '../../utils/adminTextState';
 import * as imageService from '../../services/imageService';
 import { sendAdminAlert } from '../../utils/adminAlert';
 import { BotSettings } from '../../database/models/BotSettings';
@@ -3921,6 +3922,60 @@ function buildCellKeyboard(
     await ctx.deleteMessage().catch(() => {});
     const { startCommand } = await import('../commands/start');
     await startCommand(ctx);
+    return;
+  }
+
+  // ── Admin: Text Override — Step 1: button pressed ──────────────────────────
+  if (data === 'admin_text_override') {
+    const userId = ctx.from?.id;
+    if (!userId || !isAdmin(userId)) { void ctx.answerCallbackQuery(); return; }
+    await ctx.answerCallbackQuery();
+    setImageAdminState(userId, 'awaiting_old_text');
+    await ctx.reply(
+      '✏️ <b>تعديل النصوص</b>\n\n' +
+      'أرسل النص الذي تريد استبداله (انسخه كما هو من البوت تماماً):',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '🔴 إلغاء', callback_data: 'admin_text_cancel' }]]
+        }
+      }
+    );
+    return;
+  }
+
+  // ── Admin: Text Override — Cancel ──────────────────────────────────────────
+  if (data === 'admin_text_cancel') {
+    const userId = ctx.from?.id;
+    if (!userId || !isAdmin(userId)) { void ctx.answerCallbackQuery(); return; }
+    await ctx.answerCallbackQuery();
+    clearImageAdminState(userId);
+    await ctx.reply('✅ تم الإلغاء.');
+    return;
+  }
+
+  // ── Admin: Text Override — Confirm save ────────────────────────────────────
+  if (data === 'admin_text_confirm_save') {
+    const userId = ctx.from?.id;
+    if (!userId || !isAdmin(userId)) { void ctx.answerCallbackQuery(); return; }
+    await ctx.answerCallbackQuery();
+    const adminState = getImageAdminState(userId);
+    if (!adminState || adminState.state !== 'awaiting_new_text' || !adminState.oldText) {
+      clearImageAdminState(userId);
+      await ctx.reply('⚠️ انتهت صلاحية الجلسة. ابدأ من جديد.');
+      return;
+    }
+    setImageAdminState(userId, 'awaiting_new_text', adminState.oldText);
+    await ctx.reply(
+      `✅ <b>تم حفظ النص القديم:</b>\n<code>${adminState.oldText}</code>\n\n` +
+      'الآن أرسل النص الجديد (يدعم HTML والإيموجي المميز <code>&lt;tg-emoji emoji-id="..."&gt;</code>):',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '🔴 إلغاء', callback_data: 'admin_text_cancel' }]]
+        }
+      }
+    );
     return;
   }
 }

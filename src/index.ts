@@ -30,6 +30,9 @@ import { callbackHandler } from './bot/handlers/callbackHandler';
 import { forceSubMiddleware } from './bot/middlewares/forceSubMiddleware';
 import { initBotTexts } from './services/botTextsService';
 import { getSettings } from './services/settingsService';
+import { loadOverrideCache, replaceText, saveOverride } from './utils/textOverride';
+import { TextOverride } from './database/models/TextOverride';
+import { setImageAdminState, getImageAdminState, clearImageAdminState } from './utils/adminTextState';
 import { generateAiPDF, getHtmlPageCount } from './services/aiPdfService';
 import {
   analyzeAndEnhancePrompt,
@@ -285,6 +288,12 @@ function getDocAdminKeyboard() {
 // IMAGE BOT — MIDDLEWARE STACK
 // ══════════════════════════════════════════════════════════════════════════════
 
+// 0. Private-only guard — silently drop all group/channel/supergroup updates
+imageBot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
+  if (ctx.chat && ctx.chat.type !== 'private') return;
+  await next();
+});
+
 // 1. Rate limiting — FIRST, admin exempt
 imageBot.use(rateLimitMiddleware(1500, imageBotRateMap));
 
@@ -474,6 +483,54 @@ imageBot.command('endchat', async (ctx) => {
 
 imageBot.on('message', async (_ctx: BotContext, next: NextFunction): Promise<void> => {
   await next();
+});
+
+// ── Admin Text Override message handler ───────────────────────────────────
+imageBot.on('message:text', async (ctx, next) => {
+  const userId = ctx.from?.id;
+  if (!userId || !isAdmin(userId)) return next();
+
+  const adminState = getImageAdminState(userId);
+  if (!adminState) return next();
+
+  const text = ctx.message.text.trim();
+
+  if (adminState.state === 'awaiting_old_text') {
+    const existing = await TextOverride.findOne({ originalText: text }).lean();
+    const existingNote = existing
+      ? `\n\n📝 <b>يوجد استبدال حالي:</b>\n<code>${existing.newText}</code>`
+      : '';
+
+    setImageAdminState(userId, 'awaiting_new_text', text);
+
+    await ctx.reply(
+      `✅ <b>تم استلام النص:</b>\n<code>${text}</code>${existingNote}\n\n` +
+      'أرسل الآن النص الجديد الذي تريد استبداله به:',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '🔴 إلغاء', callback_data: 'admin_text_cancel' }]]
+        }
+      }
+    );
+    return;
+  }
+
+  if (adminState.state === 'awaiting_new_text' && adminState.oldText) {
+    const newText = text;
+    await saveOverride(adminState.oldText, newText, userId);
+    clearImageAdminState(userId);
+
+    await ctx.reply(
+      '✅ <b>تم حفظ الاستبدال بنجاح!</b>\n\n' +
+      `<b>النص القديم:</b>\n<code>${adminState.oldText}</code>\n\n` +
+      `<b>النص الجديد:</b>\n${newText}`,
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
+  return next();
 });
 
 imageBot.on('message:text', async (ctx, next) => {
@@ -3450,6 +3507,7 @@ async function bootstrap(): Promise<void> {
     await connectDatabase();
     await Settings.initDefaults();
     await initBotTexts();
+    await loadOverrideCache();
 
     console.log('--- NizoAI Bot is starting ---');
     const [imageBotInfo, docBotInfo] = await Promise.all([

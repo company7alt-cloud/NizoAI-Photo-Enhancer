@@ -35,6 +35,7 @@ export function registerAdminCommands(bot: any) {
             [{ text: '✏️ تعديل نصوص البوت', callback_data: 'admin_edit_texts' , style: 'primary' as const}],
             [{ text: '🎯 إدارة المحاولات', callback_data: 'admin_manage_attempts' , style: 'primary' as const}],
             [{ text: '🔗 إنشاء رابط مكافأة', callback_data: 'admin_create_magic_link' , style: 'primary' as const}],
+            [{ text: '✏️ تعديل النصوص', callback_data: 'admin_text_override' , style: 'primary' as const}],
           ],
         },
       }
