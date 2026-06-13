@@ -797,14 +797,14 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '30 مربع', callback_data: 'design_grid_30', style: 'primary' } as any,
-              { text: '40 مربع', callback_data: 'design_grid_40', style: 'primary' } as any,
+              { text: '30 مربع', callback_data: 'design_grid_30', style: 'primary' },
+              { text: '40 مربع', callback_data: 'design_grid_40', style: 'primary' },
             ],
             [
-              { text: '50 مربع', callback_data: 'design_grid_50', style: 'primary' } as any,
-              { text: '70 مربع', callback_data: 'design_grid_70', style: 'primary' } as any,
+              { text: '50 مربع', callback_data: 'design_grid_50', style: 'primary' },
+              { text: '70 مربع', callback_data: 'design_grid_70', style: 'primary' },
             ],
-            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]
+            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]
           ]
         }
       });
@@ -829,18 +829,18 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         const replyMarkup = {
           inline_keyboard: [
             [
-              { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', style: 'primary' } as any,
-              { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', style: 'primary' } as any,
+              { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', style: 'primary' },
+              { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', style: 'primary' },
             ],
             [
-              { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', style: 'primary' } as any,
-              { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', style: 'primary' } as any,
+              { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', style: 'primary' },
+              { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', style: 'primary' },
             ],
             [
-              { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', style: 'success' } as any
+              { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', style: 'success' }
             ],
             [
-              { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }
+              { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }
             ]
           ]
         };

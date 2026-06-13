@@ -4013,7 +4013,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]]
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]]
         }
       }
     );
@@ -4106,10 +4106,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '📝 نص (تلقائي الحجم)', callback_data: 'design_type_text', style: 'primary' } as any,
-            { text: '🖼️ صورة', callback_data: 'design_type_image', style: 'primary' } as any
+            { text: '📝 نص (تلقائي الحجم)', callback_data: 'design_type_text', style: 'primary' },
+            { text: '🖼️ صورة', callback_data: 'design_type_image', style: 'primary' }
           ],
-          [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]
+          [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]
         ]
       }
     });
@@ -4138,7 +4138,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]]
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]]
         }
       }
     ).catch(() => { });
@@ -4164,7 +4164,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]]
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]]
         }
       }
     ).catch(() => { });
@@ -4192,16 +4192,16 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: 'أبيض ⚪', callback_data: 'design_color_#FFFFFF', style: 'primary' } as any,
-            { text: 'أسود ⚫', callback_data: 'design_color_#000000', style: 'primary' } as any
+            { text: 'أبيض ⚪', callback_data: 'design_color_#FFFFFF', style: 'primary' },
+            { text: 'أسود ⚫', callback_data: 'design_color_#000000', style: 'primary' }
           ],
           [
-            { text: 'أحمر 🔴', callback_data: 'design_color_#FF0000', style: 'danger' } as any,
-            { text: 'أزرق 🔵', callback_data: 'design_color_#0000FF', style: 'primary' } as any
+            { text: 'أحمر 🔴', callback_data: 'design_color_#FF0000', style: 'danger' },
+            { text: 'أزرق 🔵', callback_data: 'design_color_#0000FF', style: 'primary' }
           ],
           [
-            { text: 'أخضر 🟢', callback_data: 'design_color_#00FF00', style: 'success' } as any,
-            { text: 'أصفر 🟡', callback_data: 'design_color_#FFFF00', style: 'primary' } as any
+            { text: 'أخضر 🟢', callback_data: 'design_color_#00FF00', style: 'success' },
+            { text: 'أصفر 🟡', callback_data: 'design_color_#FFFF00', style: 'primary' }
           ]
         ]
       }
@@ -4354,18 +4354,18 @@ async function generateDesignPreview(ctx: any, state: any) {
     const replyMarkup = {
       inline_keyboard: [
         [
-          { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', style: 'primary' } as any,
-          { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', style: 'primary' } as any,
+          { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', style: 'primary' },
+          { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', style: 'primary' },
         ],
         [
-          { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', style: 'primary' } as any,
-          { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', style: 'primary' } as any,
+          { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', style: 'primary' },
+          { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', style: 'primary' },
         ],
         [
-          { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', style: 'success' } as any
+          { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', style: 'success' }
         ],
         [
-          { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }
+          { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }
         ]
       ]
     };
