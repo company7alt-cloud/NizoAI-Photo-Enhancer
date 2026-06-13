@@ -92,121 +92,91 @@ export async function compositeDesign(
   state: DesignState,
   applyWatermark: boolean
 ): Promise<Buffer> {
-  // a. Get image dimensions
-  const meta = await sharp(originalBuffer).metadata();
+  // 1. First, process the BASE image (Apply Effects & Upscale)
+  let basePipeline = sharp(originalBuffer);
+  
+  if (state.imageEffects.grayscale) basePipeline = basePipeline.grayscale();
+  if (state.imageEffects.saturate) basePipeline = basePipeline.modulate({ saturation: 2.5 });
+  if (state.imageEffects.invert) basePipeline = basePipeline.negate();
+  
+  const originalMeta = await sharp(originalBuffer).metadata();
+  if (state.imageEffects.upscale && originalMeta.width) {
+    basePipeline = basePipeline.resize({
+      width: originalMeta.width * 2,
+      kernel: sharp.kernel.lanczos3,
+      withoutEnlargement: false
+    });
+  }
+
+  // Resolve the processed base image to get its NEW dimensions
+  const processedBaseBuffer = await basePipeline.toBuffer();
+  const meta = await sharp(processedBaseBuffer).metadata();
   const W = meta.width!;
   const H = meta.height!;
 
-  // b. Calculate bounding box
-  const bbox = calculateBoundingBox(
-    state.selectedCells, state.cols, state.rows, W, H
-  );
+  // 2. Calculate Bounding Box using the NEW dimensions
+  const bbox = calculateBoundingBox(state.selectedCells, state.cols, state.rows, W, H);
   const { x, y, w, h } = bbox;
 
-  // c. Build overlay buffer
-  let overlayBuffer: Buffer;
+  let overlayBuf: Buffer | null = null;
 
+  // 3. Generate Overlay based on the exact Bounding Box
   if (state.contentType === 'text') {
     const canvas = createCanvas(w, h);
     const ctx = canvas.getContext('2d');
 
-    let fontSize = Math.floor(h * 0.4); // Start with a large legible size
-    if (fontSize > w / 2) fontSize = Math.floor(w / 2);
-    let lines: string[] = [];
+    // STRICT USER-DEFINED LINES ONLY (No Auto-Wrap)
+    const lines = state.contentValue.split('\n');
+    
+    let fontSize = Math.floor(h * 0.8); // Start large
+    if (fontSize > w) fontSize = Math.floor(w * 0.8);
 
-    // Robust Word-Wrap & Auto-Scaling Loop
-    while (fontSize > 10) {
-      // CRITICAL: Font family MUST be wrapped in quotes for canvas to recognize it
+    // Calculate font size to fit the widest line and total height
+    while (fontSize > 5) {
       ctx.font = `bold ${fontSize}px "${state.selectedFont}"`;
-      lines = [];
-      
-      // Respect manual newlines from user
-      const paragraphs = state.contentValue.split('\n');
+      const maxLineWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
+      const totalHeight = lines.length * (fontSize * 1.4);
 
-      for (const p of paragraphs) {
-        const words = p.split(' ');
-        let currentLine = words[0] || '';
-        
-        for (let i = 1; i < words.length; i++) {
-          const word = words[i];
-          const testLine = currentLine + ' ' + word;
-          const metrics = ctx.measureText(testLine);
-          
-          if (metrics.width < w * 0.95) {
-            currentLine = testLine;
-          } else {
-            lines.push(currentLine);
-            currentLine = word;
-          }
-        }
-        lines.push(currentLine);
+      if (maxLineWidth <= w * 0.95 && totalHeight <= h * 0.95) {
+        break; // Fits perfectly!
       }
-
-      const lineHeight = fontSize * 1.4;
-      const totalHeight = lines.length * lineHeight;
-      const isTooWide = lines.some(l => ctx.measureText(l).width > w * 0.95);
-
-      // If it fits both width and height, we found the perfect font size!
-      if (totalHeight <= h * 0.95 && !isTooWide) break;
-      
-      // Otherwise, shrink slightly and recalculate
       fontSize -= 2;
     }
 
     ctx.fillStyle = state.textColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const lineHeight = fontSize * 1.4;
     
-    // Calculate starting Y to vertically center the block of text
-    const startY = (h - (lines.length * lineHeight)) / 2 + (lineHeight / 2);
+    const lineHeight = fontSize * 1.4;
+    const totalTextHeight = lines.length * lineHeight;
+    const startY = (h - totalTextHeight) / 2 + (lineHeight / 2);
 
-    // Draw each line
     lines.forEach((line, index) => {
       ctx.fillText(line, w / 2, startY + (index * lineHeight));
     });
 
-    overlayBuffer = canvas.toBuffer('image/png');
-  } else {
-    // ── Image overlay ─────────────────────────────────────────────────────
-    let overlayBuf = Buffer.from(state.contentValue, 'base64');
-
-    overlayBuffer = await sharp(overlayBuf)
+    overlayBuf = canvas.toBuffer('image/png');
+  } 
+  else if (state.contentType === 'image' && state.contentValue) {
+    const rawOverlay = Buffer.from(state.contentValue, 'base64');
+    overlayBuf = await sharp(rawOverlay)
       .resize(w, h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
       .toBuffer();
-
-    // Free memory immediately
-    (overlayBuf as unknown) = undefined;
   }
 
-  // d. Composite overlay onto original
-  let pipeline = sharp(originalBuffer)
-    .composite([{ input: overlayBuffer, left: x, top: y }]);
-
-  // Free overlay buffer
-  (overlayBuffer as unknown) = undefined;
-
-  // e. Apply image effects in order
-  if (state.imageEffects.grayscale) pipeline = pipeline.grayscale();
-  if (state.imageEffects.saturate)  pipeline = pipeline.modulate({ saturation: 2.5 });
-  if (state.imageEffects.invert)    pipeline = pipeline.negate();
-  if (state.imageEffects.upscale) {
-    pipeline = pipeline.resize({
-      width: W * 2,
-      kernel: sharp.kernel.lanczos3,
-      withoutEnlargement: false,
-    });
+  // 4. Composite the Overlay onto the Processed Base Image
+  let finalPipeline = sharp(processedBaseBuffer);
+  if (overlayBuf) {
+    finalPipeline = finalPipeline.composite([{ input: overlayBuf, left: x, top: y }]);
   }
 
-  // f. Convert to JPEG
-  let resultBuffer = await pipeline.jpeg({ quality: 90 }).toBuffer();
+  let resultBuffer = await finalPipeline.jpeg({ quality: 90 }).toBuffer();
 
-  // g. Apply watermark if requested
+  // 5. Apply Watermark ONLY if requested (Preview mode)
   if (applyWatermark) {
     resultBuffer = await addWatermark(resultBuffer);
   }
 
-  // h. Return result
   return resultBuffer;
 }
