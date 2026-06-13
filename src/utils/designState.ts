@@ -1,0 +1,58 @@
+// src/utils/designState.ts
+
+export interface DesignState {
+  originalFileId: string;
+  originalBuffer?: Buffer;        // MUST be cleared in clearDesignState
+  gridSize: number;
+  cols: number;
+  rows: number;
+  contentType: 'text' | 'image' | null;
+  contentValue: string;           // text string OR base64 of overlay image
+  selectedCells: number[];
+  selectedFont: string;           // 'Almarai' | 'ModernPro' | 'NotoNaskh'
+  textColor: string;              // hex e.g. '#FFFFFF'
+  imageEffects: {
+    grayscale: boolean;
+    saturate: boolean;
+    invert: boolean;
+    upscale: boolean;
+  };
+  previewMsgId?: number;
+  gridMsgId?: number;
+  colorMsgId?: number;
+  stepMsgId?: number;
+  lastActivity: number;           // Date.now()
+}
+
+const designStates = new Map<number, DesignState>();
+
+export function setDesignState(userId: number, state: DesignState): void {
+  designStates.set(userId, state);
+}
+
+export function getDesignState(userId: number): DesignState | undefined {
+  return designStates.get(userId);
+}
+
+export function clearDesignState(userId: number): void {
+  const state = designStates.get(userId);
+  if (state) {
+    // CRITICAL: Force Node.js GC immediately — prevent RAM leak
+    state.originalBuffer = undefined;
+    state.contentValue = '';
+  }
+  designStates.delete(userId);
+}
+
+// TTL cleanup — runs every 15 minutes
+setInterval(() => {
+  const now = Date.now();
+  const TTL = 15 * 60 * 1000;
+  for (const [userId, state] of designStates.entries()) {
+    if (now - state.lastActivity > TTL) {
+      state.originalBuffer = undefined;
+      state.contentValue = '';
+      designStates.delete(userId);
+    }
+  }
+}, 15 * 60 * 1000);

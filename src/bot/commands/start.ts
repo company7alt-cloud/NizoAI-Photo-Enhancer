@@ -271,11 +271,18 @@ export async function startCommand(ctx: BotContext): Promise<void> {
           { text: 'القناة', url: chanLink, style: 'primary' }
         ]] : []),
 
+        // ROW 5.5 — Free Design (dodger blue)
+        [
+          // @ts-ignore
+          { text: '🟦 تصميم مجاني', callback_data: 'start_free_design', color: '#1E90FF' },
+        ],
+
         // ROW 6 — Internet Image Downloader (blue)
         [
           // @ts-ignore
           { text: '🧞‍♂️ تحميل صورة من الإنترنت', callback_data: 'menu_internet_download', style: 'primary' as any },
         ],
+
 
         // ROW 6.5 — Notifications (green)
         [

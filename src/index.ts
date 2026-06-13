@@ -540,6 +540,46 @@ imageBot.on('message:text', async (ctx, next) => {
   const isAdm = adminIds.includes(telegramId || '');
   const messageText = ctx.message?.text || '';
 
+  // ── Free Design: Awaiting Text ───────────────────────────────────────────
+  if (user?.awaitingDesignText) {
+    const textValue = ctx.message?.text || '';
+    if (!textValue.trim()) {
+      await ctx.reply('⚠️ يرجى إرسال نص صالح.');
+      return;
+    }
+    
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingDesignText: false } }
+    );
+    
+    const { getDesignState, setDesignState } = await import('./utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+    
+    state.contentValue = textValue.trim();
+    setDesignState(ctx.from!.id, state);
+    
+    await ctx.reply('🔤 <b>اختر نوع الخط:</b>', {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: 'الخط الكوفي (Almarai)', callback_data: 'design_font_almarai', color: '#1E90FF' } as any,
+          ],
+          [
+            { text: 'الخط الحديث (Modern)', callback_data: 'design_font_modern', color: '#1E90FF' } as any,
+          ],
+          [
+            { text: 'خط النسخ (Noto)', callback_data: 'design_font_noto', color: '#1E90FF' } as any,
+          ],
+          [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]
+        ]
+      }
+    });
+    return;
+  }
+
   // 0. VIP Size Bypass Command (Admin Only)
   if (isAdm && messageText.startsWith('/vip')) {
     const parts = messageText.split(' ');
@@ -1445,6 +1485,8 @@ imageBot.on([':photo', ':document'], async (ctx, next) => {
       dbUser?.awaitingAutoEraserImage ||
       dbUser?.awaitingCustomEraserImage ||
       dbUser?.awaitingFormatConversion ||
+      dbUser?.awaitingDesignImage ||
+      dbUser?.awaitingDesignContent ||
       (dbUser?.proEnhanceSettings as any)?.isAwaitingImage;
 
     if (!hasActiveFlow) {

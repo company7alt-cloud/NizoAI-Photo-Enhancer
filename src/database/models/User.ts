@@ -60,6 +60,9 @@ export interface IUser extends Document {
     height: number | null;
   };
   awaitingFormatConversion?: boolean;
+  awaitingDesignImage?: boolean;
+  awaitingDesignText?: boolean;
+  awaitingDesignContent?: boolean;
   pendingConversionFiles?: string[];
   conversionUpscale?: boolean;
   batchConversionFormat?: string | null;
@@ -277,6 +280,9 @@ const UserSchema = new Schema<IUser>(
       default: () => ({ minX: null, minY: null, width: null, height: null }),
     },
     awaitingFormatConversion: { type: Boolean, default: false },
+    awaitingDesignImage: { type: Boolean, default: false },
+    awaitingDesignText: { type: Boolean, default: false },
+    awaitingDesignContent: { type: Boolean, default: false },
     pendingConversionFiles: { type: [String], default: [] },
     conversionUpscale: { type: Boolean, default: false },
     batchConversionFormat: { type: String, default: null },

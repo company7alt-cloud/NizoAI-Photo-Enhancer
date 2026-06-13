@@ -742,6 +742,125 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  // ── Free Design Feature (Main Image & Content Image) ────────────────────
+  if (user?.awaitingDesignImage || user?.awaitingDesignContent) {
+    const isImage = user.awaitingDesignImage;
+    const fileId = ctx.message?.photo 
+      ? ctx.message.photo[ctx.message.photo.length - 1].file_id 
+      : ctx.message?.document?.file_id;
+
+    if (!fileId) {
+      await ctx.reply('⚠️ يرجى إرسال صورة صحيحة أو ملف.');
+      return;
+    }
+
+    const file = await ctx.api.getFile(fileId);
+    if (!file.file_path) {
+      await ctx.reply('❌ تعذر الحصول على مسار الملف.');
+      return;
+    }
+
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+    const response = await fetch(fileUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    let state = getDesignState(ctx.from!.id);
+
+    if (isImage) {
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { awaitingDesignImage: false } }
+      );
+      
+      if (!state) {
+        state = { 
+          originalFileId: fileId,
+          selectedCells: [], 
+          gridSize: 30, 
+          cols: 5, 
+          rows: 6, 
+          contentType: null,
+          contentValue: '',
+          selectedFont: 'Almarai',
+          textColor: '#FFFFFF',
+          imageEffects: { grayscale: false, saturate: false, invert: false, upscale: false },
+          lastActivity: Date.now()
+        };
+      }
+      state.originalBuffer = buffer;
+      setDesignState(ctx.from!.id, state);
+
+      await ctx.reply('📐 <b>اختر حجم الشبكة لتقسيم الصورة:</b>\n\nكلما زاد عدد المربعات، زادت دقة التحكم بمكان النص/الصورة.', {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '30 مربع', callback_data: 'design_grid_30', color: '#1E90FF' } as any,
+              { text: '40 مربع', callback_data: 'design_grid_40', color: '#1E90FF' } as any,
+            ],
+            [
+              { text: '50 مربع', callback_data: 'design_grid_50', color: '#1E90FF' } as any,
+              { text: '70 مربع', callback_data: 'design_grid_70', color: '#1E90FF' } as any,
+            ],
+            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]
+          ]
+        }
+      });
+    } else {
+      await User.findOneAndUpdate(
+        { telegramId: userId.toString() },
+        { $set: { awaitingDesignContent: false } }
+      );
+
+      if (!state) return;
+      state.contentValue = buffer.toString('base64');
+      setDesignState(ctx.from!.id, state);
+
+      const processingMsg = await ctx.reply('⏳ جاري تحضير المعاينة...');
+      
+      try {
+        const { compositeDesign } = await import('../../services/designEngine');
+        const previewBuffer = await compositeDesign(state.originalBuffer!, state, false);
+        await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+        
+        const { InputFile } = await import('grammy');
+        const replyMarkup = {
+          inline_keyboard: [
+            [
+              { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', color: '#1565C0' } as any,
+              { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', color: '#1565C0' } as any,
+            ],
+            [
+              { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', color: '#1565C0' } as any,
+              { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', color: '#1565C0' } as any,
+            ],
+            [
+              { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', color: '#2E7D32' } as any
+            ],
+            [
+              { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }
+            ]
+          ]
+        };
+
+        const pMsg = await ctx.replyWithPhoto(new InputFile(previewBuffer, 'preview.jpg'), {
+          caption: `👁️ <b>معاينة التصميم</b>\n\nيمكنك تطبيق تأثيرات قبل الحفظ (يخصم محاولتين)`,
+          parse_mode: 'HTML',
+          reply_markup: replyMarkup as any
+        });
+        
+        state.previewMsgId = pMsg.message_id;
+        setDesignState(ctx.from!.id, state);
+      } catch (e) {
+        console.error(e);
+        await ctx.reply('❌ فشل إعداد المعاينة للصورة المضافة.');
+      }
+    }
+    return;
+  }
+
   if (user?.awaitingNanoBananaImage) {
 
     // ── SECURITY: Check if feature was locked after user started ──────────────

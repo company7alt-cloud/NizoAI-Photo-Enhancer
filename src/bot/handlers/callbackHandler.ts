@@ -1622,6 +1622,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         // @ts-ignore
         [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance', style: 'primary' as const }],
         // @ts-ignore
+        [{ text: `${l.btn_design ? '🔴 مقفل' : '🟢 مفتوح'} — 🟦 تصميم مجاني`, callback_data: 'atoggle_btn_design', style: 'primary' as const }],
+        // @ts-ignore
         [{
           text: _panelOn
             ? '🟢 تحميل الإنترنت: مفعّل — اضغط لإيقافه'
@@ -1693,6 +1695,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' , style: 'primary' as const}],
         // @ts-ignore
         [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance', style: 'primary' as const }],
+        // @ts-ignore
+        [{ text: `${l.btn_design ? '🔴 مقفل' : '🟢 مفتوح'} — 🟦 تصميم مجاني`, callback_data: 'atoggle_btn_design', style: 'primary' as const }],
         // @ts-ignore
         [{ text: '❌ إغلاق', callback_data: 'admin_close' , style: 'danger' as const}],
       ]
@@ -3978,5 +3982,413 @@ function buildCellKeyboard(
     );
     return;
   }
+
+  // ══════════════════════════════════════
+  // 🟦 تصميم مجاني (Free Design)
+  // ══════════════════════════════════════
+
+  if (data === 'start_free_design') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    
+    if (locks.btn_design && !isAdminUser) {
+      await ctx.reply('⚠️ عذراً، تم إيقاف قسم التصميم للصيانة. يرجى المحاولة لاحقاً 🔒');
+      return;
+    }
+
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingDesignImage: true } }
+    );
+    await ctx.reply(
+      '🟦 <b>التصميم المجاني</b>\n\n' +
+      '📸 أرسل الصورة التي تريد التصميم عليها\n\n' +
+      'يمكنك إضافة نصوص بأجمل الخطوط العربية، أو إضافة صور أخرى فوقها بشفافية عالية مع اختيار مكانها بدقة عبر الشبكة 📏\n\n' +
+      '💸 التصميم مجاني تماماً!',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]]
+        }
+      }
+    );
+    return;
+  }
+
+  if (data === 'cancel_design') {
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingDesignImage: false, awaitingDesignText: false, awaitingDesignContent: false } }
+    );
+    const { clearDesignState } = await import('../../utils/designState');
+    clearDesignState(ctx.from!.id);
+    await ctx.deleteMessage().catch(() => {});
+    return;
+  }
+
+  if (data.startsWith('design_grid_')) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const size = parseInt(data.replace('design_grid_', ''));
+    
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state || !state.originalBuffer) {
+      await ctx.reply('⚠️ انتهت الجلسة. يرجى البدء من جديد.');
+      return;
+    }
+
+    const cols = size === 30 ? 5 : size === 40 ? 5 : size === 50 ? 5 : size === 70 ? 7 : 10;
+    const rows = size === 30 ? 6 : size === 40 ? 8 : size === 50 ? 10 : size === 70 ? 10 : 10;
+
+    const processingMsg = await ctx.reply('⏳ جاري إنشاء الشبكة، يرجى الانتظار...');
+
+    try {
+      const gridBuffer = await drawGridOnImage(state.originalBuffer, cols, rows);
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+
+      const { InputFile } = await import('grammy');
+      const gridMsg = await ctx.replyWithPhoto(new InputFile(gridBuffer, 'grid.jpg'), {
+        caption: `📐 تم تقسيم الصورة إلى ${size} مربع.\nاختر المربعات التي تريد وضع المحتوى فيها، ثم اضغط "✅ متابعة"`,
+        reply_markup: generateDesignGridKeyboard(size, []) as any
+      });
+
+      state.gridSize = size;
+      state.cols = cols;
+      state.rows = rows;
+      state.selectedCells = [];
+      state.gridMsgId = gridMsg.message_id;
+      setDesignState(ctx.from!.id, state);
+    } catch (e) {
+      console.error(e);
+      await ctx.reply('❌ فشل إنشاء الشبكة.');
+    }
+    return;
+  }
+
+  if (data.startsWith('dsgc_')) {
+    const cellId = parseInt(data.replace('dsgc_', ''));
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
+    if (state.selectedCells.includes(cellId)) {
+      state.selectedCells = state.selectedCells.filter(c => c !== cellId);
+    } else {
+      state.selectedCells.push(cellId);
+    }
+    
+    setDesignState(ctx.from!.id, state);
+    
+    await ctx.editMessageReplyMarkup({
+      inline_keyboard: generateDesignGridKeyboard(state.gridSize, state.selectedCells)
+    } as any).catch(() => {});
+    return;
+  }
+
+  if (data === 'design_confirm_grid') {
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state || state.selectedCells.length === 0) {
+      await ctx.answerCallbackQuery({ text: '⚠️ يرجى تحديد مربع واحد على الأقل!', show_alert: true });
+      return;
+    }
+    
+    await ctx.answerCallbackQuery().catch(() => {});
+    
+    const stepMsg = await ctx.reply('🎨 <b>ما نوع المحتوى الذي تريد إضافته؟</b>', {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '📝 نص (تلقائي الحجم)', callback_data: 'design_type_text', color: '#1E90FF' } as any,
+            { text: '🖼️ صورة', callback_data: 'design_type_image', color: '#1565C0' } as any
+          ],
+          [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]
+        ]
+      }
+    });
+
+    state.stepMsgId = stepMsg.message_id;
+    setDesignState(ctx.from!.id, state);
+    return;
+  }
+
+  if (data === 'design_type_text') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+    
+    state.contentType = 'text';
+    setDesignState(ctx.from!.id, state);
+
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingDesignText: true } }
+    );
+    
+    await ctx.editMessageText(
+      '📝 <b>أرسل النص الآن</b>\nسيتم تصغير الخط تلقائياً ليتناسب مع المساحة المحددة.',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]]
+        }
+      }
+    ).catch(() => {});
+    return;
+  }
+
+  if (data === 'design_type_image') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+    
+    state.contentType = 'image';
+    setDesignState(ctx.from!.id, state);
+
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingDesignContent: true } }
+    );
+    
+    await ctx.editMessageText(
+      '🖼️ <b>أرسل الصورة (العنصر) الآن</b>\nأرسلها كصورة عادية أو كملف، ويفضل أن تكون بصيغة PNG (خلفية شفافة).',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]]
+        }
+      }
+    ).catch(() => {});
+    return;
+  }
+
+  if (data.startsWith('design_font_')) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const fontMap: Record<string, string> = {
+      almarai: 'Almarai',
+      modern: 'ModernPro',
+      noto: 'NotoNaskh'
+    };
+    
+    const font = data.replace('design_font_', '');
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+    
+    state.selectedFont = fontMap[font] || 'Almarai';
+    setDesignState(ctx.from!.id, state);
+    
+    const colorMsg = await ctx.reply('🎨 <b>اختر لون النص:</b>', {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: 'أبيض ⚪', callback_data: 'design_color_#FFFFFF', color: '#1E90FF' } as any,
+            { text: 'أسود ⚫', callback_data: 'design_color_#000000', color: '#1565C0' } as any
+          ],
+          [
+            { text: 'أحمر 🔴', callback_data: 'design_color_#FF0000', color: '#C62828' } as any,
+            { text: 'أزرق 🔵', callback_data: 'design_color_#0000FF', color: '#1E90FF' } as any
+          ],
+          [
+            { text: 'أخضر 🟢', callback_data: 'design_color_#00FF00', color: '#2E7D32' } as any,
+            { text: 'أصفر 🟡', callback_data: 'design_color_#FFFF00', color: '#1565C0' } as any
+          ]
+        ]
+      }
+    });
+    
+    state.colorMsgId = colorMsg.message_id;
+    setDesignState(ctx.from!.id, state);
+    return;
+  }
+
+  if (data.startsWith('design_color_')) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const color = data.replace('design_color_', '');
+    
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+    
+    state.textColor = color;
+    setDesignState(ctx.from!.id, state);
+    
+    await generateDesignPreview(ctx, state);
+    return;
+  }
+
+  if (data.startsWith('design_eff_')) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const eff = data.replace('design_eff_', '');
+    
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+    
+    if (eff === 'gray') state.imageEffects.grayscale = !state.imageEffects.grayscale;
+    if (eff === 'sat')  state.imageEffects.saturate = !state.imageEffects.saturate;
+    if (eff === 'inv')  state.imageEffects.invert = !state.imageEffects.invert;
+    if (eff === 'ups')  state.imageEffects.upscale = !state.imageEffects.upscale;
+    
+    setDesignState(ctx.from!.id, state);
+    await generateDesignPreview(ctx, state);
+    return;
+  }
+
+  if (data === 'design_apply') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const { getDesignState, clearDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state || !state.originalBuffer) return;
+
+    const user = await User.findOne({ telegramId: ctx.from!.id.toString() });
+    
+    const hasEffects = Object.values(state.imageEffects).some(v => v);
+    if (hasEffects && (user?.dailyQuota || 0) < 2) {
+      await ctx.answerCallbackQuery({ text: '⚠️ رصيدك لا يكفي لتطبيق التأثيرات (مطلوب 2)', show_alert: true });
+      return;
+    }
+
+    if (hasEffects) {
+      await User.findOneAndUpdate(
+        { telegramId: ctx.from!.id.toString() },
+        { $inc: { dailyQuota: -2 } }
+      );
+    }
+
+    const processingMsg = await ctx.reply('⏳ جاري إنشاء الصورة النهائية...');
+
+    try {
+      const { compositeDesign } = await import('../../services/designEngine');
+      const finalBuffer = await compositeDesign(state.originalBuffer, state, true); // Watermark is enforced
+      
+      const { incrementGlobalCounter } = await import('../../services/statsService');
+      await incrementGlobalCounter();
+
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      
+      const { InputFile } = await import('grammy');
+      await ctx.replyWithDocument(new InputFile(finalBuffer, `NizoAI_Design_${Date.now()}.jpg`), {
+        caption: `✅ <b>تم التصميم بنجاح!</b>\n` +
+                 (hasEffects ? `⚡ تم خصم 2 محاولات للتأثيرات.` : `⚡ التصميم مجاني بالكامل!`),
+        parse_mode: 'HTML'
+      });
+
+      // Archive
+      const BACKUP = process.env.BACKUP_CHANNEL_ID || process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+      if (BACKUP) {
+        ctx.api.sendDocument(BACKUP, new InputFile(finalBuffer, `design_${Date.now()}.jpg`), {
+          caption: `📦 <b>أرشيف التصميم</b>\n` +
+                   `🆔 <b>ID:</b> <code>${ctx.from!.id}</code>\n` +
+                   `📝 <b>Type:</b> ${state.contentType}`,
+          parse_mode: 'HTML',
+          disable_notification: true
+        }).catch(() => {});
+      }
+
+    } catch (e) {
+      console.error(e);
+      await ctx.reply('❌ حدث خطأ أثناء التصميم.');
+      if (hasEffects) {
+        await User.findOneAndUpdate({ telegramId: ctx.from!.id.toString() }, { $inc: { dailyQuota: 2 } });
+      }
+    } finally {
+      clearDesignState(ctx.from!.id);
+      await User.findOneAndUpdate(
+        { telegramId: ctx.from!.id.toString() },
+        { $set: { awaitingDesignImage: false, awaitingDesignText: false, awaitingDesignContent: false } }
+      );
+    }
+    return;
+  }
 }
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function generateDesignGridKeyboard(size: number, selectedCells: number[]) {
+  const cols = size === 30 ? 5 : size === 40 ? 5 : size === 50 ? 5 : size === 70 ? 7 : 10;
+  const rows = size === 30 ? 6 : size === 40 ? 8 : size === 50 ? 10 : size === 70 ? 10 : 10;
+  const kbd: any[] = [];
+  
+  for (let r = 0; r < rows; r++) {
+    const rowBtns: any[] = [];
+    for (let c = 0; c < cols; c++) {
+      const cellId = r * cols + c + 1;
+      const isSelected = selectedCells.includes(cellId);
+      rowBtns.push({
+        text: isSelected ? '✅' : `${cellId}`,
+        callback_data: `dsgc_${cellId}`
+      });
+    }
+    kbd.push(rowBtns);
+  }
+  
+  kbd.push([{ text: '✅ متابعة', callback_data: 'design_confirm_grid', color: '#2E7D32' }]);
+  kbd.push([{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]);
+  return kbd;
+}
+
+async function generateDesignPreview(ctx: any, state: any) {
+  const processingMsg = await ctx.reply('⏳ جاري تحضير المعاينة...');
+  try {
+    const { compositeDesign } = await import('../../services/designEngine');
+    const previewBuffer = await compositeDesign(state.originalBuffer, state, false);
+    
+    await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+    
+    const { InputFile } = await import('grammy');
+    const textMarkup = state.contentType === 'text' 
+      ? `\n🎨 <b>اللون الحالي:</b> ${state.textColor}`
+      : '';
+      
+    const replyMarkup = {
+      inline_keyboard: [
+        [
+          { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', color: '#1565C0' } as any,
+          { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', color: '#1565C0' } as any,
+        ],
+        [
+          { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', color: '#1565C0' } as any,
+          { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', color: '#1565C0' } as any,
+        ],
+        [
+          { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', color: '#2E7D32' } as any
+        ],
+        [
+          { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }
+        ]
+      ]
+    };
+    
+    if (state.previewMsgId) {
+      // Just edit photo
+      await ctx.api.editMessageMedia(
+        ctx.chat!.id,
+        state.previewMsgId,
+        {
+          type: 'photo',
+          media: new InputFile(previewBuffer, 'preview.jpg') as any,
+          caption: `👁️ <b>معاينة التصميم</b>${textMarkup}\n\nيمكنك تطبيق تأثيرات قبل الحفظ (يخصم محاولتين)`,
+          parse_mode: 'HTML'
+        },
+        { reply_markup: replyMarkup }
+      ).catch(() => {});
+    } else {
+      const pMsg = await ctx.replyWithPhoto(new InputFile(previewBuffer, 'preview.jpg'), {
+        caption: `👁️ <b>معاينة التصميم</b>${textMarkup}\n\nيمكنك تطبيق تأثيرات قبل الحفظ (يخصم محاولتين)`,
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup as any
+      });
+      state.previewMsgId = pMsg.message_id;
+      const { setDesignState } = await import('../../utils/designState');
+      setDesignState(ctx.from!.id, state);
+    }
+  } catch (e) {
+    console.error(e);
+    await ctx.reply('❌ فشل إنشاء المعاينة.');
+  }
+}

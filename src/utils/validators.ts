@@ -190,6 +190,11 @@ export interface SessionData {
 
   // ── Internet Image Fetcher ────────────────────────────────────────────────
   awaitingInternetLink?: boolean;
+
+  // ── Free Design Feature ───────────────────────────────────────────────────
+  awaitingDesignImage?: boolean;
+  awaitingDesignText?: boolean;
+  awaitingDesignContent?: boolean;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;
