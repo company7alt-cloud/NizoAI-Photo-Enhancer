@@ -31,11 +31,11 @@ import os from 'os';
 const execFileAsync = util.promisify(execFile);
 
 const GRID_CONFIGS: Record<number, { cols: number; rows: number }> = {
-  30:  { cols: 5,  rows: 6  },
-  40:  { cols: 5,  rows: 8  },
-  50:  { cols: 5,  rows: 10 },
-  70:  { cols: 7,  rows: 10 },
-  80:  { cols: 8,  rows: 10 },
+  30: { cols: 5, rows: 6 },
+  40: { cols: 5, rows: 8 },
+  50: { cols: 5, rows: 10 },
+  70: { cols: 7, rows: 10 },
+  80: { cols: 8, rows: 10 },
   100: { cols: 10, rows: 10 },
 };
 
@@ -94,7 +94,7 @@ async function showFormatSelection(ctx: any, count: number, _upscale: boolean, s
   const src = sourceFormat ? sourceFormat.toUpperCase() : '';
   const srcLower = sourceFormat ? sourceFormat.toLowerCase() : '';
   const label = (fmt: string) => src ? `${src} ➜ ${fmt}` : `🔄 ${fmt}`;
-  const btnStyle = (fmt: string): 'danger' | 'primary' => 
+  const btnStyle = (fmt: string): 'danger' | 'primary' =>
     srcLower && fmt.toLowerCase() === srcLower ? 'danger' : 'primary';
 
   const keyboard: any[] = [
@@ -171,10 +171,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ── [KILL-SWITCH — ABSOLUTE TOP] Admin Toggle Internet Fetcher ──
   if (data === 'admin_toggle_internet_fetcher') {
     if (!isAdmin(ctx.from!.id)) {
-      await ctx.answerCallbackQuery({ text: '⛔ غير مصرح' }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: '⛔ غير مصرح' }).catch(() => { });
       return;
     }
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const { toggleInternetFetcher, getFetcherStatus } = await import('../../utils/internetFetcherSettings');
     const newEnabled = toggleInternetFetcher();
     const status = getFetcherStatus();
@@ -197,37 +197,37 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.editMessageText('👥 <b>لوحة التحكم في العملاء</b>\n\nاختر الإجراء المطلوب:', {
       parse_mode: 'HTML',
       reply_markup: {
-          inline_keyboard: [
-            [
-              // @ts-ignore
-              { text: '👤 تصفية الوجه', callback_data: 'filter_face', style: 'primary' },
-              // @ts-ignore
-              { text: '🎨 تلوين الصور', callback_data: 'filter_color', style: 'primary' }
-            ],
-            [
-              // @ts-ignore
-              { text: '🌸 تحويل أنمي', callback_data: 'filter_anime', style: 'primary' },
-              // @ts-ignore
-              { text: ' تأثير جيبلي', callback_data: 'filter_ghibli', style: 'primary' }
-            ],
-            [
-              // @ts-ignore
-              { text: '🪄 ترميم الصور القديمة', callback_data: 'filter_restore', style: 'primary' }
-            ],
-            [
-              // @ts-ignore
-              { text: '❌ إلغاء', callback_data: 'cancel_filter', style: 'danger' }
-            ]
+        inline_keyboard: [
+          [
+            // @ts-ignore
+            { text: '👤 تصفية الوجه', callback_data: 'filter_face', style: 'primary' },
+            // @ts-ignore
+            { text: '🎨 تلوين الصور', callback_data: 'filter_color', style: 'primary' }
+          ],
+          [
+            // @ts-ignore
+            { text: '🌸 تحويل أنمي', callback_data: 'filter_anime', style: 'primary' },
+            // @ts-ignore
+            { text: ' تأثير جيبلي', callback_data: 'filter_ghibli', style: 'primary' }
+          ],
+          [
+            // @ts-ignore
+            { text: '🪄 ترميم الصور القديمة', callback_data: 'filter_restore', style: 'primary' }
+          ],
+          [
+            // @ts-ignore
+            { text: '❌ إلغاء', callback_data: 'cancel_filter', style: 'danger' }
           ]
-        }
+        ]
       }
+    }
     );
     return;
   }
 
   // ── Handle filter button press — ALL filters use unified awaitingFilterAction flow ──
   if (data.startsWith('filter_')) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
     const filterType = data.replace('filter_', '');
     const cost = ['anime', 'ghibli'].includes(filterType) ? 3 : 2;
@@ -252,18 +252,18 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: new InlineKeyboard().text('❌ إلغاء', 'cancel_filter')
       }
-    ).catch(() => {});
+    ).catch(() => { });
     return;
   }
 
   // ── Handle cancel_filter ──────────────────────────────────────────────────────
   if (data === 'cancel_filter') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await User.updateOne(
       { telegramId: ctx.from!.id.toString() },
       { $set: { awaitingFilterImage: false, selectedFilterType: '' } }
     );
-    await ctx.editMessageText('تم الإلغاء ❌').catch(() => {});
+    await ctx.editMessageText('تم الإلغاء ❌').catch(() => { });
     return;
   }
 
@@ -409,14 +409,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const { GlobalStat } = await import('../../database/models/GlobalStat');
     const config = await GlobalStat.findOne({ key: 'total_processed' });
     const newState = !(config?.isFakeCounterActive || false);
-    
+
     await GlobalStat.updateOne(
       { key: 'total_processed' },
       { $set: { isFakeCounterActive: newState } },
       { upsert: true }
     );
-    await ctx.answerCallbackQuery({ text: 'تم تحديث حالة العداد الوهمي 🔄' }).catch(() => {});
-    
+    await ctx.answerCallbackQuery({ text: 'تم تحديث حالة العداد الوهمي 🔄' }).catch(() => { });
+
     // Rebuild the admin keyboard correctly using InlineKeyboard
     const adminKeyboard = new InlineKeyboard()
       .text(`📈 العداد الوهمي: ${newState ? '✅ شغال' : '❌ متوقف'}`, 'toggle_fake_counter').row()
@@ -434,7 +434,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       .text('🎯 إدارة المحاولات', 'admin_manage_attempts').row()
       .text('🔗 إنشاء رابط مكافأة', 'admin_create_magic_link');
 
-    await ctx.editMessageReplyMarkup(adminKeyboard as any).catch(() => {});
+    await ctx.editMessageReplyMarkup(adminKeyboard as any).catch(() => { });
     return;
   }
   // ── STEP 1: Fetch FRESH user ──────────────────────────────────────────────────
@@ -894,7 +894,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // 🎁 الهدية اليومية
   // ══════════════════════════════════════
   if (data === 'notifications_menu') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await ctx.reply('قائمة الإشعارات 🔔\n\nاختر الإشعارات التي تود تفعيلها:', {
       reply_markup: {
         inline_keyboard: [
@@ -922,13 +922,13 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.answerCallbackQuery({
         text: '✅ تم تفعيل إشعار الهدية اليومية!\n\nسنذكرك عندما تكون هديتك اليومية جاهزة للاستلام 🎁',
         show_alert: true
-      }).catch(() => {});
+      }).catch(() => { });
     } else {
       await User.findOneAndUpdate({ telegramId }, { $set: { dailyReminderEnabled: false } });
       await ctx.answerCallbackQuery({
         text: '🔕 تم إيقاف إشعار الهدية اليومية.',
         show_alert: true
-      }).catch(() => {});
+      }).catch(() => { });
     }
     return;
   }
@@ -937,7 +937,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery({
       text: '🔒 هذه الميزة تحت الصيانة حالياً، ترقبها قريباً!',
       show_alert: true
-    }).catch(() => {});
+    }).catch(() => { });
     return;
   }
 
@@ -963,7 +963,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
             `📨 تحتاج دعوة ${remaining} صديق إضافي\n\n` +
             `شارك رابطك الآن واجمع محاولاتك! 🚀`,
           show_alert: true,
-        }).catch(() => {});
+        }).catch(() => { });
         return;
       }
 
@@ -994,7 +994,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
               `${hoursLeft} ساعة و ${minutesLeft} دقيقة\n\n` +
               `انتظر انتهاء الوقت لفتح الهدية من جديد 🎁`,
             show_alert: true,
-          }).catch(() => {});
+          }).catch(() => { });
           return;
         }
       }
@@ -1036,7 +1036,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           `🔓 الهدية القادمة: ${nextClaimTime}\n\n` +
           `استمتع بتحسين صورك! 🚀`,
         show_alert: true,
-      }).catch(() => {});
+      }).catch(() => { });
 
     } catch (error) {
       console.error('[DailyReward] Error:', error);
@@ -1088,7 +1088,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         reply_markup: {
           // @ts-ignore
-          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_report' , style: 'danger' as const}]],
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_report', style: 'danger' as const }]],
         },
       }
     );
@@ -1141,10 +1141,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           reply_markup: {
             inline_keyboard: [
               // @ts-ignore
-              [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}` , style: 'primary' as const}],
-              [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}` , style: 'primary' as const}],
+              [{ text: '🚫 حظر العميل', callback_data: `admin_ban_${userId}`, style: 'primary' as const }],
+              [{ text: '🔒 تقييد العميل', callback_data: `admin_restrict_${userId}`, style: 'primary' as const }],
               // @ts-ignore
-              [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}` , style: 'primary' as const}],
+              [{ text: '💬 فتح محادثة دعم', callback_data: `admin_support_${userId}`, style: 'primary' as const }],
             ],
           },
         });
@@ -1328,7 +1328,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           // @ts-ignore
-          inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign' , style: 'danger' as const}]],
+          inline_keyboard: [[{ text: '↩️ رجوع', callback_data: 'cancel_fund_campaign', style: 'danger' as const }]],
         },
       }
     );
@@ -1417,11 +1417,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: '⚡ سريع (جودة عالية)', callback_data: 'pro_q_fast' , style: 'primary' as const}],
-            [{ text: '💎 احترافي (جودة فائقة)', callback_data: 'pro_q_pro' , style: 'primary' as const}],
+            [{ text: '⚡ سريع (جودة عالية)', callback_data: 'pro_q_fast', style: 'primary' as const }],
+            [{ text: '💎 احترافي (جودة فائقة)', callback_data: 'pro_q_pro', style: 'primary' as const }],
             // @ts-ignore
-            [{ text: '🏆 ماكس (أعلى جودة)', callback_data: 'pro_q_max' , style: 'primary' as const}],
-            [{ text: '❌ إلغاء', callback_data: 'pro_cancel' , style: 'danger' as const}],
+            [{ text: '🏆 ماكس (أعلى جودة)', callback_data: 'pro_q_max', style: 'primary' as const }],
+            [{ text: '❌ إلغاء', callback_data: 'pro_cancel', style: 'danger' as const }],
           ],
         },
       }
@@ -1449,10 +1449,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: '2x — تكبير مضاعف', callback_data: 'pro_s_2' , style: 'primary' as const}],
-            [{ text: '4x — تكبير رباعي (موصى به)', callback_data: 'pro_s_4' , style: 'primary' as const}],
+            [{ text: '2x — تكبير مضاعف', callback_data: 'pro_s_2', style: 'primary' as const }],
+            [{ text: '4x — تكبير رباعي (موصى به)', callback_data: 'pro_s_4', style: 'primary' as const }],
             // @ts-ignore
-            [{ text: '❌ إلغاء', callback_data: 'pro_cancel' , style: 'danger' as const}],
+            [{ text: '❌ إلغاء', callback_data: 'pro_cancel', style: 'danger' as const }],
           ],
         },
       }
@@ -1475,11 +1475,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: '🖼 صورة عادية', callback_data: 'pro_t_photo' , style: 'primary' as const}],
-            [{ text: '👤 وجه / بورتريه', callback_data: 'pro_t_face' , style: 'primary' as const}],
+            [{ text: '🖼 صورة عادية', callback_data: 'pro_t_photo', style: 'primary' as const }],
+            [{ text: '👤 وجه / بورتريه', callback_data: 'pro_t_face', style: 'primary' as const }],
             // @ts-ignore
-            [{ text: '🎨 رسم / أنمي / فن', callback_data: 'pro_t_art' , style: 'primary' as const}],
-            [{ text: '❌ إلغاء', callback_data: 'pro_cancel' , style: 'danger' as const}],
+            [{ text: '🎨 رسم / أنمي / فن', callback_data: 'pro_t_art', style: 'primary' as const }],
+            [{ text: '❌ إلغاء', callback_data: 'pro_cancel', style: 'danger' as const }],
           ],
         },
       }
@@ -1602,23 +1602,23 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const buildAdminKeyboard = (l: typeof locks) => ({
       inline_keyboard: [
         // @ts-ignore
-        [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k' , style: 'primary' as const}],
-        [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k' , style: 'primary' as const}],
+        [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k', style: 'primary' as const }],
+        [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k' , style: 'primary' as const}],
-        [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' , style: 'primary' as const}],
+        [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k', style: 'primary' as const }],
+        [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' , style: 'primary' as const}],
-        [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano' , style: 'primary' as const}],
+        [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai', style: 'primary' as const }],
+        [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' , style: 'primary' as const}],
-        [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' , style: 'primary' as const}],
+        [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser', style: 'primary' as const }],
+        [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' , style: 'primary' as const}],
-        [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' , style: 'primary' as const}],
+        [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip', style: 'primary' as const }],
+        [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' , style: 'primary' as const}],
-        [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' , style: 'primary' as const}],
+        [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size', style: 'primary' as const }],
+        [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start', style: 'primary' as const }],
         // @ts-ignore
         [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance', style: 'primary' as const }],
         // @ts-ignore
@@ -1632,7 +1632,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           style: 'primary' as const,
         }],
         // @ts-ignore
-        [{ text: '❌ إغلاق', callback_data: 'admin_close' , style: 'danger' as const}],
+        [{ text: '❌ إغلاق', callback_data: 'admin_close', style: 'danger' as const }],
       ]
     });
 
@@ -1656,7 +1656,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
 
   if (data === 'admin_grant_vip' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from.id.toString() },
       { $set: { adminAwaitingInput: 'grant_vip_id', adminTargetUserId: null } }
@@ -1676,29 +1676,29 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const buildAdminKeyboard = (l: typeof newLocks) => ({
       inline_keyboard: [
         // @ts-ignore
-        [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k' , style: 'primary' as const}],
-        [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k' , style: 'primary' as const}],
+        [{ text: `${l.btn_2k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 2K`, callback_data: 'atoggle_btn_2k', style: 'primary' as const }],
+        [{ text: `${l.btn_4k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K`, callback_data: 'atoggle_btn_4k', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k' , style: 'primary' as const}],
-        [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai' , style: 'primary' as const}],
+        [{ text: `${l.btn_8k ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K`, callback_data: 'atoggle_btn_8k', style: 'primary' as const }],
+        [{ text: `${l.btn_4kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 4K-Ai`, callback_data: 'atoggle_btn_4kai', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai' , style: 'primary' as const}],
-        [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano' , style: 'primary' as const}],
+        [{ text: `${l.btn_8kai ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} — 8K-Ai`, callback_data: 'atoggle_btn_8kai', style: 'primary' as const }],
+        [{ text: `${l.btn_nano ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  Nano AI`, callback_data: 'atoggle_btn_nano', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser' , style: 'primary' as const}],
-        [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters' , style: 'primary' as const}],
+        [{ text: `${l.btn_eraser ? '🔴 مقفل (متاح لك وللـ VIP)' : '🟢 مفتوح للجميع'} —  مُزيل العلامات المائية`, callback_data: 'atoggle_btn_eraser', style: 'primary' as const }],
+        [{ text: `${l.btn_filters ? '🔴 مقفل' : '🟢 مفتوح'} — 🎨 فلاتر الصور`, callback_data: 'atoggle_btn_filters', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip' , style: 'primary' as const}],
-        [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub' , style: 'primary' as const}],
+        [{ text: '🔑 سماح لشخص باستخدام الميزات المقفلة', callback_data: 'admin_grant_vip', style: 'primary' as const }],
+        [{ text: '📢 قنوات الاشتراك الإجباري', callback_data: 'admin_force_sub', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size' , style: 'primary' as const}],
-        [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start' , style: 'primary' as const}],
+        [{ text: '🌟 تفعيل الأحجام الكبيرة (15MB)', callback_data: 'admin_vip_size', style: 'primary' as const }],
+        [{ text: '🎁 التوزيعات وعجلة الحظ', callback_data: 'admin_giveaway_start', style: 'primary' as const }],
         // @ts-ignore
         [{ text: `${l.btn_magic_enhance ? '🔴 مقفل' : '🟢 مفتوح'} — 🪄 تحسين الصورة (AI)`, callback_data: 'atoggle_btn_magic_enhance', style: 'primary' as const }],
         // @ts-ignore
         [{ text: `${l.btn_design ? '🔴 مقفل' : '🟢 مفتوح'} — 🟦 تصميم مجاني`, callback_data: 'atoggle_btn_design', style: 'primary' as const }],
         // @ts-ignore
-        [{ text: '❌ إغلاق', callback_data: 'admin_close' , style: 'danger' as const}],
+        [{ text: '❌ إغلاق', callback_data: 'admin_close', style: 'danger' as const }],
       ]
     });
 
@@ -1798,7 +1798,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           // @ts-ignore
-          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_nano_banana' , style: 'danger' as const}]]
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_nano_banana', style: 'danger' as const }]]
         }
       }
     );
@@ -1826,11 +1826,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.answerCallbackQuery({
         text: '🔧 هذه الميزة تحت الصيانة حالياً\n\n✨ سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n💙 نعتذر عن الإزعاج',
         show_alert: true,
-      }).catch(() => {});
+      }).catch(() => { });
       return;
     }
     // ── [END GUARD-A] ──
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await ctx.reply(
       '🧞‍♂️ <b>تحميل صورة من الإنترنت</b>\n\nاختر ما تريد:',
       {
@@ -1838,8 +1838,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             [{ text: '📥 تحميل صورة من رابط', callback_data: 'ask_internet_link', style: 'primary' as any }],
-            [{ text: '🔍 بحث عن صورة 🔒',    callback_data: 'locked_search_feature', style: 'primary' as any }],
-            [{ text: '🔙 رجوع',               callback_data: 'show_welcome', style: 'danger' as any }],
+            [{ text: '🔍 بحث عن صورة 🔒', callback_data: 'locked_search_feature', style: 'primary' as any }],
+            [{ text: '🔙 رجوع', callback_data: 'show_welcome', style: 'danger' as any }],
           ]
         }
       }
@@ -1851,12 +1851,12 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery({
       text: 'هذه الميزة قيد التطوير حالياً ⏳',
       show_alert: true,
-    }).catch(() => {});
+    }).catch(() => { });
     return;
   }
 
   if (data === 'ask_internet_link') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     if (ctx.session) ctx.session.awaitingInternetLink = true;
     const replyOpts = {
       parse_mode: 'HTML' as const,
@@ -1877,15 +1877,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'cancel_internet_download') {
-    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
     if (ctx.session) ctx.session.awaitingInternetLink = false;
-    await ctx.deleteMessage().catch(() => {});
+    await ctx.deleteMessage().catch(() => { });
     return;
   }
 
 
   if (data === 'magic_enhance_start') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
     const magicUser = await User.findOne({ telegramId: ctx.from!.id.toString() });
     if (!magicUser) return;
@@ -1923,12 +1923,12 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'cancel_magic_enhance') {
-    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { awaitingMagicEnhanceImage: false } }
     );
-    await ctx.deleteMessage().catch(() => {});
+    await ctx.deleteMessage().catch(() => { });
     return;
   }
 
@@ -1942,8 +1942,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     }
 
     const formatMap: Record<string, string> = {
-      magic_fmt_jpg:  'jpeg',
-      magic_fmt_png:  'png',
+      magic_fmt_jpg: 'jpeg',
+      magic_fmt_png: 'png',
       magic_fmt_webp: 'webp',
       magic_fmt_avif: 'avif',
       magic_fmt_tiff: 'tiff',
@@ -1961,7 +1961,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         .toFormat(targetFormat as any, { quality: 95 })
         .toBuffer();
 
-      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => { });
 
       const ext = targetFormat === 'jpeg' ? 'jpg' : targetFormat;
       await ctx.replyWithDocument(
@@ -1969,7 +1969,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         { caption: `✅ تم التحويل إلى ${ext.toUpperCase()} بنجاح` }
       );
     } catch (err: any) {
-      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => { });
       await ctx.reply('❌ فشل التحويل. حاول مرة أخرى.');
       console.error('[MagicFmt] Error:', err.message);
     }
@@ -2154,7 +2154,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' , style: 'danger' as const}],
+            [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' as const }],
           ],
         },
       }
@@ -2195,7 +2195,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' , style: 'danger' as const}],
+            [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' as const }],
           ],
         },
       }
@@ -2233,10 +2233,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: ' نعم، ارفع الدقة أيضاً', callback_data: 'conv_quality_upscale' , style: 'primary' as const}],
-            [{ text: '🔄 لا، تحويل الصيغة فقط (كما هي)', callback_data: 'conv_quality_original' , style: 'primary' as const}],
+            [{ text: ' نعم، ارفع الدقة أيضاً', callback_data: 'conv_quality_upscale', style: 'primary' as const }],
+            [{ text: '🔄 لا، تحويل الصيغة فقط (كما هي)', callback_data: 'conv_quality_original', style: 'primary' as const }],
             // @ts-ignore
-            [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' , style: 'danger' as const}],
+            [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' as const }],
           ],
         },
       }
@@ -2294,12 +2294,12 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'action_download_guide') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     return;
   }
 
   const allFormats = ['fconv_jpg', 'fconv_png', 'fconv_webp', 'fconv_avif', 'fconv_tiff', 'fconv_gif', 'fconv_bmp', 'fconv_pdf', 'fconv_svg', 'fconv_psd', 'fconv_ico', 'fconv_heic', 'fconv_eps', 'fconv_ai', 'fconv_raw', 'fconv_cr2', 'fconv_nef', 'fconv_sr2', 'fconv_dng', 'fconv_arw', 'fconv_jp2', 'fconv_dds', 'fconv_tga', 'fconv_ppm', 'fconv_pgm', 'fconv_pbm', 'fconv_pnm', 'fconv_hdr', 'fconv_exr', 'fconv_dib'];
-  
+
   if (allFormats.includes(data)) {
     await ctx.answerCallbackQuery({ text: 'جاري المعالجة... ⏳' });
 
@@ -2323,9 +2323,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     } catch { /* silent */ }
 
     // Notify user if they selected the same format as source
-    if (String(format) === String(detectedSourceFormat) || 
-       (format === 'jpg' && detectedSourceFormat === 'jpeg') ||
-       (format as string === 'jpeg' && detectedSourceFormat === 'jpg')) {
+    if (String(format) === String(detectedSourceFormat) ||
+      (format === 'jpg' && detectedSourceFormat === 'jpeg') ||
+      (format as string === 'jpeg' && detectedSourceFormat === 'jpg')) {
       await ctx.answerCallbackQuery({
         text: `⚠️ صيغة الصورة حقك هي ${detectedSourceFormat.toUpperCase()} بالفعل!\nاختر صيغة مختلفة للتحويل.`,
         show_alert: true
@@ -2460,7 +2460,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         await ctx.replyWithDocument(
           new InputFile(buffer, `NizoAI_Converted_${jobId}.${format}`),
           {
-            caption: 
+            caption:
               `✅ <b>تم تحويل الصيغة بنجاح!</b>\n\n` +
               `📄 <b>الصيغة الجديدة:</b> ${format.toUpperCase()}\n` +
               `🔢 <b>كود العملية:</b> #${jobId}\n\n` +
@@ -2585,8 +2585,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery({
       text: '💙 شكراً لك صديقي! لقد سرّني أن نتائج البوت نالت إعجابك 🌟',
       show_alert: true,
-    }).catch(() => {});
-    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+    }).catch(() => { });
+    await ctx.editMessageReplyMarkup(undefined).catch(() => { });
     return;
   }
 
@@ -2595,9 +2595,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery({
       text: '🙏 نعتذر عن المشكلة التي واجهتها يا صديقي.\nتم رفع بلاغ للمطور وسيتم الرد عليك مع المطور نزار 💙',
       show_alert: true,
-    }).catch(() => {});
+    }).catch(() => { });
 
-    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+    await ctx.editMessageReplyMarkup(undefined).catch(() => { });
 
     // Silent report to archive channel
     const badUser = ctx.from;
@@ -2669,10 +2669,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: ' إزالة نجمة Gemini (تلقائي)', callback_data: 'watermark_auto_gemini' , style: 'primary' as const}],
-            [{ text: '🖌️ إزالة عنصر مخصص (يدوي)', callback_data: 'watermark_custom_start' , style: 'primary' as const}],
+            [{ text: ' إزالة نجمة Gemini (تلقائي)', callback_data: 'watermark_auto_gemini', style: 'primary' as const }],
+            [{ text: '🖌️ إزالة عنصر مخصص (يدوي)', callback_data: 'watermark_custom_start', style: 'primary' as const }],
             // @ts-ignore
-            [{ text: '❌ إلغاء', callback_data: 'cancel_eraser' , style: 'danger' as const}]
+            [{ text: '❌ إلغاء', callback_data: 'cancel_eraser', style: 'danger' as const }]
           ]
         }
       }
@@ -2708,7 +2708,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         reply_markup: {
           // @ts-ignore
-          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_auto_eraser' , style: 'danger' as const}]]
+          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_auto_eraser', style: 'danger' as const }]]
         }
       }
     );
@@ -2716,7 +2716,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'watermark_custom_start') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const adminIds = process.env.ADMIN_IDS?.split(',') || [];
     const isAdminUser = adminIds.includes(ctx.from!.id.toString());
 
@@ -2743,170 +2743,176 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-async function buildMaskFromCells(
-  rawBuffer: Buffer,
-  selectedCells: number[],
-  cols: number,
-  rows: number
-): Promise<Buffer> {
-  const meta = await sharp(rawBuffer).metadata();
-  const W = meta.width!;
-  const H = meta.height!;
-  const cellW = Math.floor(W / cols);
-  const cellH = Math.floor(H / rows);
+  async function buildMaskFromCells(
+    rawBuffer: Buffer,
+    selectedCells: number[],
+    cols: number,
+    rows: number
+  ): Promise<Buffer> {
+    const meta = await sharp(rawBuffer).metadata();
+    const W = meta.width!;
+    const H = meta.height!;
+    const cellW = Math.floor(W / cols);
+    const cellH = Math.floor(H / rows);
 
-  let maskPipeline = sharp({
-    create: { width: W, height: H, channels: 3,
-      background: { r: 0, g: 0, b: 0 } }
-  });
+    let maskPipeline = sharp({
+      create: {
+        width: W, height: H, channels: 3,
+        background: { r: 0, g: 0, b: 0 }
+      }
+    });
 
-  const composites: sharp.OverlayOptions[] = [];
+    const composites: sharp.OverlayOptions[] = [];
 
-  for (const cellNum of selectedCells) {
-    const idx = cellNum - 1;
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
+    for (const cellNum of selectedCells) {
+      const idx = cellNum - 1;
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
 
-    const x = Math.max(0, col * cellW - Math.round(cellW * 0.1));
-    const y = Math.max(0, row * cellH - Math.round(cellH * 0.1));
-    const w = Math.min(W - x, cellW + Math.round(cellW * 0.2));
-    const h = Math.min(H - y, cellH + Math.round(cellH * 0.2));
+      const x = Math.max(0, col * cellW - Math.round(cellW * 0.1));
+      const y = Math.max(0, row * cellH - Math.round(cellH * 0.1));
+      const w = Math.min(W - x, cellW + Math.round(cellW * 0.2));
+      const h = Math.min(H - y, cellH + Math.round(cellH * 0.2));
 
-    const whiteRect = await sharp({
-      create: { width: w, height: h, channels: 3,
-        background: { r: 255, g: 255, b: 255 } }
-    }).png().toBuffer();
+      const whiteRect = await sharp({
+        create: {
+          width: w, height: h, channels: 3,
+          background: { r: 255, g: 255, b: 255 }
+        }
+      }).png().toBuffer();
 
-    composites.push({ input: whiteRect, left: x, top: y });
+      composites.push({ input: whiteRect, left: x, top: y });
+    }
+
+    const maskBuffer = await maskPipeline
+      .composite(composites)
+      .blur(6)
+      .png()
+      .toBuffer();
+
+    return maskBuffer;
   }
 
-  const maskBuffer = await maskPipeline
-    .composite(composites)
-    .blur(6)
-    .png()
-    .toBuffer();
+  async function drawGridOnImage(
+    inputBuffer: Buffer,
+    cols: number,
+    rows: number
+  ): Promise<Buffer> {
+    const meta = await sharp(inputBuffer).metadata();
+    const W = meta.width!;
+    const H = meta.height!;
 
-  return maskBuffer;
-}
+    const cellW = W / cols;
+    const cellH = H / rows;
+    const lineW = Math.max(1, Math.round(W / 600));
+    const fontSize = Math.max(16, Math.min(
+      Math.floor(cellW * 0.38),
+      Math.floor(cellH * 0.48),
+      38
+    ));
 
-async function drawGridOnImage(
-  inputBuffer: Buffer,
-  cols: number,
-  rows: number
-): Promise<Buffer> {
-  const meta = await sharp(inputBuffer).metadata();
-  const W = meta.width!;
-  const H = meta.height!;
+    let svgParts: string[] = [];
 
-  const cellW = W / cols;
-  const cellH = H / rows;
-  const lineW = Math.max(1, Math.round(W / 600));
-  const fontSize = Math.max(16, Math.min(
-    Math.floor(cellW * 0.38),
-    Math.floor(cellH * 0.48),
-    38
-  ));
-
-  let svgParts: string[] = [];
-
-  // Grid lines — vertical
-  for (let c = 1; c < cols; c++) {
-    const x = Math.round(c * cellW);
-    svgParts.push(
-      `<line x1="${x}" y1="0" x2="${x}" y2="${H}" ` +
-      `stroke="white" stroke-width="${lineW}" opacity="0.85"/>`
-    );
-  }
-
-  // Grid lines — horizontal
-  for (let r = 1; r < rows; r++) {
-    const y = Math.round(r * cellH);
-    svgParts.push(
-      `<line x1="0" y1="${y}" x2="${W}" y2="${y}" ` +
-      `stroke="white" stroke-width="${lineW}" opacity="0.85"/>`
-    );
-  }
-
-  // Cell numbers with shadow
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const num = String(r * cols + c + 1);
-      const cx = Math.round(c * cellW + cellW / 2);
-      const cy = Math.round(r * cellH + cellH / 2);
-
-      // Black shadow
+    // Grid lines — vertical
+    for (let c = 1; c < cols; c++) {
+      const x = Math.round(c * cellW);
       svgParts.push(
-        `<text x="${cx + 2}" y="${cy + 2}" ` +
-        `font-family="Liberation Sans, DejaVu Sans, sans-serif" ` +
-        `font-size="${fontSize}" font-weight="bold" ` +
-        `text-anchor="middle" dominant-baseline="middle" ` +
-        `fill="black" opacity="0.55">${num}</text>`
-      );
-
-      // White number
-      svgParts.push(
-        `<text x="${cx}" y="${cy}" ` +
-        `font-family="Liberation Sans, DejaVu Sans, sans-serif" ` +
-        `font-size="${fontSize}" font-weight="bold" ` +
-        `text-anchor="middle" dominant-baseline="middle" ` +
-        `fill="white" opacity="1">${num}</text>`
+        `<line x1="${x}" y1="0" x2="${x}" y2="${H}" ` +
+        `stroke="white" stroke-width="${lineW}" opacity="0.85"/>`
       );
     }
+
+    // Grid lines — horizontal
+    for (let r = 1; r < rows; r++) {
+      const y = Math.round(r * cellH);
+      svgParts.push(
+        `<line x1="0" y1="${y}" x2="${W}" y2="${y}" ` +
+        `stroke="white" stroke-width="${lineW}" opacity="0.85"/>`
+      );
+    }
+
+    // Cell numbers with shadow
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const num = String(r * cols + c + 1);
+        const cx = Math.round(c * cellW + cellW / 2);
+        const cy = Math.round(r * cellH + cellH / 2);
+
+        // Black shadow
+        svgParts.push(
+          `<text x="${cx + 2}" y="${cy + 2}" ` +
+          `font-family="Liberation Sans, DejaVu Sans, sans-serif" ` +
+          `font-size="${fontSize}" font-weight="bold" ` +
+          `text-anchor="middle" dominant-baseline="middle" ` +
+          `fill="black" opacity="0.55">${num}</text>`
+        );
+
+        // White number
+        svgParts.push(
+          `<text x="${cx}" y="${cy}" ` +
+          `font-family="Liberation Sans, DejaVu Sans, sans-serif" ` +
+          `font-size="${fontSize}" font-weight="bold" ` +
+          `text-anchor="middle" dominant-baseline="middle" ` +
+          `fill="white" opacity="1">${num}</text>`
+        );
+      }
+    }
+
+    const svg = Buffer.from(
+      `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">` +
+      svgParts.join('') +
+      `</svg>`,
+      'utf-8'
+    );
+
+    return sharp(inputBuffer)
+      .composite([{ input: svg, top: 0, left: 0 }])
+      .jpeg({ quality: 88 })
+      .toBuffer();
   }
 
-  const svg = Buffer.from(
-    `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">` +
-    svgParts.join('') +
-    `</svg>`,
-    'utf-8'
-  );
+  function buildCellKeyboard(
+    totalCells: number,
+    selectedCells: number[]
+  ): InlineKeyboard {
+    const kb = new InlineKeyboard();
+    const BTNS_PER_ROW = totalCells <= 100 ? 5 : 10;
 
-  return sharp(inputBuffer)
-    .composite([{ input: svg, top: 0, left: 0 }])
-    .jpeg({ quality: 88 })
-    .toBuffer();
-}
+    for (let i = 1; i <= totalCells; i++) {
+      const isSelected = selectedCells.includes(i);
+      const label = isSelected ? `✅${i}` : String(i);
+      kb.text({ text: label, style: 'primary' as const }, `cgz_${i}`);
+      if (i % BTNS_PER_ROW === 0) kb.row();
+    }
 
-function buildCellKeyboard(
-  totalCells: number,
-  selectedCells: number[]
-): InlineKeyboard {
-  const kb = new InlineKeyboard();
-  const BTNS_PER_ROW = totalCells <= 100 ? 5 : 10;
+    // Process button
+    kb.row().text(
+      {
+        text: selectedCells.length > 0
+          ? `🚀 عالج الصورة (${selectedCells.length} مربع)`
+          : '🚀 عالج الصورة', style: 'success' as const
+      },
+      'cgz_process'
+    );
 
-  for (let i = 1; i <= totalCells; i++) {
-    const isSelected = selectedCells.includes(i);
-    const label = isSelected ? `✅${i}` : String(i);
-    kb.text({ text: label, style: 'primary' as const }, `cgz_${i}`);
-    if (i % BTNS_PER_ROW === 0) kb.row();
+    // Back button
+    kb.row().text({ text: '🔙 رجوع لاختيار الحجم', style: 'danger' as const }, 'cgz_back');
+
+    // Cancel button
+    kb.row().text({ text: '❌ إلغاء', style: 'danger' as const }, 'cancel_custom_eraser');
+
+    return kb;
   }
-
-  // Process button
-  kb.row().text(
-    { text: selectedCells.length > 0
-      ? `🚀 عالج الصورة (${selectedCells.length} مربع)`
-      : '🚀 عالج الصورة', style: 'success' as const },
-    'cgz_process'
-  );
-
-  // Back button
-  kb.row().text({ text: '🔙 رجوع لاختيار الحجم', style: 'danger' as const }, 'cgz_back');
-
-  // Cancel button
-  kb.row().text({ text: '❌ إلغاء', style: 'danger' as const }, 'cancel_custom_eraser');
-
-  return kb;
-}
 
   if (data === 'cgz_more') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const userId = ctx.from!.id.toString();
     const user = await User.findOne({ telegramId: userId });
-    
+
     if (!user || !user.awaitingCustomEraserZone) return;
 
     if (user.customEraserBtnMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => { });
     }
 
     const selectedCells = user.customEraserSelectedCells || [];
@@ -2927,10 +2933,10 @@ function buildCellKeyboard(
   }
 
   if (data === 'cgz_process') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const userId = ctx.from!.id.toString();
     const user = await User.findOne({ telegramId: userId });
-    
+
     if (!user || !user.awaitingCustomEraserZone || !user.customEraserFileId) {
       await ctx.reply("❌ انتهت صلاحية الجلسة، ابدأ من جديد.");
       return;
@@ -2956,7 +2962,7 @@ function buildCellKeyboard(
     await user.save();
 
     if (user.customEraserBtnMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => { });
     }
 
     const processingMsg = await ctx.reply("⚙️ <b>جارٍ المعالجة...</b> قد يستغرق 30-60 ثانية ⏳", { parse_mode: 'HTML' });
@@ -2984,7 +2990,7 @@ function buildCellKeyboard(
         { $set: { lastEraserResultBuffer: resultBuffer.toString('base64'), customEraserFileId: '' } }
       );
 
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       const sentMsg = await ctx.replyWithDocument(new InputFile(resultBuffer, 'custom_erased.jpg'));
       await User.updateOne({ telegramId: userId }, { $set: { lastEraserResultMsgId: sentMsg.message_id } });
@@ -3014,7 +3020,7 @@ function buildCellKeyboard(
       }
 
     } catch (err: any) {
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
       console.error('[CustomEraserZone] Error:', err);
       await ctx.reply("❌ عذراً، لم أتمكن من معالجة الصورة هذه المرة. لم يتم خصم أي محاولات.");
     }
@@ -3022,7 +3028,7 @@ function buildCellKeyboard(
   }
 
   if (data === 'cgz_back') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
     const userId = ctx.from!.id.toString();
     const user = await User.findOne({ telegramId: userId });
@@ -3040,7 +3046,7 @@ function buildCellKeyboard(
     });
 
     if (user.customEraserBtnMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => { });
     }
 
     const sizeMsg = await ctx.reply(
@@ -3065,7 +3071,7 @@ function buildCellKeyboard(
               { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100', style: 'primary' as const },
             ],
             // @ts-ignore
-            [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' , style: 'danger' as const}],
+            [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser', style: 'danger' as const }],
           ]
         }
       }
@@ -3094,7 +3100,7 @@ function buildCellKeyboard(
       }
     }
 
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
     const userId = ctx.from!.id.toString();
     const user = await User.findOne({ telegramId: userId });
@@ -3115,7 +3121,7 @@ function buildCellKeyboard(
     );
 
     if (user.customEraserBtnMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => { });
     }
 
     const tgFile = await ctx.api.getFile(user.customEraserFileId);
@@ -3151,11 +3157,11 @@ function buildCellKeyboard(
 
     const userId = ctx.from!.id.toString();
     const user = await User.findOne({ telegramId: userId });
-    
+
     if (!user || !user.awaitingCustomEraserZone) return;
 
     if (user.customEraserSelectedCells?.includes(N)) {
-      await ctx.answerCallbackQuery({ text: 'هذا المربع محدد مسبقاً ✅', show_alert: false }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: 'هذا المربع محدد مسبقاً ✅', show_alert: false }).catch(() => { });
       return;
     }
 
@@ -3164,7 +3170,7 @@ function buildCellKeyboard(
       await ctx.answerCallbackQuery({
         text: `⚠️ وصلت للحد الأقصى (${MAX_CELLS} مربعات). اضغط "عالج الصورة" للمتابعة.`,
         show_alert: true
-      }).catch(() => {});
+      }).catch(() => { });
       return;
     }
 
@@ -3173,10 +3179,10 @@ function buildCellKeyboard(
     user.customEraserSelectedCells = selectedCells;
     await user.save();
 
-    await ctx.answerCallbackQuery({ text: `✅ تم إضافة المربع ${N}`, show_alert: false }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: `✅ تم إضافة المربع ${N}`, show_alert: false }).catch(() => { });
 
     if (user.customEraserBtnMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => { });
     }
 
     const count = selectedCells.length;
@@ -3195,10 +3201,10 @@ function buildCellKeyboard(
   }
 
   if (data === 'cancel_custom_eraser') {
-    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
     const user = await User.findOne({ telegramId: ctx.from!.id.toString() });
     if (user?.customEraserBtnMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, user.customEraserBtnMsgId).catch(() => { });
     }
     await User.updateOne(
       { telegramId: ctx.from!.id.toString() },
@@ -3300,11 +3306,11 @@ function buildCellKeyboard(
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: '💬 رسائل البوت', callback_data: 'txtedit_cat_message' , style: 'primary' as const}],
-            [{ text: '🔘 أسماء الأزرار', callback_data: 'txtedit_cat_button' , style: 'primary' as const}],
+            [{ text: '💬 رسائل البوت', callback_data: 'txtedit_cat_message', style: 'primary' as const }],
+            [{ text: '🔘 أسماء الأزرار', callback_data: 'txtedit_cat_button', style: 'primary' as const }],
             // @ts-ignore
-            [{ text: '🔔 الإشعارات', callback_data: 'txtedit_cat_notification' , style: 'primary' as const}],
-            [{ text: '🔙 رجوع للوحة', callback_data: 'admin_panel' , style: 'danger' as const}],
+            [{ text: '🔔 الإشعارات', callback_data: 'txtedit_cat_notification', style: 'primary' as const }],
+            [{ text: '🔙 رجوع للوحة', callback_data: 'admin_panel', style: 'danger' as const }],
           ]
         }
       }
@@ -3340,7 +3346,7 @@ function buildCellKeyboard(
       style: 'primary' as const,
     }]));
     // @ts-ignore
-    keyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_edit_texts' , style: 'danger' as const}]);
+    keyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_edit_texts', style: 'danger' as const }]);
 
     await ctx.reply(
       `📋 <b>${labelMap[category]}</b>\n\nاختر العنصر:`,
@@ -3382,8 +3388,8 @@ function buildCellKeyboard(
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: '🔄 استعادة الافتراضي', callback_data: `txtedit_reset_${key}`.slice(0, 64) , style: 'primary' as const}],
-            [{ text: '❌ إلغاء', callback_data: 'txtedit_cancel' , style: 'danger' as const}],
+            [{ text: '🔄 استعادة الافتراضي', callback_data: `txtedit_reset_${key}`.slice(0, 64), style: 'primary' as const }],
+            [{ text: '❌ إلغاء', callback_data: 'txtedit_cancel', style: 'danger' as const }],
           ]
         }
       }
@@ -3439,13 +3445,13 @@ function buildCellKeyboard(
         reply_markup: {
           inline_keyboard: [
             // @ts-ignore
-            [{ text: '➕ إضافة للجميع', callback_data: 'attempts_add_all' , style: 'primary' as const}],
-            [{ text: '👤 إضافة لشخص محدد', callback_data: 'attempts_add_one' , style: 'primary' as const}],
+            [{ text: '➕ إضافة للجميع', callback_data: 'attempts_add_all', style: 'primary' as const }],
+            [{ text: '👤 إضافة لشخص محدد', callback_data: 'attempts_add_one', style: 'primary' as const }],
             // @ts-ignore
-            [{ text: '➖ خصم من شخص محدد', callback_data: 'attempts_remove_one' , style: 'primary' as const}],
-            [{ text: '🔄 تصفير شخص محدد', callback_data: 'attempts_reset_one' , style: 'primary' as const}],
+            [{ text: '➖ خصم من شخص محدد', callback_data: 'attempts_remove_one', style: 'primary' as const }],
+            [{ text: '🔄 تصفير شخص محدد', callback_data: 'attempts_reset_one', style: 'primary' as const }],
             // @ts-ignore
-            [{ text: '❌ إغلاق', callback_data: 'admin_close' , style: 'danger' as const}],
+            [{ text: '❌ إغلاق', callback_data: 'admin_close', style: 'danger' as const }],
           ]
         }
       }
@@ -3528,7 +3534,7 @@ function buildCellKeyboard(
       }]);
     }
     // @ts-ignore
-    fsubKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' , style: 'danger' as const}]);
+    fsubKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel', style: 'danger' as const }]);
 
     await ctx.reply(
       `📢 <b>قنوات الاشتراك الإجباري</b>\n\n` +
@@ -3599,7 +3605,7 @@ function buildCellKeyboard(
       }]);
     }
     // @ts-ignore
-    updatedKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel' , style: 'danger' as const}]);
+    updatedKeyboard.push([{ text: '🔙 رجوع', callback_data: 'admin_panel', style: 'danger' as const }]);
 
     await ctx.editMessageText(
       `📢 <b>قنوات الاشتراك الإجباري</b>\n\nعدد القنوات: ${updatedChannels.length}/10`,
@@ -3613,7 +3619,7 @@ function buildCellKeyboard(
 
   // ── GIVEAWAY: Admin starts setup ─────────────────────────────────────────
   if (data === 'admin_giveaway_start' && isAdminUser) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { 'giveawaySetup.step': 'gw_winners' } }
@@ -3744,7 +3750,7 @@ function buildCellKeyboard(
   // 🎁 تجميع المحاولات (Collect Attempts Flow)
   // ══════════════════════════════════════
   if (data === 'menu_collect_attempts') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await ctx.editMessageCaption({
       caption: '🎁 <b>تجميع المحاولات</b>\n\nاختر إحدى الطرق لزيادة رصيدك:',
       parse_mode: 'HTML',
@@ -3758,7 +3764,7 @@ function buildCellKeyboard(
           [{ text: '🔙 رجوع', callback_data: 'back_to_main_menu', style: 'danger' }]
         ]
       }
-    }).catch(() => {});
+    }).catch(() => { });
     return;
   }
 
@@ -3784,7 +3790,7 @@ function buildCellKeyboard(
             `📨 تحتاج دعوة ${remaining} صديق إضافي\n\n` +
             `شارك رابطك الآن واجمع محاولاتك! 🚀`,
           show_alert: true,
-        }).catch(() => {});
+        }).catch(() => { });
         return;
       }
 
@@ -3815,7 +3821,7 @@ function buildCellKeyboard(
               `${hoursLeft} ساعة و ${minutesLeft} دقيقة\n\n` +
               `انتظر انتهاء الوقت لفتح الهدية من جديد 🎁`,
             show_alert: true,
-          }).catch(() => {});
+          }).catch(() => { });
           return;
         }
       }
@@ -3857,7 +3863,7 @@ function buildCellKeyboard(
           `🔓 الهدية القادمة: ${nextClaimTime}\n\n` +
           `استمتع بتحسين صورك! 🚀`,
         show_alert: true,
-      }).catch(() => {});
+      }).catch(() => { });
 
     } catch (error) {
       console.error('[DailyGift] Error:', error);
@@ -3866,7 +3872,7 @@ function buildCellKeyboard(
   }
 
   if (data === 'action_referral_sub') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const invites = await User.countDocuments({
       referredBy: ctx.from!.id.toString(),
       referralRewardClaimed: true
@@ -3890,7 +3896,7 @@ function buildCellKeyboard(
           [{ text: '🔙 رجوع', callback_data: 'menu_collect_attempts', style: 'danger' }]
         ]
       }
-    }).catch(() => {});
+    }).catch(() => { });
     return;
   }
 
@@ -3898,7 +3904,7 @@ function buildCellKeyboard(
   // 📋 نسخ النص المولَّد — copy_generated_text
   // ══════════════════════════════════════
   if (data === 'copy_generated_text') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
     const generatedText =
       ctx.session?.lastAiGeneratedText ||
@@ -3909,21 +3915,21 @@ function buildCellKeyboard(
       await ctx.answerCallbackQuery({
         text: '⚠️ انتهت صلاحية النص. أعد توليده مجدداً.',
         show_alert: true,
-      }).catch(() => {});
+      }).catch(() => { });
       return;
     }
 
     // Telegram copyable text — send as plain message so user can long-press to copy
     const chunks = generatedText.match(/[\s\S]{1,4096}/g) || [];
     for (const chunk of chunks) {
-      await ctx.reply(chunk, { parse_mode: undefined }).catch(() => {});
+      await ctx.reply(chunk, { parse_mode: undefined }).catch(() => { });
     }
     return;
   }
 
   if (data === 'back_to_main_menu') {
-    await ctx.answerCallbackQuery().catch(() => {});
-    await ctx.deleteMessage().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
+    await ctx.deleteMessage().catch(() => { });
     const { startCommand } = await import('../commands/start');
     await startCommand(ctx);
     return;
@@ -3988,8 +3994,8 @@ function buildCellKeyboard(
   // ══════════════════════════════════════
 
   if (data === 'start_free_design') {
-    await ctx.answerCallbackQuery().catch(() => {});
-    
+    await ctx.answerCallbackQuery().catch(() => { });
+
     if (locks.btn_design && !isAdminUser) {
       await ctx.reply('⚠️ عذراً، تم إيقاف قسم التصميم للصيانة. يرجى المحاولة لاحقاً 🔒');
       return;
@@ -4015,21 +4021,21 @@ function buildCellKeyboard(
   }
 
   if (data === 'cancel_design') {
-    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { awaitingDesignImage: false, awaitingDesignText: false, awaitingDesignContent: false } }
     );
     const { clearDesignState } = await import('../../utils/designState');
     clearDesignState(ctx.from!.id);
-    await ctx.deleteMessage().catch(() => {});
+    await ctx.deleteMessage().catch(() => { });
     return;
   }
 
   if (data.startsWith('design_grid_')) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const size = parseInt(data.replace('design_grid_', ''));
-    
+
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state || !state.originalBuffer) {
@@ -4044,7 +4050,7 @@ function buildCellKeyboard(
 
     try {
       const gridBuffer = await drawGridOnImage(state.originalBuffer, cols, rows);
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       const { InputFile } = await import('grammy');
       const gridMsg = await ctx.replyWithPhoto(new InputFile(gridBuffer, 'grid.jpg'), {
@@ -4076,12 +4082,12 @@ function buildCellKeyboard(
     } else {
       state.selectedCells.push(cellId);
     }
-    
+
     setDesignState(ctx.from!.id, state);
-    
+
     await ctx.editMessageReplyMarkup({
       inline_keyboard: generateDesignGridKeyboard(state.gridSize, state.selectedCells)
-    } as any).catch(() => {});
+    } as any).catch(() => { });
     return;
   }
 
@@ -4092,16 +4098,16 @@ function buildCellKeyboard(
       await ctx.answerCallbackQuery({ text: '⚠️ يرجى تحديد مربع واحد على الأقل!', show_alert: true });
       return;
     }
-    
-    await ctx.answerCallbackQuery().catch(() => {});
-    
+
+    await ctx.answerCallbackQuery().catch(() => { });
+
     const stepMsg = await ctx.reply('🎨 <b>ما نوع المحتوى الذي تريد إضافته؟</b>', {
       parse_mode: 'HTML',
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '📝 نص (تلقائي الحجم)', callback_data: 'design_type_text', color: '#1E90FF' } as any,
-            { text: '🖼️ صورة', callback_data: 'design_type_image', color: '#1565C0' } as any
+            { text: '📝 نص (تلقائي الحجم)', callback_data: 'design_type_text', style: 'primary' } as any,
+            { text: '🖼️ صورة', callback_data: 'design_type_image', style: 'primary' } as any
           ],
           [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]
         ]
@@ -4114,11 +4120,11 @@ function buildCellKeyboard(
   }
 
   if (data === 'design_type_text') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
-    
+
     state.contentType = 'text';
     setDesignState(ctx.from!.id, state);
 
@@ -4126,7 +4132,7 @@ function buildCellKeyboard(
       { telegramId: ctx.from!.id.toString() },
       { $set: { awaitingDesignText: true } }
     );
-    
+
     await ctx.editMessageText(
       '📝 <b>أرسل النص الآن</b>\nسيتم تصغير الخط تلقائياً ليتناسب مع المساحة المحددة.',
       {
@@ -4135,16 +4141,16 @@ function buildCellKeyboard(
           inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]]
         }
       }
-    ).catch(() => {});
+    ).catch(() => { });
     return;
   }
 
   if (data === 'design_type_image') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
-    
+
     state.contentType = 'image';
     setDesignState(ctx.from!.id, state);
 
@@ -4152,7 +4158,7 @@ function buildCellKeyboard(
       { telegramId: ctx.from!.id.toString() },
       { $set: { awaitingDesignContent: true } }
     );
-    
+
     await ctx.editMessageText(
       '🖼️ <b>أرسل الصورة (العنصر) الآن</b>\nأرسلها كصورة عادية أو كملف، ويفضل أن تكون بصيغة PNG (خلفية شفافة).',
       {
@@ -4161,92 +4167,92 @@ function buildCellKeyboard(
           inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]]
         }
       }
-    ).catch(() => {});
+    ).catch(() => { });
     return;
   }
 
   if (data.startsWith('design_font_')) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const fontMap: Record<string, string> = {
       almarai: 'Almarai',
       modern: 'ModernPro',
       noto: 'NotoNaskh'
     };
-    
+
     const font = data.replace('design_font_', '');
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
-    
+
     state.selectedFont = fontMap[font] || 'Almarai';
     setDesignState(ctx.from!.id, state);
-    
+
     const colorMsg = await ctx.reply('🎨 <b>اختر لون النص:</b>', {
       parse_mode: 'HTML',
       reply_markup: {
         inline_keyboard: [
           [
-            { text: 'أبيض ⚪', callback_data: 'design_color_#FFFFFF', color: '#1E90FF' } as any,
-            { text: 'أسود ⚫', callback_data: 'design_color_#000000', color: '#1565C0' } as any
+            { text: 'أبيض ⚪', callback_data: 'design_color_#FFFFFF', style: 'primary' } as any,
+            { text: 'أسود ⚫', callback_data: 'design_color_#000000', style: 'primary' } as any
           ],
           [
-            { text: 'أحمر 🔴', callback_data: 'design_color_#FF0000', color: '#C62828' } as any,
-            { text: 'أزرق 🔵', callback_data: 'design_color_#0000FF', color: '#1E90FF' } as any
+            { text: 'أحمر 🔴', callback_data: 'design_color_#FF0000', style: 'danger' } as any,
+            { text: 'أزرق 🔵', callback_data: 'design_color_#0000FF', style: 'primary' } as any
           ],
           [
-            { text: 'أخضر 🟢', callback_data: 'design_color_#00FF00', color: '#2E7D32' } as any,
-            { text: 'أصفر 🟡', callback_data: 'design_color_#FFFF00', color: '#1565C0' } as any
+            { text: 'أخضر 🟢', callback_data: 'design_color_#00FF00', style: 'success' } as any,
+            { text: 'أصفر 🟡', callback_data: 'design_color_#FFFF00', style: 'primary' } as any
           ]
         ]
       }
     });
-    
+
     state.colorMsgId = colorMsg.message_id;
     setDesignState(ctx.from!.id, state);
     return;
   }
 
   if (data.startsWith('design_color_')) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const color = data.replace('design_color_', '');
-    
+
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
-    
+
     state.textColor = color;
     setDesignState(ctx.from!.id, state);
-    
+
     await generateDesignPreview(ctx, state);
     return;
   }
 
   if (data.startsWith('design_eff_')) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const eff = data.replace('design_eff_', '');
-    
+
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
-    
+
     if (eff === 'gray') state.imageEffects.grayscale = !state.imageEffects.grayscale;
-    if (eff === 'sat')  state.imageEffects.saturate = !state.imageEffects.saturate;
-    if (eff === 'inv')  state.imageEffects.invert = !state.imageEffects.invert;
-    if (eff === 'ups')  state.imageEffects.upscale = !state.imageEffects.upscale;
-    
+    if (eff === 'sat') state.imageEffects.saturate = !state.imageEffects.saturate;
+    if (eff === 'inv') state.imageEffects.invert = !state.imageEffects.invert;
+    if (eff === 'ups') state.imageEffects.upscale = !state.imageEffects.upscale;
+
     setDesignState(ctx.from!.id, state);
     await generateDesignPreview(ctx, state);
     return;
   }
 
   if (data === 'design_apply') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const { getDesignState, clearDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state || !state.originalBuffer) return;
 
     const user = await User.findOne({ telegramId: ctx.from!.id.toString() });
-    
+
     const hasEffects = Object.values(state.imageEffects).some(v => v);
     if (hasEffects && (user?.dailyQuota || 0) < 2) {
       await ctx.answerCallbackQuery({ text: '⚠️ رصيدك لا يكفي لتطبيق التأثيرات (مطلوب 2)', show_alert: true });
@@ -4265,16 +4271,16 @@ function buildCellKeyboard(
     try {
       const { compositeDesign } = await import('../../services/designEngine');
       const finalBuffer = await compositeDesign(state.originalBuffer, state, true); // Watermark is enforced
-      
+
       const { incrementGlobalCounter } = await import('../../services/statsService');
       await incrementGlobalCounter();
 
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
-      
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+
       const { InputFile } = await import('grammy');
       await ctx.replyWithDocument(new InputFile(finalBuffer, `NizoAI_Design_${Date.now()}.jpg`), {
         caption: `✅ <b>تم التصميم بنجاح!</b>\n` +
-                 (hasEffects ? `⚡ تم خصم 2 محاولات للتأثيرات.` : `⚡ التصميم مجاني بالكامل!`),
+          (hasEffects ? `⚡ تم خصم 2 محاولات للتأثيرات.` : `⚡ التصميم مجاني بالكامل!`),
         parse_mode: 'HTML'
       });
 
@@ -4283,11 +4289,11 @@ function buildCellKeyboard(
       if (BACKUP) {
         ctx.api.sendDocument(BACKUP, new InputFile(finalBuffer, `design_${Date.now()}.jpg`), {
           caption: `📦 <b>أرشيف التصميم</b>\n` +
-                   `🆔 <b>ID:</b> <code>${ctx.from!.id}</code>\n` +
-                   `📝 <b>Type:</b> ${state.contentType}`,
+            `🆔 <b>ID:</b> <code>${ctx.from!.id}</code>\n` +
+            `📝 <b>Type:</b> ${state.contentType}`,
           parse_mode: 'HTML',
           disable_notification: true
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
     } catch (e) {
@@ -4313,7 +4319,7 @@ function generateDesignGridKeyboard(size: number, selectedCells: number[]) {
   const cols = size === 30 ? 5 : size === 40 ? 5 : size === 50 ? 5 : size === 70 ? 7 : 10;
   const rows = size === 30 ? 6 : size === 40 ? 8 : size === 50 ? 10 : size === 70 ? 10 : 10;
   const kbd: any[] = [];
-  
+
   for (let r = 0; r < rows; r++) {
     const rowBtns: any[] = [];
     for (let c = 0; c < cols; c++) {
@@ -4326,8 +4332,8 @@ function generateDesignGridKeyboard(size: number, selectedCells: number[]) {
     }
     kbd.push(rowBtns);
   }
-  
-  kbd.push([{ text: '✅ متابعة', callback_data: 'design_confirm_grid', color: '#2E7D32' }]);
+
+  kbd.push([{ text: '✅ متابعة', callback_data: 'design_confirm_grid', style: 'success' }]);
   kbd.push([{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]);
   return kbd;
 }
@@ -4337,33 +4343,33 @@ async function generateDesignPreview(ctx: any, state: any) {
   try {
     const { compositeDesign } = await import('../../services/designEngine');
     const previewBuffer = await compositeDesign(state.originalBuffer, state, false);
-    
-    await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
-    
+
+    await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+
     const { InputFile } = await import('grammy');
-    const textMarkup = state.contentType === 'text' 
+    const textMarkup = state.contentType === 'text'
       ? `\n🎨 <b>اللون الحالي:</b> ${state.textColor}`
       : '';
-      
+
     const replyMarkup = {
       inline_keyboard: [
         [
-          { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', color: '#1565C0' } as any,
-          { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', color: '#1565C0' } as any,
+          { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', style: 'primary' } as any,
+          { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', style: 'primary' } as any,
         ],
         [
-          { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', color: '#1565C0' } as any,
-          { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', color: '#1565C0' } as any,
+          { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', style: 'primary' } as any,
+          { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', style: 'primary' } as any,
         ],
         [
-          { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', color: '#2E7D32' } as any
+          { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', style: 'success' } as any
         ],
         [
           { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }
         ]
       ]
     };
-    
+
     if (state.previewMsgId) {
       // Just edit photo
       await ctx.api.editMessageMedia(
@@ -4376,7 +4382,7 @@ async function generateDesignPreview(ctx: any, state: any) {
           parse_mode: 'HTML'
         },
         { reply_markup: replyMarkup }
-      ).catch(() => {});
+      ).catch(() => { });
     } else {
       const pMsg = await ctx.replyWithPhoto(new InputFile(previewBuffer, 'preview.jpg'), {
         caption: `👁️ <b>معاينة التصميم</b>${textMarkup}\n\nيمكنك تطبيق تأثيرات قبل الحفظ (يخصم محاولتين)`,

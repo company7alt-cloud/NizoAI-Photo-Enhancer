@@ -90,7 +90,7 @@ cron.schedule('*/5 * * * *', async () => {
               }
             }
           );
-          
+
           await User.updateOne(
             { _id: user._id },
             { $set: { dailyReminderSent: true } }
@@ -547,33 +547,33 @@ imageBot.on('message:text', async (ctx, next) => {
       await ctx.reply('⚠️ يرجى إرسال نص صالح.');
       return;
     }
-    
+
     await User.findOneAndUpdate(
       { telegramId: ctx.from!.id.toString() },
       { $set: { awaitingDesignText: false } }
     );
-    
+
     const { getDesignState, setDesignState } = await import('./utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
-    
+
     state.contentValue = textValue.trim();
     setDesignState(ctx.from!.id, state);
-    
+
     await ctx.reply('🔤 <b>اختر نوع الخط:</b>', {
       parse_mode: 'HTML',
       reply_markup: {
         inline_keyboard: [
           [
-            { text: 'الخط الكوفي (Almarai)', callback_data: 'design_font_almarai', color: '#1E90FF' } as any,
+            { text: 'الخط الكوفي (Almarai)', callback_data: 'design_font_almarai', style: 'primary' },
           ],
           [
-            { text: 'الخط الحديث (Modern)', callback_data: 'design_font_modern', color: '#1E90FF' } as any,
+            { text: 'الخط الحديث (Modern)', callback_data: 'design_font_modern', style: 'primary' },
           ],
           [
-            { text: 'خط النسخ (Noto)', callback_data: 'design_font_noto', color: '#1E90FF' } as any,
+            { text: 'خط النسخ (Noto)', callback_data: 'design_font_noto', style: 'primary' },
           ],
-          [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]
+          [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]
         ]
       }
     });
@@ -1883,7 +1883,7 @@ registerDocCallback('copy_generated_text', 'copy_generated_text', async (ctx) =>
   }
   const chunks = text.match(/[\s\S]{1,4096}/g) || [];
   for (const chunk of chunks) {
-    await ctx.reply(chunk).catch(() => {});
+    await ctx.reply(chunk).catch(() => { });
   }
 });
 

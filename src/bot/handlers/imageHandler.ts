@@ -15,7 +15,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   const telegramId = ctx.from?.id.toString();
   const reportUser = await User.findOne({ telegramId });
 
-    // ── Strict Image Upload Guard ──
+  // ── Strict Image Upload Guard ──
   const isAwaitingImage = (
     ctx.session?.workflowState === 'awaiting_image' ||
     ctx.session?.isAwaitingImage === true ||
@@ -100,10 +100,10 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
             reply_markup: {
               inline_keyboard: [
                 // @ts-ignore
-                [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish' , style: 'success' as const}],
-                [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}` , style: 'success' as const}],
+                [{ text: '✅ واصل لاختيار الصيغة', callback_data: 'conv_batch_finish', style: 'success' as const }],
+                [{ text: '💬 مراسلة المطور', url: `https://t.me/${process.env.ADMIN_USERNAME || 'Nizar_CEO'}`, style: 'success' as const }],
                 // @ts-ignore
-                [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel' , style: 'danger' as const}],
+                [{ text: '❌ إلغاء', callback_data: 'convert_format_cancel', style: 'danger' as const }],
               ],
             },
           }
@@ -125,7 +125,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
                   { text: `🔄 المزيد (${5 - count} متبقي)`, callback_data: 'conv_batch_add', style: 'primary' as const },
                 ],
                 // @ts-ignore
-                [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel' , style: 'danger' as const}],
+                [{ text: '🚫 إلغاء الكل', callback_data: 'convert_format_cancel', style: 'danger' as const }],
               ],
             },
           }
@@ -195,7 +195,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       // STRICT: Check quota BEFORE calling API
       if (user.dailyQuota < cost) {
         await ctx.reply(`⚠️ رصيدك غير كافٍ!\nتحتاج <b>${cost} محاولات</b> لهذا الفلتر.\nرصيدك الحالي: <b>${user.dailyQuota}</b>`, { parse_mode: 'HTML' });
-        await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+        await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => { });
         return;
       }
 
@@ -225,14 +225,14 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
             caption: `📦 <b>أرشيف — فلاتر الصور</b>\n━━━━━━━━━━━━━━\n🆔 <b>User ID:</b> <code>${ctx.from!.id}</code>\n🎨 <b>الفلتر:</b> ${filterNames[filterType] ?? filterType}\n✅ <b>الحالة:</b> ناجحة\n📦 <b>الحجم:</b> ${sizeMB} MB\n━━━━━━━━━━━━━━`,
             parse_mode: 'HTML',
             disable_notification: true
-          }).catch(() => {});
+          }).catch(() => { });
         }
 
         // Send as Document
         await ctx.replyWithDocument(new InputFile(resultBuffer, `NizoAI_Filter_${Date.now()}.jpg`), {
           caption: `✅ <b>تم تطبيق ${filterNames[filterType] ?? filterType} بنجاح!</b> 🎨\n` +
-                   `⚡ المحاولات المستخدمة: ${cost}\n` +
-                   `💎 رصيدك المتبقي: ${updatedUser?.dailyQuota ?? 0}`,
+            `⚡ المحاولات المستخدمة: ${cost}\n` +
+            `💎 رصيدك المتبقي: ${updatedUser?.dailyQuota ?? 0}`,
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
@@ -266,7 +266,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       }
     } catch (err: any) {
       console.error('[FILTER ERROR]', err);
-      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, processingMsg.message_id).catch(() => { });
       await ctx.reply('❌ عذراً، حدث خطأ أثناء المعالجة.');
     }
 
@@ -288,7 +288,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     user.awaitingCustomEraserZone = false;
     user.customEraserSelectedCells = [];
     user.customEraserGridSize = 0;
-    
+
     const btnMsg = await ctx.reply(
       "🖼️ <b>تم استلام صورتك!</b>\n\n" +
       "📐 <b>اختر حجم الشبكة:</b>\n" +
@@ -313,12 +313,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
               { text: '🔒 100 تقسيم', callback_data: 'cgz_size_100', style: 'primary' as const },
             ],
             // @ts-ignore
-            [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser' , style: 'danger' as const}],
+            [{ text: '❌ إلغاء', callback_data: 'cancel_custom_eraser', style: 'danger' as const }],
           ]
         }
       }
     );
-    
+
     user.customEraserBtnMsgId = btnMsg.message_id;
     await user.save();
     return;
@@ -575,7 +575,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         processingMsg.message_id,
         currentAnim + '\n\n⚠️ <i>قد تستغرق عملية التحسين حتى 15 دقيقة، في حال تعدى هذا الوقت ولم تصلك الصورة، يرجى رفع بلاغ وسيتم تعويضك.</i>',
         { parse_mode: 'HTML' }
-      ).catch(() => {});
+      ).catch(() => { });
     }, 10000); // 10 seconds interval
 
     try {
@@ -595,13 +595,13 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         },
         body: JSON.stringify({
           input: {
-            image:         imageUrl,
-            scale_factor:  2,
-            resemblance:   0.9,
-            creativity:    0.2,
-            dynamic:       8,
-            sharpen:       3,
-            tiling_width:  112,
+            image: imageUrl,
+            scale_factor: 2,
+            resemblance: 0.9,
+            creativity: 0.2,
+            dynamic: 8,
+            sharpen: 3,
+            tiling_width: 112,
             tiling_height: 144,
             output_format: 'jpg',
           }
@@ -650,7 +650,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const resultBuffer = Buffer.from(await resultRes.arrayBuffer());
 
       clearInterval(animInterval);
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       await User.findOneAndUpdate(
         { telegramId: userId.toString() },
@@ -681,8 +681,8 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         '🔄 تحويل الصيغة:',
         {
           reply_markup: new InlineKeyboard()
-            .text('🖼 JPG',  'magic_fmt_jpg')
-            .text('🖼 PNG',  'magic_fmt_png')
+            .text('🖼 JPG', 'magic_fmt_jpg')
+            .text('🖼 PNG', 'magic_fmt_png')
             .text('🖼 WEBP', 'magic_fmt_webp')
             .row()
             .text('🖼 AVIF', 'magic_fmt_avif')
@@ -724,7 +724,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           { $inc: { dailyQuota: 5 } }
         );
       }
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
+      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
       console.error('[MagicEnhance] Error:', err?.message);
       await ctx.reply(
         '❌ عذراً، حدث خطأ أثناء المعالجة.\n' +
@@ -736,7 +736,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         await User.findOneAndUpdate(
           { telegramId: userId.toString() },
           { $set: { isProcessingImage: false } }
-        ).catch(() => {});
+        ).catch(() => { });
       }
     }
     return;
@@ -745,8 +745,8 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
   // ── Free Design Feature (Main Image & Content Image) ────────────────────
   if (user?.awaitingDesignImage || user?.awaitingDesignContent) {
     const isImage = user.awaitingDesignImage;
-    const fileId = ctx.message?.photo 
-      ? ctx.message.photo[ctx.message.photo.length - 1].file_id 
+    const fileId = ctx.message?.photo
+      ? ctx.message.photo[ctx.message.photo.length - 1].file_id
       : ctx.message?.document?.file_id;
 
     if (!fileId) {
@@ -773,14 +773,14 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         { telegramId: userId.toString() },
         { $set: { awaitingDesignImage: false } }
       );
-      
+
       if (!state) {
-        state = { 
+        state = {
           originalFileId: fileId,
-          selectedCells: [], 
-          gridSize: 30, 
-          cols: 5, 
-          rows: 6, 
+          selectedCells: [],
+          gridSize: 30,
+          cols: 5,
+          rows: 6,
           contentType: null,
           contentValue: '',
           selectedFont: 'Almarai',
@@ -797,12 +797,12 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '30 مربع', callback_data: 'design_grid_30', color: '#1E90FF' } as any,
-              { text: '40 مربع', callback_data: 'design_grid_40', color: '#1E90FF' } as any,
+              { text: '30 مربع', callback_data: 'design_grid_30', style: 'primary' } as any,
+              { text: '40 مربع', callback_data: 'design_grid_40', style: 'primary' } as any,
             ],
             [
-              { text: '50 مربع', callback_data: 'design_grid_50', color: '#1E90FF' } as any,
-              { text: '70 مربع', callback_data: 'design_grid_70', color: '#1E90FF' } as any,
+              { text: '50 مربع', callback_data: 'design_grid_50', style: 'primary' } as any,
+              { text: '70 مربع', callback_data: 'design_grid_70', style: 'primary' } as any,
             ],
             [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }]
           ]
@@ -819,25 +819,25 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       setDesignState(ctx.from!.id, state);
 
       const processingMsg = await ctx.reply('⏳ جاري تحضير المعاينة...');
-      
+
       try {
         const { compositeDesign } = await import('../../services/designEngine');
         const previewBuffer = await compositeDesign(state.originalBuffer!, state, false);
-        await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => {});
-        
+        await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+
         const { InputFile } = await import('grammy');
         const replyMarkup = {
           inline_keyboard: [
             [
-              { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', color: '#1565C0' } as any,
-              { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', color: '#1565C0' } as any,
+              { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', style: 'primary' } as any,
+              { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', style: 'primary' } as any,
             ],
             [
-              { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', color: '#1565C0' } as any,
-              { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', color: '#1565C0' } as any,
+              { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', style: 'primary' } as any,
+              { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', style: 'primary' } as any,
             ],
             [
-              { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', color: '#2E7D32' } as any
+              { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', style: 'success' } as any
             ],
             [
               { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as any }
@@ -850,7 +850,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           parse_mode: 'HTML',
           reply_markup: replyMarkup as any
         });
-        
+
         state.previewMsgId = pMsg.message_id;
         setDesignState(ctx.from!.id, state);
       } catch (e) {
@@ -1023,9 +1023,9 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     processingMsg = await ctx.reply(initMsg);
 
     // Typing indicator (النقاط المموجة في شريط تليجرام)
-    await ctx.api.sendChatAction(ctx.chat!.id, 'upload_document').catch(() => {});
+    await ctx.api.sendChatAction(ctx.chat!.id, 'upload_document').catch(() => { });
     const typingInterval = setInterval(async () => {
-      await ctx.api.sendChatAction(ctx.chat!.id, 'upload_document').catch(() => {});
+      await ctx.api.sendChatAction(ctx.chat!.id, 'upload_document').catch(() => { });
     }, 4000);
 
     // Wave messages
@@ -1035,7 +1035,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         processingMsg.chat.id,
         processingMsg.message_id,
         waveFrames[waveIdx++ % waveFrames.length]
-      ).catch(() => {});
+      ).catch(() => { });
     }, 2000);
 
     try {
@@ -1359,7 +1359,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     };
 
     if (isAdminUser) {
-      keyboard.inline_keyboard.push([{ text: '⚙️ لوحة تحكم الأدمن', callback_data: 'admin_panel' , style: 'primary' as const}]);
+      keyboard.inline_keyboard.push([{ text: '⚙️ لوحة تحكم الأدمن', callback_data: 'admin_panel', style: 'primary' as const }]);
     }
 
     await ctx.reply(text, {

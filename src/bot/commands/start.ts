@@ -169,7 +169,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
           { telegramId: telegramId },
           {
             $set: {
-              referredBy:            referrerId,
+              referredBy: referrerId,
               referralRewardClaimed: true,
             },
           }
@@ -271,10 +271,9 @@ export async function startCommand(ctx: BotContext): Promise<void> {
           { text: 'القناة', url: chanLink, style: 'primary' }
         ]] : []),
 
-        // ROW 5.5 — Free Design (dodger blue)
+        // ROW 5.5 — Free Design
         [
-          // @ts-ignore
-          { text: '🟦 تصميم مجاني', callback_data: 'start_free_design', color: '#1E90FF' },
+          { text: '🟦 تصميم مجاني', callback_data: 'start_free_design', style: 'primary' },
         ],
 
         // ROW 6 — Internet Image Downloader (blue)
@@ -309,7 +308,7 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     // Files only on the server will be wiped by git reset --hard.
     const welcomeImagePath = path.join(process.cwd(), 'assets', 'welcome_image.jpg');
 
-    const caption = 
+    const caption =
       `أهلاً بك صديقي <b>${ctx.from?.first_name || 'العزيز'}</b>! 🤍\n` +
       `أنا بوت تحسين الصور بالذكاء الاصطناعي، مهمتي هي تحويل صورك العادية إلى تحف فنية عالية الدقة وخالية من الشوائب.\n\n` +
       `<b>🛠️ خدماتي المتاحة لك:</b>\n` +
