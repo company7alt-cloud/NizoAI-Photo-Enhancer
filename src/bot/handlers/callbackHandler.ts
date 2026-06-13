@@ -4101,21 +4101,44 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   if (data.startsWith('dsgc_')) {
     const cellId = parseInt(data.replace('dsgc_', ''));
+    if (isNaN(cellId)) return;
+
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
-    if (!state) return;
-
-    if (state.selectedCells.includes(cellId)) {
-      state.selectedCells = state.selectedCells.filter(c => c !== cellId);
-    } else {
-      state.selectedCells.push(cellId);
+    if (!state) {
+      await ctx.answerCallbackQuery({ text: '⚠️ انتهت الجلسة', show_alert: true }).catch(() => {});
+      return;
     }
 
+    // Toggle selection
+    if (state.selectedCells.includes(cellId)) {
+      state.selectedCells = state.selectedCells.filter(c => c !== cellId);
+      await ctx.answerCallbackQuery({ text: `❌ تم إلغاء تحديد المربع ${cellId}` }).catch(() => {});
+    } else {
+      state.selectedCells.push(cellId);
+      await ctx.answerCallbackQuery({ text: `✅ تم تحديد المربع ${cellId}` }).catch(() => {});
+    }
+
+    state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
-    await ctx.editMessageReplyMarkup({
-      inline_keyboard: buildDesignCellKeyboard(state.gridSize, state.selectedCells).inline_keyboard
-    } as any).catch(() => { });
+    // Delete old keyboard message
+    if (state.stepMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+    }
+
+    // Send NEW keyboard message with updated selections
+    const updatedKb = buildDesignCellKeyboard(state.gridSize, state.selectedCells);
+    const newKbMsg = await ctx.reply(
+      `📊 <b>المربعات المحددة: ${state.selectedCells.length}</b>` +
+      (state.selectedCells.length > 0
+        ? `\n✅ المحدد: ${state.selectedCells.sort((a,b) => a-b).join(', ')}`
+        : '\n💡 اضغط على أرقام المربعات للتحديد'),
+      { parse_mode: 'HTML', reply_markup: updatedKb as any }
+    );
+
+    state.stepMsgId = newKbMsg.message_id;
+    setDesignState(ctx.from!.id, state);
     return;
   }
 
@@ -4123,26 +4146,77 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state || state.selectedCells.length === 0) {
-      await ctx.answerCallbackQuery({ text: '⚠️ يرجى تحديد مربع واحد على الأقل!', show_alert: true });
+      await ctx.answerCallbackQuery({
+        text: '⚠️ يرجى تحديد مربع واحد على الأقل!',
+        show_alert: true
+      }).catch(() => {});
       return;
     }
 
-    await ctx.answerCallbackQuery().catch(() => { });
+    await ctx.answerCallbackQuery().catch(() => {});
 
-    const stepMsg = await ctx.reply('🎨 <b>ما نوع المحتوى الذي تريد إضافته؟</b>', {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '📝 نص (تلقائي الحجم)', callback_data: 'design_type_text', style: 'primary' },
-            { text: '🖼️ صورة', callback_data: 'design_type_image', style: 'primary' }
-          ],
-          [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]
-        ]
+    // Delete the keyboard message
+    if (state.stepMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+      state.stepMsgId = undefined;
+    }
+
+    // Show content type selection
+    const stepMsg = await ctx.reply(
+      '🎨 <b>ماذا تريد أن تضيف على صورتك؟</b>\n\n' +
+      `📍 المنطقة المحددة: ${state.selectedCells.length} مربع`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              // @ts-ignore
+              { text: '📝 نص', callback_data: 'design_type_text', color: '#1E90FF' },
+              // @ts-ignore
+              { text: '🖼️ صورة', callback_data: 'design_type_image', color: '#1E90FF' }
+            ],
+            [
+              // @ts-ignore
+              { text: '🔙 رجوع لاختيار المربعات', callback_data: 'design_back_to_cells', color: '#C62828' }
+            ],
+            [
+              // @ts-ignore
+              { text: '❌ إلغاء', callback_data: 'cancel_design', color: '#C62828' }
+            ]
+          ]
+        }
       }
-    });
+    );
 
     state.stepMsgId = stepMsg.message_id;
+    setDesignState(ctx.from!.id, state);
+    return;
+  }
+
+  if (data === 'design_back_to_cells') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
+    // Delete current message
+    if (state.stepMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+    }
+
+    // Re-show cell keyboard with current selections intact
+    const kb = buildDesignCellKeyboard(state.gridSize, state.selectedCells);
+    const kbMsg = await ctx.reply(
+      `📊 <b>المربعات المحددة: ${state.selectedCells.length}</b>` +
+      (state.selectedCells.length > 0
+        ? `\n✅ المحدد: ${state.selectedCells.sort((a,b) => a-b).join(', ')}`
+        : '\n💡 اضغط على أرقام المربعات للتحديد'),
+      { parse_mode: 'HTML', reply_markup: kb as any }
+    );
+
+    state.stepMsgId = kbMsg.message_id;
+    state.contentType = null;
+    state.contentValue = '';
     setDesignState(ctx.from!.id, state);
     return;
   }
