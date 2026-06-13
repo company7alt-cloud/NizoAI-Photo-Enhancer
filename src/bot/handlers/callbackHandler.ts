@@ -4214,15 +4214,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: 'الخط الكوفي (Almarai)', callback_data: 'design_font_almarai', style: 'primary' as const },
+              { text: 'قلم عريض احترافي (Almarai)', callback_data: 'design_font_almarai', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: 'الخط الحديث (Modern)', callback_data: 'design_font_modern', style: 'primary' as const },
+              { text: '🎨 Modern Pro (مودرن برو)', callback_data: 'design_font_modern', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: 'خط النسخ (Noto)', callback_data: 'design_font_noto', style: 'primary' as const },
+              { text: 'الخط الرسمي الشامل (Noto Naskh)', callback_data: 'design_font_noto', style: 'primary' as const },
             ],
             [
               // @ts-ignore
@@ -4308,9 +4308,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: 'الخط الكوفي (Almarai)', callback_data: 'design_font_almarai', style: 'primary' as const }],
-            [{ text: 'الخط الحديث (Modern)', callback_data: 'design_font_modern', style: 'primary' as const }],
-            [{ text: 'خط النسخ (Noto)', callback_data: 'design_font_noto', style: 'primary' as const }],
+            [{ text: 'قلم عريض احترافي (Almarai)', callback_data: 'design_font_almarai', style: 'primary' as const }],
+            [{ text: '🎨 Modern Pro (مودرن برو)', callback_data: 'design_font_modern', style: 'primary' as const }],
+            [{ text: 'الخط الرسمي الشامل (Noto Naskh)', callback_data: 'design_font_noto', style: 'primary' as const }],
             [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
           ]
         }

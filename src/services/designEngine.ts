@@ -107,75 +107,66 @@ export async function compositeDesign(
   let overlayBuffer: Buffer;
 
   if (state.contentType === 'text') {
-    // ── Text overlay via canvas with manual word-wrap ──────────────────────
-    let fontSize = Math.floor(h * 0.4);
-
-    // Word-wrap algorithm
-    const buildLines = (fSize: number): { lines: string[]; totalHeight: number } => {
-      const tmpCanvas = createCanvas(w, h);
-      const tmpCtx = tmpCanvas.getContext('2d');
-      tmpCtx.font = `bold ${fSize}px '${state.selectedFont}'`;
-
-      const words = state.contentValue.split(/\s+/).filter(Boolean);
-      const lines: string[] = [];
-      let currentLine = '';
-
-      for (const word of words) {
-        const testLine = currentLine ? currentLine + ' ' + word : word;
-        const testWidth = tmpCtx.measureText(testLine).width;
-        if (testWidth < w * 0.9 && currentLine) {
-          currentLine = testLine;
-        } else if (currentLine === '') {
-          currentLine = word;
-        } else {
-          lines.push(currentLine);
-          currentLine = word;
-        }
-      }
-      if (currentLine) lines.push(currentLine);
-
-      const totalHeight = lines.length * fSize * 1.3;
-      return { lines, totalHeight };
-    };
-
-    // Shrink font until text fits
-    let { lines, totalHeight } = buildLines(fontSize);
-
-    // Check if any line is too wide
-    const checkFit = (fSize: number, lns: string[]): boolean => {
-      const tmpCanvas = createCanvas(w, h);
-      const tmpCtx = tmpCanvas.getContext('2d');
-      tmpCtx.font = `bold ${fSize}px '${state.selectedFont}'`;
-      const tooWide = lns.some(l => tmpCtx.measureText(l).width > w * 0.9);
-      return !tooWide;
-    };
-
-    while ((totalHeight > h * 0.9 || !checkFit(fontSize, lines)) && fontSize >= 8) {
-      fontSize -= 2;
-      const result = buildLines(fontSize);
-      lines = result.lines;
-      totalHeight = result.totalHeight;
-    }
-
-    // Draw on canvas
     const canvas = createCanvas(w, h);
     const ctx = canvas.getContext('2d');
 
-    // Transparent background
-    ctx.clearRect(0, 0, w, h);
+    let fontSize = Math.floor(h * 0.4); // Start with a large legible size
+    if (fontSize > w / 2) fontSize = Math.floor(w / 2);
+    let lines: string[] = [];
 
-    ctx.fillStyle = state.textColor;
-    ctx.font = `bold ${fontSize}px '${state.selectedFont}'`;
-    ctx.textAlign = 'center';
+    // Robust Word-Wrap & Auto-Scaling Loop
+    while (fontSize > 10) {
+      // CRITICAL: Font family MUST be wrapped in quotes for canvas to recognize it
+      ctx.font = `bold ${fontSize}px "${state.selectedFont}"`;
+      lines = [];
+      
+      // Respect manual newlines from user
+      const paragraphs = state.contentValue.split('\n');
 
-    const startY = (h - totalHeight) / 2;
-    for (let i = 0; i < lines.length; i++) {
-      const lineY = startY + i * fontSize * 1.3 + fontSize; // +fontSize for baseline
-      ctx.fillText(lines[i], w / 2, lineY);
+      for (const p of paragraphs) {
+        const words = p.split(' ');
+        let currentLine = words[0] || '';
+        
+        for (let i = 1; i < words.length; i++) {
+          const word = words[i];
+          const testLine = currentLine + ' ' + word;
+          const metrics = ctx.measureText(testLine);
+          
+          if (metrics.width < w * 0.95) {
+            currentLine = testLine;
+          } else {
+            lines.push(currentLine);
+            currentLine = word;
+          }
+        }
+        lines.push(currentLine);
+      }
+
+      const lineHeight = fontSize * 1.4;
+      const totalHeight = lines.length * lineHeight;
+      const isTooWide = lines.some(l => ctx.measureText(l).width > w * 0.95);
+
+      // If it fits both width and height, we found the perfect font size!
+      if (totalHeight <= h * 0.95 && !isTooWide) break;
+      
+      // Otherwise, shrink slightly and recalculate
+      fontSize -= 2;
     }
 
-    overlayBuffer = canvas.toBuffer('image/png');
+    ctx.fillStyle = state.textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const lineHeight = fontSize * 1.4;
+    
+    // Calculate starting Y to vertically center the block of text
+    const startY = (h - (lines.length * lineHeight)) / 2 + (lineHeight / 2);
 
+    // Draw each line
+    lines.forEach((line, index) => {
+      ctx.fillText(line, w / 2, startY + (index * lineHeight));
+    });
+
+    overlayBuffer = canvas.toBuffer('image/png');
   } else {
     // ── Image overlay ─────────────────────────────────────────────────────
     let overlayBuf = Buffer.from(state.contentValue, 'base64');
