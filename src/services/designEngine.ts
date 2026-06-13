@@ -114,7 +114,7 @@ export async function compositeDesign(
     const buildLines = (fSize: number): { lines: string[]; totalHeight: number } => {
       const tmpCanvas = createCanvas(w, h);
       const tmpCtx = tmpCanvas.getContext('2d');
-      tmpCtx.font = `bold ${fSize}px ${state.selectedFont}`;
+      tmpCtx.font = `bold ${fSize}px '${state.selectedFont}'`;
 
       const words = state.contentValue.split(/\s+/).filter(Boolean);
       const lines: string[] = [];
@@ -145,7 +145,7 @@ export async function compositeDesign(
     const checkFit = (fSize: number, lns: string[]): boolean => {
       const tmpCanvas = createCanvas(w, h);
       const tmpCtx = tmpCanvas.getContext('2d');
-      tmpCtx.font = `bold ${fSize}px ${state.selectedFont}`;
+      tmpCtx.font = `bold ${fSize}px '${state.selectedFont}'`;
       const tooWide = lns.some(l => tmpCtx.measureText(l).width > w * 0.9);
       return !tooWide;
     };
@@ -165,7 +165,7 @@ export async function compositeDesign(
     ctx.clearRect(0, 0, w, h);
 
     ctx.fillStyle = state.textColor;
-    ctx.font = `bold ${fontSize}px ${state.selectedFont}`;
+    ctx.font = `bold ${fontSize}px '${state.selectedFont}'`;
     ctx.textAlign = 'center';
 
     const startY = (h - totalHeight) / 2;

@@ -4203,7 +4203,12 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     }
 
     if (state.contentType === 'text') {
-      const colorMsg = await ctx.reply('🔤 <b>اختر نوع الخط:</b>', {
+      const colorMsg = await ctx.reply(
+        "🔤 <b>اختيار نوع الخط</b>\n\n" +
+        "✨ لقد قمنا بتوفير أرقى الخطوط العربية لتناسب ذوقك.\n" +
+        "👇 يرجى اختيار الخط المناسب لنصك من القائمة أدناه:\n\n" +
+        "<i>(ملاحظة: سيتم عرض معاينة للخط على صورتك مباشرة بعد الاختيار)</i>",
+        {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
@@ -4292,11 +4297,53 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  if (data === 'design_back_to_fonts') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.editMessageText(
+      "🔤 <b>اختيار نوع الخط</b>\n\n" +
+      "✨ لقد قمنا بتوفير أرقى الخطوط العربية لتناسب ذوقك.\n" +
+      "👇 يرجى اختيار الخط المناسب لنصك من القائمة أدناه:\n\n" +
+      "<i>(ملاحظة: سيتم عرض معاينة للخط على صورتك مباشرة بعد الاختيار)</i>",
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'الخط الكوفي (Almarai)', callback_data: 'design_font_almarai', style: 'primary' as const }],
+            [{ text: 'الخط الحديث (Modern)', callback_data: 'design_font_modern', style: 'primary' as const }],
+            [{ text: 'خط النسخ (Noto)', callback_data: 'design_font_noto', style: 'primary' as const }],
+            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
+          ]
+        }
+      }
+    ).catch(() => {});
+    return;
+  }
+
   if (data.startsWith('design_font_')) {
     await ctx.answerCallbackQuery().catch(() => { });
+
+    if (data === 'design_font_modern') {
+      await ctx.editMessageText(
+        "⚠️ <b>تنبيه هام:</b>\n\n" +
+        "الخط الحديث (Modern) لا يدعم الحروف الإنجليزية أو الرموز الخاصة.\n" +
+        "استخدامه مع نصوص تحتوي على إنجليزي سيؤدي لظهور مربعات فارغة.\n\n" +
+        "هل أنت متأكد من رغبتك في استخدام هذا الخط؟",
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ موافق', callback_data: 'design_font_ModernPro_confirm', style: 'success' as const }],
+              [{ text: '🔙 رجوع لاختيار خط آخر', callback_data: 'design_back_to_fonts', style: 'danger' as const }]
+            ]
+          }
+        }
+      ).catch(() => {});
+      return;
+    }
+
     const fontMap: Record<string, string> = {
       almarai: 'Almarai',
-      modern: 'ModernPro',
+      ModernPro_confirm: 'ModernPro',
       noto: 'NotoNaskh'
     };
 
@@ -4313,17 +4360,27 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: 'أبيض ⚪', callback_data: 'design_color_#FFFFFF', style: 'primary' },
-            { text: 'أسود ⚫', callback_data: 'design_color_#000000', style: 'primary' }
+            { text: 'الأبيض ⚪', callback_data: 'design_color_#FFFFFF', style: 'primary' as const },
+            { text: 'الأسود ⚫', callback_data: 'design_color_#000000', style: 'primary' as const },
+            { text: 'الأحمر 🔴', callback_data: 'design_color_#FF0000', style: 'primary' as const }
           ],
           [
-            { text: 'أحمر 🔴', callback_data: 'design_color_#FF0000', style: 'danger' },
-            { text: 'أزرق 🔵', callback_data: 'design_color_#0000FF', style: 'primary' }
+            { text: 'الأزرق 🔵', callback_data: 'design_color_#0000FF', style: 'primary' as const },
+            { text: 'الأخضر 🟢', callback_data: 'design_color_#00CC44', style: 'primary' as const },
+            { text: 'الأصفر 🟡', callback_data: 'design_color_#FFD700', style: 'primary' as const }
           ],
           [
-            { text: 'أخضر 🟢', callback_data: 'design_color_#00FF00', style: 'success' },
-            { text: 'أصفر 🟡', callback_data: 'design_color_#FFFF00', style: 'primary' }
-          ]
+            { text: 'البرتقالي 🟠', callback_data: 'design_color_#FF6600', style: 'primary' as const },
+            { text: 'البنفسجي 🟣', callback_data: 'design_color_#8B00FF', style: 'primary' as const },
+            { text: 'الوردي 🌸', callback_data: 'design_color_#FF69B4', style: 'primary' as const }
+          ],
+          [
+            { text: 'السماوي 🩵', callback_data: 'design_color_#00BFFF', style: 'primary' as const },
+            { text: 'البني 🟤', callback_data: 'design_color_#8B4513', style: 'primary' as const },
+            { text: 'الرمادي 🔘', callback_data: 'design_color_#808080', style: 'primary' as const }
+          ],
+          [{ text: '✅ موافق', callback_data: 'design_effects_confirm', style: 'primary' as const }],
+          [{ text: '🔙 رجوع', callback_data: 'design_back_to_fonts', style: 'danger' as const }]
         ]
       }
     });
@@ -4344,6 +4401,17 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     state.textColor = color;
     setDesignState(ctx.from!.id, state);
 
+    await generateDesignPreview(ctx, state);
+    return;
+  }
+
+  if (data === 'design_effects_confirm') {
+    await ctx.answerCallbackQuery().catch(() => { });
+    const { getDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+    
+    // Explicit confirm just shows the preview again (or continues flow if preview isn't shown yet)
     await generateDesignPreview(ctx, state);
     return;
   }
@@ -4554,7 +4622,7 @@ async function generateDesignPreview(ctx: any, state: any) {
       inline_keyboard: [
         [
           { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', style: 'primary' },
-          { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', style: 'primary' },
+          { text: state.imageEffects.saturate ? '✅ تشبع' : '🔆 تشبع', callback_data: 'design_eff_sat', style: 'primary' },
         ],
         [
           { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', style: 'primary' },
