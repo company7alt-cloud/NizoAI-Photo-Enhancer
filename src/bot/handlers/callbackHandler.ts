@@ -4459,7 +4459,8 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     try {
       const { compositeDesign } = await import('../../services/designEngine');
-      const finalBuffer = await compositeDesign(state.originalBuffer, state, true); // Watermark is enforced
+      // MISSION 1: Remove Watermark from Final Output
+      const finalBuffer = await compositeDesign(state.originalBuffer, state, false);
 
       const { incrementGlobalCounter } = await import('../../services/statsService');
       await incrementGlobalCounter();
@@ -4467,22 +4468,50 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
 
       const { InputFile } = await import('grammy');
-      await ctx.replyWithDocument(new InputFile(finalBuffer, `NizoAI_Design_${Date.now()}.jpg`), {
+      const jobId = Date.now().toString();
+
+      // MISSION 2: Add Rating Buttons to Final Message
+      await ctx.replyWithDocument(new InputFile(finalBuffer, `NizoAI_Design_${jobId}.jpg`), {
         caption: `✅ <b>تم التصميم بنجاح!</b>\n` +
           (hasEffects ? `⚡ تم خصم 2 محاولات للتأثيرات.` : `⚡ التصميم مجاني بالكامل!`),
-        parse_mode: 'HTML'
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[
+            // @ts-ignore
+            { text: '👍', callback_data: `design_rate_good_${jobId}`, style: 'success' as const },
+            // @ts-ignore
+            { text: '👎', callback_data: `design_rate_bad_${jobId}`, style: 'danger' as const }
+          ]]
+        }
       });
 
-      // Archive
+      // MISSION 3: Dual-Image Archive (BACKUP_CHANNEL_ID)
       const BACKUP = process.env.BACKUP_CHANNEL_ID || process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
       if (BACKUP) {
-        ctx.api.sendDocument(BACKUP, new InputFile(finalBuffer, `design_${Date.now()}.jpg`), {
-          caption: `📦 <b>أرشيف التصميم</b>\n` +
-            `🆔 <b>ID:</b> <code>${ctx.from!.id}</code>\n` +
-            `📝 <b>Type:</b> ${state.contentType}`,
-          parse_mode: 'HTML',
-          disable_notification: true
-        }).catch(() => { });
+        try {
+          const cost = hasEffects ? 2 : 0;
+          const userInfo = `👤 <b>معلومات العميل (التصميم المجاني):</b>\n` +
+                           `الاسم: ${ctx.from?.first_name || 'غير متوفر'}\n` +
+                           `المعرف: @${ctx.from?.username || 'لا يوجد'}\n` +
+                           `الآيدي: <code>${ctx.from?.id}</code>\n` +
+                           `التكلفة: ${cost} محاولات`;
+
+          // 1. Send Original Image to Archive
+          await ctx.api.sendDocument(BACKUP, new InputFile(state.originalBuffer!, 'Original_Before.jpg'), {
+            caption: '🖼️ <b>الصورة الأصلية (قبل التعديل)</b>',
+            parse_mode: 'HTML',
+            disable_notification: true
+          });
+
+          // 2. Send Edited Image to Archive with User Info
+          await ctx.api.sendDocument(BACKUP, new InputFile(finalBuffer, `Edited_${jobId}.jpg`), {
+            caption: userInfo,
+            parse_mode: 'HTML',
+            disable_notification: true
+          });
+        } catch (archiveErr) {
+          console.error('Failed to send dual archive for free design:', archiveErr);
+        }
       }
 
     } catch (e) {
@@ -4497,6 +4526,25 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         { telegramId: ctx.from!.id.toString() },
         { $set: { awaitingDesignImage: false, awaitingDesignText: false, awaitingDesignContent: false } }
       );
+    }
+    return;
+  }
+
+  // MISSION 4: Rating Callback Handlers
+  if (data.startsWith('design_rate_good_')) {
+    await ctx.answerCallbackQuery({ text: 'شكراً لتقييمك الإيجابي! سعيدون بخدمتك 💙' }).catch(() => {});
+    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+    return;
+  }
+
+  if (data.startsWith('design_rate_bad_')) {
+    const jobId = data.replace('design_rate_bad_', '');
+    await ctx.answerCallbackQuery({ text: 'نأسف لذلك 😔، سنعمل على تحسين الخدمة.' }).catch(() => {});
+    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+
+    const BACKUP = process.env.BACKUP_CHANNEL_ID || process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
+    if (BACKUP) {
+      await ctx.api.sendMessage(BACKUP, `⚠️ <b>تقييم سلبي للتصميم المجاني:</b>\nالمستخدم: <code>${ctx.from?.id}</code>\nرقم العملية: <code>${jobId}</code>`, { parse_mode: 'HTML' }).catch(() => {});
     }
     return;
   }
