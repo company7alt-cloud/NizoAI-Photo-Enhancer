@@ -4156,23 +4156,30 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
-    // Delete old keyboard message
-    if (state.stepMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
-    }
-
-    // Send NEW keyboard message with updated selections
+    // ── MISSION 2: Edit existing message in-place (no delete/re-send flicker) ──
     const updatedKb = buildDesignCellKeyboard(state.gridSize, state.selectedCells);
-    const newKbMsg = await ctx.reply(
+    const updatedText =
       `📊 <b>المربعات المحددة: ${state.selectedCells.length}</b>` +
       (state.selectedCells.length > 0
-        ? `\n✅ المحدد: ${state.selectedCells.sort((a,b) => a-b).join(', ')}`
-        : '\n💡 اضغط على أرقام المربعات للتحديد'),
-      { parse_mode: 'HTML', reply_markup: updatedKb as any }
-    );
+        ? `\n✅ المحدد: ${state.selectedCells.sort((a, b) => a - b).join(', ')}`
+        : '\n💡 اضغط على أرقام المربعات للتحديد');
 
-    state.stepMsgId = newKbMsg.message_id;
-    setDesignState(ctx.from!.id, state);
+    if (state.stepMsgId) {
+      await ctx.api.editMessageText(
+        ctx.chat!.id,
+        state.stepMsgId,
+        updatedText,
+        { parse_mode: 'HTML', reply_markup: updatedKb as any }
+      ).catch(() => {});
+    } else {
+      // Fallback: send fresh if no stepMsgId tracked
+      const newKbMsg = await ctx.reply(updatedText, {
+        parse_mode: 'HTML',
+        reply_markup: updatedKb as any
+      });
+      state.stepMsgId = newKbMsg.message_id;
+      setDesignState(ctx.from!.id, state);
+    }
     return;
   }
 
@@ -4513,13 +4520,14 @@ function buildDesignCellKeyboard(
   const rows: any[][] = [];
   let currentRow: any[] = [];
 
+  // ── MISSION 1: Number buttons — style: 'primary' (Blue) ──
   for (let i = 1; i <= totalCells; i++) {
     const isSelected = selectedCells.includes(i);
     currentRow.push({
-      text: isSelected ? `✅${i}` : String(i),
+      text: isSelected ? `✅ ${i}` : String(i),
       callback_data: `dsgc_${i}`,
       // @ts-ignore
-      color: isSelected ? '#1565C0' : '#1E90FF',
+      style: 'primary' as const,
     });
     if (currentRow.length === 5) {
       rows.push(currentRow);
@@ -4528,24 +4536,24 @@ function buildDesignCellKeyboard(
   }
   if (currentRow.length > 0) rows.push(currentRow);
 
-  // Action buttons
+  // ── MISSION 1: Action buttons — API 9.4 styles ──
   rows.push([{
     text: `✅ موافق (${selectedCells.length} مربع محدد)`,
     callback_data: 'design_confirm_grid',
     // @ts-ignore
-    color: '#2E7D32',
+    style: 'success' as const,   // Green
   }]);
   rows.push([{
     text: '🔙 رجوع لاختيار الحجم',
     callback_data: 'design_back_size',
     // @ts-ignore
-    color: '#C62828',
+    style: 'danger' as const,    // Red
   }]);
   rows.push([{
     text: '❌ إلغاء',
     callback_data: 'cancel_design',
     // @ts-ignore
-    color: '#C62828',
+    style: 'danger' as const,    // Red
   }]);
 
   return { inline_keyboard: rows };
