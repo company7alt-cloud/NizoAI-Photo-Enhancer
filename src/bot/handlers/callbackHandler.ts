@@ -4202,67 +4202,39 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       state.stepMsgId = undefined;
     }
 
-    // Show content type selection
-    const stepMsg = await ctx.reply(
-      '🎨 <b>ماذا تريد أن تضيف على صورتك؟</b>\n\n' +
-      `📍 المنطقة المحددة: ${state.selectedCells.length} مربع`,
-      {
+    if (state.contentType === 'text') {
+      const colorMsg = await ctx.reply('🔤 <b>اختر نوع الخط:</b>', {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: '📝 نص', callback_data: 'design_type_text', color: '#1E90FF' },
-              // @ts-ignore
-              { text: '🖼️ صورة', callback_data: 'design_type_image', color: '#1E90FF' }
+              { text: 'الخط الكوفي (Almarai)', callback_data: 'design_font_almarai', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '🔙 رجوع لاختيار المربعات', callback_data: 'design_back_to_cells', color: '#C62828' }
+              { text: 'الخط الحديث (Modern)', callback_data: 'design_font_modern', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '❌ إلغاء', callback_data: 'cancel_design', color: '#C62828' }
+              { text: 'خط النسخ (Noto)', callback_data: 'design_font_noto', style: 'primary' as const },
+            ],
+            [
+              // @ts-ignore
+              { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }
             ]
           ]
         }
-      }
-    );
-
-    state.stepMsgId = stepMsg.message_id;
-    setDesignState(ctx.from!.id, state);
-    return;
-  }
-
-  if (data === 'design_back_to_cells') {
-    await ctx.answerCallbackQuery().catch(() => {});
-    const { getDesignState, setDesignState } = await import('../../utils/designState');
-    const state = getDesignState(ctx.from!.id);
-    if (!state) return;
-
-    // Delete current message
-    if (state.stepMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+      });
+      state.stepMsgId = colorMsg.message_id;
+      setDesignState(ctx.from!.id, state);
+    } else {
+      await generateDesignPreview(ctx, state);
     }
-
-    // Re-show cell keyboard with current selections intact
-    const kb = buildDesignCellKeyboard(state.gridSize, state.selectedCells);
-    const kbMsg = await ctx.reply(
-      `📊 <b>المربعات المحددة: ${state.selectedCells.length}</b>` +
-      (state.selectedCells.length > 0
-        ? `\n✅ المحدد: ${state.selectedCells.sort((a,b) => a-b).join(', ')}`
-        : '\n💡 اضغط على أرقام المربعات للتحديد'),
-      { parse_mode: 'HTML', reply_markup: kb as any }
-    );
-
-    state.stepMsgId = kbMsg.message_id;
-    state.contentType = null;
-    state.contentValue = '';
-    setDesignState(ctx.from!.id, state);
     return;
   }
 
-  if (data === 'design_type_text') {
+  if (data === 'design_content_text') {
     await ctx.answerCallbackQuery().catch(() => { });
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
@@ -4281,14 +4253,17 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]]
+          inline_keyboard: [
+            // @ts-ignore
+            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
+          ]
         }
       }
     ).catch(() => { });
     return;
   }
 
-  if (data === 'design_type_image') {
+  if (data === 'design_content_image') {
     await ctx.answerCallbackQuery().catch(() => { });
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
@@ -4307,7 +4282,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]]
+          inline_keyboard: [
+            // @ts-ignore
+            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
+          ]
         }
       }
     ).catch(() => { });

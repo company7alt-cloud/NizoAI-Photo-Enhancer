@@ -560,20 +560,36 @@ imageBot.on('message:text', async (ctx, next) => {
     state.contentValue = textValue.trim();
     setDesignState(ctx.from!.id, state);
 
-    await ctx.reply('🔤 <b>اختر نوع الخط:</b>', {
+    await ctx.reply("✅ <b>تم استلام المحتوى!</b>\n📐 اختر حجم الشبكة لتحديد مكان الإضافة (كلما زاد التقسيم، زادت دقة التحديد):", {
       parse_mode: 'HTML',
       reply_markup: {
         inline_keyboard: [
           [
-            { text: 'الخط الكوفي (Almarai)', callback_data: 'design_font_almarai', style: 'primary' },
+            // @ts-ignore
+            { text: '30 تقسيم', callback_data: 'design_grid_30', style: 'primary' as const },
+            // @ts-ignore
+            { text: '40 تقسيم', callback_data: 'design_grid_40', style: 'primary' as const }
           ],
           [
-            { text: 'الخط الحديث (Modern)', callback_data: 'design_font_modern', style: 'primary' },
+            // @ts-ignore
+            { text: '50 تقسيم', callback_data: 'design_grid_50', style: 'primary' as const },
+            // @ts-ignore
+            { text: '70 تقسيم', callback_data: 'design_grid_70', style: 'primary' as const }
           ],
           [
-            { text: 'خط النسخ (Noto)', callback_data: 'design_font_noto', style: 'primary' },
+            // @ts-ignore
+            { text: '80 تقسيم', callback_data: 'design_grid_80', style: 'primary' as const },
+            // @ts-ignore
+            { text: '100 تقسيم 🔒', callback_data: 'design_grid_100', style: 'primary' as const }
           ],
-          [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]
+          [
+            // @ts-ignore
+            { text: '120 تقسيم 🔒', callback_data: 'design_grid_120', style: 'primary' as const }
+          ],
+          [
+            // @ts-ignore
+            { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }
+          ]
         ]
       }
     });

@@ -801,32 +801,20 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       state.originalBuffer = buffer;
       setDesignState(ctx.from!.id, state);
 
-      await ctx.reply('📐 <b>اختر حجم الشبكة لتقسيم الصورة:</b>\n\nكلما زاد عدد المربعات، زادت دقة التحكم بمكان النص/الصورة.', {
+      await ctx.reply("🎨 <b>ماذا تريد أن تضيف على صورتك؟</b>", {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: '40 تقسيم',       callback_data: 'design_grid_40',  style: 'primary' as const },
+              { text: '📝 نص', callback_data: 'design_content_text', style: 'primary' as const },
               // @ts-ignore
-              { text: '50 تقسيم',       callback_data: 'design_grid_50',  style: 'primary' as const },
+              { text: '🖼️ صورة', callback_data: 'design_content_image', style: 'primary' as const }
             ],
             [
               // @ts-ignore
-              { text: '70 تقسيم',       callback_data: 'design_grid_70',  style: 'primary' as const },
-              // @ts-ignore
-              { text: '80 تقسيم',       callback_data: 'design_grid_80',  style: 'primary' as const },
-            ],
-            [
-              // @ts-ignore
-              { text: '100 تقسيم 🔒', callback_data: 'design_grid_100', style: 'primary' as const },
-              // @ts-ignore
-              { text: '120 تقسيم 🔒', callback_data: 'design_grid_120', style: 'primary' as const },
-            ],
-            [
-              // @ts-ignore
-              { text: '🔙 رجوع', callback_data: 'design_back_to_start', style: 'danger' as const },
-            ],
+              { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }
+            ]
           ]
         }
       });
@@ -840,45 +828,39 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       state.contentValue = buffer.toString('base64');
       setDesignState(ctx.from!.id, state);
 
-      const processingMsg = await ctx.reply('⏳ جاري تحضير المعاينة...');
-
-      try {
-        const { compositeDesign } = await import('../../services/designEngine');
-        const previewBuffer = await compositeDesign(state.originalBuffer!, state, false);
-        await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
-
-        const { InputFile } = await import('grammy');
-        const replyMarkup = {
+      await ctx.reply("✅ <b>تم استلام المحتوى!</b>\n📐 اختر حجم الشبكة لتحديد مكان الإضافة (كلما زاد التقسيم، زادت دقة التحديد):", {
+        parse_mode: 'HTML',
+        reply_markup: {
           inline_keyboard: [
             [
-              { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', style: 'primary' },
-              { text: state.imageEffects.saturate ? '✅ تشبع' : '🌈 تشبع', callback_data: 'design_eff_sat', style: 'primary' },
+              // @ts-ignore
+              { text: '30 تقسيم', callback_data: 'design_grid_30', style: 'primary' as const },
+              // @ts-ignore
+              { text: '40 تقسيم', callback_data: 'design_grid_40', style: 'primary' as const }
             ],
             [
-              { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', style: 'primary' },
-              { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', style: 'primary' },
+              // @ts-ignore
+              { text: '50 تقسيم', callback_data: 'design_grid_50', style: 'primary' as const },
+              // @ts-ignore
+              { text: '70 تقسيم', callback_data: 'design_grid_70', style: 'primary' as const }
             ],
             [
-              { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', style: 'success' }
+              // @ts-ignore
+              { text: '80 تقسيم', callback_data: 'design_grid_80', style: 'primary' as const },
+              // @ts-ignore
+              { text: '100 تقسيم 🔒', callback_data: 'design_grid_100', style: 'primary' as const }
             ],
             [
-              { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }
+              // @ts-ignore
+              { text: '120 تقسيم 🔒', callback_data: 'design_grid_120', style: 'primary' as const }
+            ],
+            [
+              // @ts-ignore
+              { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }
             ]
           ]
-        };
-
-        const pMsg = await ctx.replyWithPhoto(new InputFile(previewBuffer, 'preview.jpg'), {
-          caption: `👁️ <b>معاينة التصميم</b>\n\nيمكنك تطبيق تأثيرات قبل الحفظ (يخصم محاولتين)`,
-          parse_mode: 'HTML',
-          reply_markup: replyMarkup as any
-        });
-
-        state.previewMsgId = pMsg.message_id;
-        setDesignState(ctx.from!.id, state);
-      } catch (e) {
-        console.error(e);
-        await ctx.reply('❌ فشل إعداد المعاينة للصورة المضافة.');
-      }
+        }
+      });
     }
     return;
   }
