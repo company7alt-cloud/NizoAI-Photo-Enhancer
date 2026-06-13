@@ -30,7 +30,15 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
     reportUser?.proEnhanceSettings?.isAwaitingImage === true
   );
 
-  if (!isAwaitingImage) {
+  // ── [DESIGN FEATURE BYPASS] ──
+  if (
+    reportUser?.awaitingDesignImage ||
+    reportUser?.awaitingDesignText ||
+    reportUser?.awaitingDesignContent
+  ) {
+    // Let the design handler process it below
+  }
+  else if (!isAwaitingImage) {
     await ctx.reply(
       '⚠️ صديقي، لم تقم باختيار الخدمة أولاً!\n' +
       'يرجى الضغط على الزر المناسب لتحسين صورتك من القائمة الرئيسية 👆'
