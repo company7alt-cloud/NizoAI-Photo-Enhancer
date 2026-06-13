@@ -9,6 +9,7 @@ import {
   enhanceWithONNX,
   getQueuePosition,
 } from '../../services/onnxEnhanceService';
+import { drawGridOnImage, GRID_CONFIGS } from '../../utils/gridUtils';
 
 
 export async function imageHandler(ctx: BotContext): Promise<void> {
@@ -805,14 +806,29 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '30 مربع', callback_data: 'design_grid_30', style: 'primary' },
-              { text: '40 مربع', callback_data: 'design_grid_40', style: 'primary' },
+              // @ts-ignore
+              { text: '30 مربع', callback_data: 'design_grid_30', color: '#1E90FF' },
+              // @ts-ignore
+              { text: '40 مربع', callback_data: 'design_grid_40', color: '#1E90FF' },
             ],
             [
-              { text: '50 مربع', callback_data: 'design_grid_50', style: 'primary' },
-              { text: '70 مربع', callback_data: 'design_grid_70', style: 'primary' },
+              // @ts-ignore
+              { text: '50 مربع', callback_data: 'design_grid_50', color: '#1E90FF' },
+              // @ts-ignore
+              { text: '70 مربع', callback_data: 'design_grid_70', color: '#1E90FF' },
             ],
-            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]
+            [
+              // @ts-ignore
+              { text: '80 مربع',  callback_data: 'design_grid_80',  color: '#1E90FF' },
+              // @ts-ignore
+              { text: '100 مربع', callback_data: 'design_grid_100', color: '#1E90FF' },
+            ],
+            [
+              // @ts-ignore
+              { text: '120 مربع', callback_data: 'design_grid_120', color: '#1E90FF' },
+              // @ts-ignore
+              { text: '❌ إلغاء', callback_data: 'cancel_design',   color: '#C62828' },
+            ],
           ]
         }
       });

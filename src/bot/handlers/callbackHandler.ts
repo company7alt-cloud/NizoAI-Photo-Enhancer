@@ -4033,40 +4033,68 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data.startsWith('design_grid_')) {
-    await ctx.answerCallbackQuery().catch(() => { });
+    await ctx.answerCallbackQuery().catch(() => {});
+
     const size = parseInt(data.replace('design_grid_', ''));
+    const validSizes = [30, 40, 50, 70, 80, 100, 120];
+    if (!validSizes.includes(size)) return;
 
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
+
     if (!state || !state.originalBuffer) {
-      await ctx.reply('⚠️ انتهت الجلسة. يرجى البدء من جديد.');
+      await ctx.reply('⚠️ انتهت الجلسة. اضغط تصميم مجاني مجدداً.');
       return;
     }
 
-    const cols = size === 30 ? 5 : size === 40 ? 5 : size === 50 ? 5 : size === 70 ? 7 : 10;
-    const rows = size === 30 ? 6 : size === 40 ? 8 : size === 50 ? 10 : size === 70 ? 10 : 10;
-
-    const processingMsg = await ctx.reply('⏳ جاري إنشاء الشبكة، يرجى الانتظار...');
+    const cfg = GRID_CONFIGS[size];
+    const processingMsg = await ctx.reply('⏳ جاري إنشاء الشبكة...');
 
     try {
-      const gridBuffer = await drawGridOnImage(state.originalBuffer, cols, rows);
-      await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id).catch(() => { });
+      // Draw grid on image — uses exported utility, NOT nested function
+      const gridBuffer = await drawGridOnImage(
+        state.originalBuffer, cfg.cols, cfg.rows
+      );
 
-      const { InputFile } = await import('grammy');
-      const gridMsg = await ctx.replyWithPhoto(new InputFile(gridBuffer, 'grid.jpg'), {
-        caption: `📐 تم تقسيم الصورة إلى ${size} مربع.\nاختر المربعات التي تريد وضع المحتوى فيها، ثم اضغط "✅ متابعة"`,
-        reply_markup: generateDesignGridKeyboard(size, []) as any
-      });
+      await ctx.api.deleteMessage(
+        processingMsg.chat.id, processingMsg.message_id
+      ).catch(() => {});
 
-      state.gridSize = size;
-      state.cols = cols;
-      state.rows = rows;
+      // Send grid image
+      const gridMsg = await ctx.replyWithPhoto(
+        new InputFile(gridBuffer, 'grid.jpg'),
+        {
+          caption:
+            `📐 <b>تقسيم ${size} مربع</b>\n` +
+            `اضغط على أرقام المربعات التي تريد وضع التصميم فيها.\n` +
+            `يمكنك تحديد أكثر من مربع — المربعات المحددة ستُدمج في منطقة واحدة.`,
+          parse_mode: 'HTML',
+        }
+      );
+
+      // Update state
+      state.gridSize  = size;
+      state.cols      = cfg.cols;
+      state.rows      = cfg.rows;
       state.selectedCells = [];
       state.gridMsgId = gridMsg.message_id;
       setDesignState(ctx.from!.id, state);
-    } catch (e) {
-      console.error(e);
-      await ctx.reply('❌ فشل إنشاء الشبكة.');
+
+      // Send cell selection keyboard
+      const cellKb = buildDesignCellKeyboard(size, []);
+      const kbMsg = await ctx.reply(
+        '👇 <b>اختر المربعات:</b>',
+        { parse_mode: 'HTML', reply_markup: cellKb as any }
+      );
+      state.stepMsgId = kbMsg.message_id;
+      setDesignState(ctx.from!.id, state);
+
+    } catch (err) {
+      console.error('[design_grid] Error:', err);
+      await ctx.api.deleteMessage(
+        processingMsg.chat.id, processingMsg.message_id
+      ).catch(() => {});
+      await ctx.reply('❌ فشل إنشاء الشبكة. حاول مرة أخرى.');
     }
     return;
   }
@@ -4086,7 +4114,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     setDesignState(ctx.from!.id, state);
 
     await ctx.editMessageReplyMarkup({
-      inline_keyboard: generateDesignGridKeyboard(state.gridSize, state.selectedCells)
+      inline_keyboard: buildDesignCellKeyboard(state.gridSize, state.selectedCells).inline_keyboard
     } as any).catch(() => { });
     return;
   }
@@ -4311,31 +4339,106 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     }
     return;
   }
+
+  if (data === 'design_back_size') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const { getDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
+    // Delete grid keyboard message if exists
+    if (state.stepMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+    }
+    // Delete grid image if exists
+    if (state.gridMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, state.gridMsgId).catch(() => {});
+    }
+
+    // Re-send size selection
+    await ctx.reply(
+      '📐 <b>اختر حجم الشبكة:</b>\nكلما زاد عدد المربعات، زادت دقة التحكم.',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              // @ts-ignore
+              { text: '30 مربع',  callback_data: 'design_grid_30',  color: '#1E90FF' },
+              // @ts-ignore
+              { text: '40 مربع',  callback_data: 'design_grid_40',  color: '#1E90FF' },
+            ],
+            [
+              // @ts-ignore
+              { text: '50 مربع',  callback_data: 'design_grid_50',  color: '#1E90FF' },
+              // @ts-ignore
+              { text: '70 مربع',  callback_data: 'design_grid_70',  color: '#1E90FF' },
+            ],
+            [
+              // @ts-ignore
+              { text: '80 مربع',  callback_data: 'design_grid_80',  color: '#1E90FF' },
+              // @ts-ignore
+              { text: '100 مربع', callback_data: 'design_grid_100', color: '#1E90FF' },
+            ],
+            [
+              // @ts-ignore
+              { text: '120 مربع', callback_data: 'design_grid_120', color: '#1E90FF' },
+              // @ts-ignore
+              { text: '❌ إلغاء', callback_data: 'cancel_design',   color: '#C62828' },
+            ],
+          ]
+        }
+      }
+    );
+    return;
+  }
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function generateDesignGridKeyboard(size: number, selectedCells: number[]) {
-  const cols = size === 30 ? 5 : size === 40 ? 5 : size === 50 ? 5 : size === 70 ? 7 : 10;
-  const rows = size === 30 ? 6 : size === 40 ? 8 : size === 50 ? 10 : size === 70 ? 10 : 10;
-  const kbd: any[] = [];
+function buildDesignCellKeyboard(
+  totalCells: number,
+  selectedCells: number[]
+): { inline_keyboard: any[][] } {
+  const rows: any[][] = [];
+  let currentRow: any[] = [];
 
-  for (let r = 0; r < rows; r++) {
-    const rowBtns: any[] = [];
-    for (let c = 0; c < cols; c++) {
-      const cellId = r * cols + c + 1;
-      const isSelected = selectedCells.includes(cellId);
-      rowBtns.push({
-        text: isSelected ? '✅' : `${cellId}`,
-        callback_data: `dsgc_${cellId}`
-      });
+  for (let i = 1; i <= totalCells; i++) {
+    const isSelected = selectedCells.includes(i);
+    currentRow.push({
+      text: isSelected ? `✅${i}` : String(i),
+      callback_data: `dsgc_${i}`,
+      // @ts-ignore
+      color: isSelected ? '#1565C0' : '#1E90FF',
+    });
+    if (currentRow.length === 5) {
+      rows.push(currentRow);
+      currentRow = [];
     }
-    kbd.push(rowBtns);
   }
+  if (currentRow.length > 0) rows.push(currentRow);
 
-  kbd.push([{ text: '✅ متابعة', callback_data: 'design_confirm_grid', style: 'success' }]);
-  kbd.push([{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]);
-  return kbd;
+  // Action buttons
+  rows.push([{
+    text: `✅ موافق (${selectedCells.length} مربع محدد)`,
+    callback_data: 'design_confirm_grid',
+    // @ts-ignore
+    color: '#2E7D32',
+  }]);
+  rows.push([{
+    text: '🔙 رجوع لاختيار الحجم',
+    callback_data: 'design_back_size',
+    // @ts-ignore
+    color: '#C62828',
+  }]);
+  rows.push([{
+    text: '❌ إلغاء',
+    callback_data: 'cancel_design',
+    // @ts-ignore
+    color: '#C62828',
+  }]);
+
+  return { inline_keyboard: rows };
 }
 
 async function generateDesignPreview(ctx: any, state: any) {
