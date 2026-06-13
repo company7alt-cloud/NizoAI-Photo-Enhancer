@@ -807,25 +807,25 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: '40 مربع',  callback_data: 'design_grid_40',  color: '#1E90FF' },
+              { text: '40 تقسيم',       callback_data: 'design_grid_40',  style: 'primary' as const },
               // @ts-ignore
-              { text: '50 مربع',  callback_data: 'design_grid_50',  color: '#1E90FF' },
+              { text: '50 تقسيم',       callback_data: 'design_grid_50',  style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '70 مربع',  callback_data: 'design_grid_70',  color: '#1E90FF' },
+              { text: '70 تقسيم',       callback_data: 'design_grid_70',  style: 'primary' as const },
               // @ts-ignore
-              { text: '80 مربع',  callback_data: 'design_grid_80',  color: '#1E90FF' },
+              { text: '80 تقسيم',       callback_data: 'design_grid_80',  style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '100 مربع', callback_data: 'design_grid_100', color: '#1E90FF' },
+              { text: '100 تقسيم 🔒', callback_data: 'design_grid_100', style: 'primary' as const },
               // @ts-ignore
-              { text: '120 مربع', callback_data: 'design_grid_120', color: '#1E90FF' },
+              { text: '120 تقسيم 🔒', callback_data: 'design_grid_120', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '🔙 رجوع', callback_data: 'cancel_design', color: '#C62828' },
+              { text: '🔙 رجوع', callback_data: 'design_back_to_start', style: 'danger' as const },
             ],
           ]
         }

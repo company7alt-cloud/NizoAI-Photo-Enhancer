@@ -3997,7 +3997,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery().catch(() => { });
 
     if (locks.btn_design && !isAdminUser) {
-      await ctx.reply('⚠️ عذراً، تم إيقاف قسم التصميم للصيانة. يرجى المحاولة لاحقاً 🔒');
+      await ctx.answerCallbackQuery({
+        text: "🔧 هذه الميزة تحت الصيانة حالياً\n\n✨ سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n💙 نعتذر عن الإزعاج",
+        show_alert: true
+      });
       return;
     }
 
@@ -4032,11 +4035,42 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  // ── [MISSION 4] Back to Start — reset state & return to initial image prompt
+  if (data === 'design_back_to_start') {
+    await ctx.answerCallbackQuery().catch(() => { });
+    const { clearDesignState } = await import('../../utils/designState');
+    clearDesignState(ctx.from!.id);
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingDesignImage: true, awaitingDesignText: false, awaitingDesignContent: false } }
+    );
+    await ctx.editMessageText(
+      '📸 أرسل الصورة التي تريد التصميم عليها\n\nيمكنك إضافة نصوص بأجمل الخطوط العربية، أو إضافة صور أخرى فوقها بشفافية عالية مع اختيار مكانها بدقة عبر الشبكة 📏',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            // @ts-ignore
+            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
+          ]
+        }
+      }
+    ).catch(() => { });
+    return;
+  }
+
+  if (data === 'design_grid_100' || data === 'design_grid_120') {
+    await ctx.answerCallbackQuery({
+      text: "🔧 هذه الميزة تحت الصيانة حالياً\n\n✨ سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n💙 نعتذر عن الإزعاج",
+      show_alert: true
+    });
+    return;
+  }
+
   if (data.startsWith('design_grid_')) {
     await ctx.answerCallbackQuery().catch(() => {});
 
     const size = parseInt(data.replace('design_grid_', ''));
-    const validSizes = [30, 40, 50, 70, 80, 100, 120];
+    const validSizes = [30, 40, 50, 70, 80];
     if (!validSizes.includes(size)) return;
 
     const { getDesignState, setDesignState } = await import('../../utils/designState');
@@ -4438,27 +4472,29 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: '30 مربع',  callback_data: 'design_grid_30',  color: '#1E90FF' },
+              { text: '30 تقسيم', callback_data: 'design_grid_30', style: 'primary' as const },
               // @ts-ignore
-              { text: '40 مربع',  callback_data: 'design_grid_40',  color: '#1E90FF' },
+              { text: '40 تقسيم', callback_data: 'design_grid_40', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '50 مربع',  callback_data: 'design_grid_50',  color: '#1E90FF' },
+              { text: '50 تقسيم', callback_data: 'design_grid_50', style: 'primary' as const },
               // @ts-ignore
-              { text: '70 مربع',  callback_data: 'design_grid_70',  color: '#1E90FF' },
+              { text: '70 تقسيم', callback_data: 'design_grid_70', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '80 مربع',  callback_data: 'design_grid_80',  color: '#1E90FF' },
+              { text: '80 تقسيم', callback_data: 'design_grid_80', style: 'primary' as const },
               // @ts-ignore
-              { text: '100 مربع', callback_data: 'design_grid_100', color: '#1E90FF' },
+              { text: '100 تقسيم 🔒', callback_data: 'design_grid_100', style: 'primary' as const },
             ],
             [
               // @ts-ignore
-              { text: '120 مربع', callback_data: 'design_grid_120', color: '#1E90FF' },
+              { text: '120 تقسيم 🔒', callback_data: 'design_grid_120', style: 'primary' as const },
+            ],
+            [
               // @ts-ignore
-              { text: '❌ إلغاء', callback_data: 'cancel_design',   color: '#C62828' },
+              { text: '🔙 رجوع', callback_data: 'design_back_to_start', style: 'danger' as const },
             ],
           ]
         }
