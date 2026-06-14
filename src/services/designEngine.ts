@@ -1,6 +1,7 @@
 // src/services/designEngine.ts
 // RUN: npm install canvas  (if canvas package is missing)
 
+import fs from 'fs';
 import sharp from 'sharp';
 import { createCanvas, registerFont, loadImage } from 'canvas';
 import path from 'path';
@@ -8,31 +9,44 @@ import type { DesignState } from '../utils/designState';
 
 const FONTS_DIR = path.join(process.cwd(), 'assets', 'fonts');
 
-// Arabic Fonts
-registerFont(path.join(FONTS_DIR, 'Almarai_Light.ttf'), { family: 'Almarai_Light' });
-registerFont(path.join(FONTS_DIR, 'Almarai_Regular.ttf'), { family: 'Almarai_Regular' });
-registerFont(path.join(FONTS_DIR, 'Almarai_Bold.ttf'), { family: 'Almarai_Bold' });
-registerFont(path.join(FONTS_DIR, 'Almarai_Black.ttf'), { family: 'Almarai_Black' });
+// ── Safe Font Registration Wrapper ──────────────────────────────────────────
+function safeRegisterFont(fontPath: string, config: { family: string }): void {
+  if (fs.existsSync(fontPath)) {
+    try {
+      registerFont(fontPath, config);
+    } catch (err) {
+      console.error(`[Font Engine] Error registering ${config.family}:`, err);
+    }
+  } else {
+    console.warn(`[Font Engine] Warning: Missing font file -> ${fontPath}`);
+  }
+}
 
-registerFont(path.join(FONTS_DIR, 'ModernPro_Regular.ttf'), { family: 'ModernPro_Regular' });
-registerFont(path.join(FONTS_DIR, 'NotoNaskh_Regular.ttf'), { family: 'NotoNaskh_Regular' });
-registerFont(path.join(FONTS_DIR, 'Zeyada_Regular.ttf'), { family: 'Zeyada_Regular' });
+// Arabic Fonts
+safeRegisterFont(path.join(FONTS_DIR, 'Almarai_Light.ttf'), { family: 'Almarai_Light' });
+safeRegisterFont(path.join(FONTS_DIR, 'Almarai_Regular.ttf'), { family: 'Almarai_Regular' });
+safeRegisterFont(path.join(FONTS_DIR, 'Almarai_Bold.ttf'), { family: 'Almarai_Bold' });
+safeRegisterFont(path.join(FONTS_DIR, 'Almarai_Black.ttf'), { family: 'Almarai_Black' });
+
+safeRegisterFont(path.join(FONTS_DIR, 'ModernPro_Regular.ttf'), { family: 'ModernPro_Regular' });
+safeRegisterFont(path.join(FONTS_DIR, 'NotoNaskh_Regular.ttf'), { family: 'NotoNaskh_Regular' });
+safeRegisterFont(path.join(FONTS_DIR, 'Zeyada_Regular.ttf'), { family: 'Zeyada_Regular' });
 
 // English Fonts
-registerFont(path.join(FONTS_DIR, 'Blacksword_Regular.otf'), { family: 'Blacksword_Regular' });
-registerFont(path.join(FONTS_DIR, 'Playfair_Regular.ttf'), { family: 'Playfair_Regular' });
+safeRegisterFont(path.join(FONTS_DIR, 'Blacksword_Regular.otf'), { family: 'Blacksword_Regular' });
+safeRegisterFont(path.join(FONTS_DIR, 'Playfair_Regular.ttf'), { family: 'Playfair_Regular' });
 
-registerFont(path.join(FONTS_DIR, 'Cormorant_Light.ttf'), { family: 'Cormorant_Light' });
-registerFont(path.join(FONTS_DIR, 'Cormorant_Regular.ttf'), { family: 'Cormorant_Regular' });
-registerFont(path.join(FONTS_DIR, 'Cormorant_Bold.ttf'), { family: 'Cormorant_Bold' });
+safeRegisterFont(path.join(FONTS_DIR, 'Cormorant_Light.ttf'), { family: 'Cormorant_Light' });
+safeRegisterFont(path.join(FONTS_DIR, 'Cormorant_Regular.ttf'), { family: 'Cormorant_Regular' });
+safeRegisterFont(path.join(FONTS_DIR, 'Cormorant_Bold.ttf'), { family: 'Cormorant_Bold' });
 
-registerFont(path.join(FONTS_DIR, 'Freight_Regular.ttf'), { family: 'Freight_Regular' });
-registerFont(path.join(FONTS_DIR, 'Bolding_Regular.ttf'), { family: 'Bolding_Regular' }); // Replaced Canela
+safeRegisterFont(path.join(FONTS_DIR, 'Freight_Regular.ttf'), { family: 'Freight_Regular' });
+safeRegisterFont(path.join(FONTS_DIR, 'Bolding_Regular.ttf'), { family: 'Bolding_Regular' }); // Replaced Canela
 
-registerFont(path.join(FONTS_DIR, 'CanelaDeck_Light.otf'), { family: 'CanelaDeck_Light' });
-registerFont(path.join(FONTS_DIR, 'CanelaDeck_Regular.otf'), { family: 'CanelaDeck_Regular' });
-registerFont(path.join(FONTS_DIR, 'CanelaDeck_Bold.otf'), { family: 'CanelaDeck_Bold' });
-registerFont(path.join(FONTS_DIR, 'CanelaDeck_Black.otf'), { family: 'CanelaDeck_Black' });
+safeRegisterFont(path.join(FONTS_DIR, 'CanelaDeck_Light.otf'), { family: 'CanelaDeck_Light' });
+safeRegisterFont(path.join(FONTS_DIR, 'CanelaDeck_Regular.otf'), { family: 'CanelaDeck_Regular' });
+safeRegisterFont(path.join(FONTS_DIR, 'CanelaDeck_Bold.otf'), { family: 'CanelaDeck_Bold' });
+safeRegisterFont(path.join(FONTS_DIR, 'CanelaDeck_Black.otf'), { family: 'CanelaDeck_Black' });
 
 // ── EXPORT 1: calculateBoundingBox ───────────────────────────────────────────
 export function calculateBoundingBox(
