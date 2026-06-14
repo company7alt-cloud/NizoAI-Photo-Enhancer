@@ -170,8 +170,11 @@ export async function compositeDesign(
     const totalTextHeight = lines.length * lineHeight;
     const startY = (h - totalTextHeight) / 2 + (lineHeight / 2);
 
+    const moveX = state.offsetX || 0;
+    const moveY = state.offsetY || 0;
+
     lines.forEach((line, index) => {
-      ctx.fillText(line, w / 2, startY + (index * lineHeight));
+      ctx.fillText(line, (w / 2) + moveX, startY + (index * lineHeight) + moveY);
     });
 
     overlayBuf = canvas.toBuffer('image/png');

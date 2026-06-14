@@ -12,6 +12,8 @@ export interface DesignState {
   selectedFont: string;           // e.g. 'Almarai', 'Cormorant'
   fontWeight: string;             // 'normal' | '300' | '500' | 'bold' | '800'
   textColor: string;              // hex e.g. '#FFFFFF'
+  offsetX?: number;
+  offsetY?: number;
   imageEffects: {
     grayscale: boolean;
     saturate: boolean;
