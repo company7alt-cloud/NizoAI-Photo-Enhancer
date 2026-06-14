@@ -107,17 +107,7 @@ cron.schedule('*/5 * * * *', async () => {
 
 function rateLimitMiddleware(limitMs: number, map: Map<number, number>) {
   return async (ctx: BotContext, next: NextFunction): Promise<void> => {
-    const userId = ctx.from?.id;
-    if (!userId) return next();
-    if (isAdmin(userId)) return next(); // Admin always exempt
-    const now = Date.now();
-    if (now - (map.get(userId) ?? 0) < limitMs) {
-      await ctx.reply('⚠️ أرسل ببطء قليل، لا تضغط بسرعة!').catch(() => { });
-      if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => { });
-      return;
-    }
-    map.set(userId, now);
-    return next();
+    return next(); // Fully bypassed
   };
 }
 
