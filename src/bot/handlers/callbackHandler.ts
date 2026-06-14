@@ -4859,7 +4859,7 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
           text: `🔒 ${wKey}`,
           callback_data: 'design_weight_locked',
           // @ts-ignore
-          style: 'secondary' as const
+          style: 'default' as const
         };
 
     if (i < 2) weightRow1.push(btn);
