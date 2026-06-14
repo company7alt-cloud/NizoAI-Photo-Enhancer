@@ -172,7 +172,7 @@ export async function compositeDesign(
     // Calculate base font size to fit the grid bounding box
     while (baseFontSize > 5) {
       const exactFontFamily = `${state.selectedFont}_${state.selectedWeight || 'Regular'}`;
-      ctx.font = `${baseFontSize}px "${exactFontFamily}"`;
+      ctx.font = `${baseFontSize}px "${exactFontFamily}", "${state.selectedFont}", sans-serif`;
       const maxLineWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
       const totalHeight = lines.length * (baseFontSize * 1.4);
       if (maxLineWidth <= w * 0.95 && totalHeight <= h * 0.95) break;
@@ -182,7 +182,7 @@ export async function compositeDesign(
     // Apply user scale multiplier on top of the fitted base size
     const finalFontSize = baseFontSize * scale;
     const exactFontFamily = `${state.selectedFont}_${state.selectedWeight || 'Regular'}`;
-    ctx.font = `${finalFontSize}px "${exactFontFamily}"`;
+    ctx.font = `${finalFontSize}px "${exactFontFamily}", "${state.selectedFont}", sans-serif`;
     ctx.fillStyle = state.textColor || '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
