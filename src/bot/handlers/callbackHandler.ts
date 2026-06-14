@@ -4263,27 +4263,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       state.stepMsgId = undefined;
     }
 
-    // Show content type selection
-    const stepMsg = await ctx.reply(
-      '🎨 <b>ماذا تريد أن تضيف على صورتك؟</b>',
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              // @ts-ignore
-              { text: '📝 نص', callback_data: 'design_type_text', style: 'primary' as const },
-              // @ts-ignore
-              { text: '🖼️ صورة', callback_data: 'design_type_image', style: 'primary' as const }
-            ],
-            [{ text: '🔙 رجوع لتحديد المربعات', callback_data: 'design_back_to_cells', style: 'danger' as const }],
-            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
-          ]
-        }
-      }
-    );
-    state.stepMsgId = stepMsg.message_id;
-    setDesignState(ctx.from!.id, state);
+    if (state.contentType === 'text') {
+      await showConsolidatedFontUI(ctx, state);
+    } else {
+      await generateDesignPreview(ctx, state);
+    }
     return;
   }
 
@@ -4422,14 +4406,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     setDesignState(ctx.from!.id, state);
 
     // Update keyboard with new font selected + its weights
-    if (state.stepMsgId) {
-      const updatedKb = buildFontKeyboard(state.selectedFont, state.fontWeight);
-      await ctx.api.editMessageReplyMarkup(
-        ctx.chat!.id,
-        state.stepMsgId,
-        { reply_markup: updatedKb as any }
-      ).catch(() => {});
-    }
+    await showConsolidatedFontUI(ctx, state);
     return;
   }
 
@@ -4463,14 +4440,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     setDesignState(ctx.from!.id, state);
 
     // Update keyboard to reflect new weight selection
-    if (state.stepMsgId) {
-      const updatedKb = buildFontKeyboard(state.selectedFont, state.fontWeight);
-      await ctx.api.editMessageReplyMarkup(
-        ctx.chat!.id,
-        state.stepMsgId,
-        { reply_markup: updatedKb as any }
-      ).catch(() => {});
-    }
+    await showConsolidatedFontUI(ctx, state);
     return;
   }
 
@@ -4700,7 +4670,32 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 }
 
-// ── Font Keyboard Builder ────────────────────────────────────────────────────
+// ── Font Keyboard Builder & Consolidated UI ────────────────────────────────
+
+async function showConsolidatedFontUI(ctx: any, state: any) {
+  const { compositeDesign } = await import('../../services/designEngine');
+  const previewBuf = await compositeDesign(state.originalBuffer!, state, true);
+  const fontKb = buildFontKeyboard(state.selectedFont || 'Almarai', state.fontWeight || 'normal');
+  const { InputFile } = await import('grammy');
+
+  if (state.previewMsgId) {
+    await ctx.api.editMessageMedia(
+      ctx.chat!.id, 
+      state.previewMsgId,
+      { type: 'photo', media: new InputFile(previewBuf) as any },
+      { reply_markup: fontKb as any }
+    ).catch(() => {});
+  } else {
+    const pMsg = await ctx.replyWithPhoto(new InputFile(previewBuf), {
+      caption: '🔤 <b>اختر الخط المناسب لنصك:</b>\n<i>(يتم تحديث المعاينة هنا تلقائياً)</i>',
+      parse_mode: 'HTML',
+      reply_markup: fontKb as any
+    });
+    state.previewMsgId = pMsg.message_id;
+    const { setDesignState } = await import('../../utils/designState');
+    setDesignState(ctx.from!.id, state);
+  }
+}
 
 const FONT_CATALOG: Record<string, {
   label: string;

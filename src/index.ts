@@ -565,13 +565,35 @@ imageBot.on('message:text', async (ctx, next) => {
       await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
     }
 
-    const { buildFontKeyboard } = await import('./bot/handlers/callbackHandler');
-    const fontKb = buildFontKeyboard(state.selectedFont || 'Almarai', state.fontWeight || 'normal');
-    const fontMsg = await ctx.reply(
-      '🔤 <b>اختر الخط المناسب لنصك:</b>',
-      { parse_mode: 'HTML', reply_markup: fontKb as any }
+    const gridMsg = await ctx.reply(
+      "✅ <b>تم استلام النص!</b>\n📐 اختر حجم الشبكة لتحديد مكان الإضافة (كلما زاد التقسيم، زادت دقة التحديد):", 
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '30 تقسيم', callback_data: 'design_grid_30', style: 'primary' },
+              { text: '40 تقسيم', callback_data: 'design_grid_40', style: 'primary' }
+            ],
+            [
+              { text: '50 تقسيم', callback_data: 'design_grid_50', style: 'primary' },
+              { text: '70 تقسيم', callback_data: 'design_grid_70', style: 'primary' }
+            ],
+            [
+              { text: '80 تقسيم', callback_data: 'design_grid_80', style: 'primary' },
+              { text: '100 تقسيم 🔒', callback_data: 'design_grid_100', style: 'primary' }
+            ],
+            [
+              { text: '120 تقسيم 🔒', callback_data: 'design_grid_120', style: 'primary' }
+            ],
+            [
+              { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }
+            ]
+          ]
+        }
+      }
     );
-    state.stepMsgId = fontMsg.message_id;
+    state.stepMsgId = gridMsg.message_id;
     setDesignState(ctx.from!.id, state);
     return;
   }
