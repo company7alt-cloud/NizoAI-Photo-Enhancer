@@ -6,15 +6,30 @@ import { createCanvas, registerFont, loadImage } from 'canvas';
 import path from 'path';
 import type { DesignState } from '../utils/designState';
 
-// ── Register fonts at module load ────────────────────────────────────────────
 const FONTS_DIR = path.join(process.cwd(), 'assets', 'fonts');
-registerFont(path.join(FONTS_DIR, 'Almarai.ttf'),   { family: 'Almarai' });
-registerFont(path.join(FONTS_DIR, 'Amiri.ttf'),     { family: 'Amiri' });
-registerFont(path.join(FONTS_DIR, 'Cairo.ttf'),     { family: 'Cairo' });
-registerFont(path.join(FONTS_DIR, 'ModernPro.ttf'), { family: 'ModernPro' });
-registerFont(path.join(FONTS_DIR, 'NotoNaskh.ttf'), { family: 'NotoNaskh' });
-registerFont(path.join(FONTS_DIR, 'Omnia.ttf'),     { family: 'Omnia' });
-registerFont(path.join(FONTS_DIR, 'Thamanya.ttf'),  { family: 'Thamanya' });
+
+// Almarai — 4 weights
+registerFont(path.join(FONTS_DIR, 'Almarai-Light.ttf'),     { family: 'Almarai', weight: '300' });
+registerFont(path.join(FONTS_DIR, 'Almarai.ttf'),           { family: 'Almarai', weight: 'normal' });
+registerFont(path.join(FONTS_DIR, 'Almarai-Bold.ttf'),      { family: 'Almarai', weight: 'bold' });
+registerFont(path.join(FONTS_DIR, 'Almarai-ExtraBold.ttf'), { family: 'Almarai', weight: '800' });
+
+// Cormorant — 4 weights
+registerFont(path.join(FONTS_DIR, 'Cormorant-Light.ttf'),  { family: 'Cormorant', weight: '300' });
+registerFont(path.join(FONTS_DIR, 'Cormorant.ttf'),        { family: 'Cormorant', weight: 'normal' });
+registerFont(path.join(FONTS_DIR, 'Cormorant-Medium.ttf'), { family: 'Cormorant', weight: '500' });
+registerFont(path.join(FONTS_DIR, 'Cormorant-Bold.ttf'),   { family: 'Cormorant', weight: 'bold' });
+
+// Single-weight fonts
+registerFont(path.join(FONTS_DIR, 'Blacksword.otf'),  { family: 'Blacksword',  weight: 'normal' });
+registerFont(path.join(FONTS_DIR, 'Bolding.ttf'),     { family: 'Bolding',     weight: 'normal' });
+registerFont(path.join(FONTS_DIR, 'Canela.ttf'),      { family: 'Canela',      weight: 'normal' });
+registerFont(path.join(FONTS_DIR, 'CanelaDeck.ttf'),  { family: 'CanelaDeck',  weight: 'normal' });
+registerFont(path.join(FONTS_DIR, 'Freight.ttf'),     { family: 'Freight',     weight: 'normal' });
+registerFont(path.join(FONTS_DIR, 'ModernPro.ttf'),   { family: 'ModernPro',   weight: 'normal' });
+registerFont(path.join(FONTS_DIR, 'NotoNaskh.ttf'),   { family: 'NotoNaskh',   weight: 'normal' });
+registerFont(path.join(FONTS_DIR, 'Playfair.ttf'),    { family: 'Playfair',    weight: 'normal' });
+registerFont(path.join(FONTS_DIR, 'Zeyada.ttf'),      { family: 'Zeyada',      weight: 'normal' });
 
 // ── EXPORT 1: calculateBoundingBox ───────────────────────────────────────────
 export function calculateBoundingBox(
@@ -137,7 +152,7 @@ export async function compositeDesign(
 
     // Calculate font size to fit the widest line and total height
     while (fontSize > 5) {
-      ctx.font = `bold ${fontSize}px "${state.selectedFont}"`;
+      ctx.font = `${state.fontWeight || 'normal'} ${fontSize}px "${state.selectedFont}"`;
       const maxLineWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
       const totalHeight = lines.length * (fontSize * 1.4);
 

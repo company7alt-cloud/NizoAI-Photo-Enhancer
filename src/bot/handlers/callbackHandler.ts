@@ -4382,10 +4382,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   if (data === 'design_back_to_fonts') {
     await ctx.answerCallbackQuery().catch(() => {});
-    const { getDesignState } = await import('../../utils/designState');
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
-    const fontKb = buildFontKeyboard(state.selectedFont || 'Almarai');
+    const fontKb = buildFontKeyboard(state.selectedFont || 'Almarai', state.fontWeight || 'normal');
     if (state.stepMsgId) {
       await ctx.api.editMessageReplyMarkup(
         ctx.chat!.id, state.stepMsgId, { reply_markup: fontKb as any }
@@ -4403,34 +4403,31 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data.startsWith('design_font_') && data !== 'design_font_confirm') {
-    await ctx.answerCallbackQuery().catch(() => { });
-
     const fontKey = data.replace('design_font_', '');
-    const validFonts: Record<string, string> = {
-      'Almarai':   'Almarai',
-      'Amiri':     'Amiri',
-      'Cairo':     'Cairo',
-      'ModernPro': 'ModernPro',
-      'NotoNaskh': 'NotoNaskh',
-      'Omnia':     'Omnia',
-      'Thamanya':  'Thamanya',
-    };
-    if (!validFonts[fontKey]) return;
+    if (!FONT_CATALOG[fontKey]) return;
+
+    await ctx.answerCallbackQuery({
+      text: `✅ تم اختيار ${FONT_CATALOG[fontKey].label}`
+    }).catch(() => {});
 
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
 
-    state.selectedFont = validFonts[fontKey];
+    // When font changes, reset weight to first available weight of new font
+    const firstWeight = FONT_CATALOG[fontKey].weights[0]?.cssWeight || 'normal';
+    state.selectedFont = fontKey;
+    state.fontWeight   = firstWeight;
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
-    await ctx.answerCallbackQuery({ text: `✅ تم اختيار خط ${fontKey}` }).catch(() => {});
-
-    const fontKb = buildFontKeyboard(state.selectedFont);
+    // Update keyboard with new font selected + its weights
     if (state.stepMsgId) {
+      const updatedKb = buildFontKeyboard(state.selectedFont, state.fontWeight);
       await ctx.api.editMessageReplyMarkup(
-        ctx.chat!.id, state.stepMsgId, { reply_markup: fontKb as any }
+        ctx.chat!.id,
+        state.stepMsgId,
+        { reply_markup: updatedKb as any }
       ).catch(() => {});
     }
     return;
@@ -4449,6 +4446,40 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     setDesignState(ctx.from!.id, state);
 
     await generateDesignPreview(ctx, state);
+    return;
+  }
+
+  // ── design_weight_ handler ──
+  if (data.startsWith('design_weight_') && data !== 'design_weight_locked') {
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const cssWeight = data.replace('design_weight_', '');
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
+    state.fontWeight = cssWeight;
+    state.lastActivity = Date.now();
+    setDesignState(ctx.from!.id, state);
+
+    // Update keyboard to reflect new weight selection
+    if (state.stepMsgId) {
+      const updatedKb = buildFontKeyboard(state.selectedFont, state.fontWeight);
+      await ctx.api.editMessageReplyMarkup(
+        ctx.chat!.id,
+        state.stepMsgId,
+        { reply_markup: updatedKb as any }
+      ).catch(() => {});
+    }
+    return;
+  }
+
+  // ── design_weight_locked handler ──
+  if (data === 'design_weight_locked') {
+    await ctx.answerCallbackQuery({
+      text: '🔒 هذا الوزن غير متاح لهذا الخط',
+      show_alert: true
+    }).catch(() => {});
     return;
   }
 
@@ -4671,41 +4702,190 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
 // ── Font Keyboard Builder ────────────────────────────────────────────────────
 
-export function buildFontKeyboard(selectedFont: string): { inline_keyboard: any[][] } {
-  const fonts = [
-    { label: 'Almarai — قلم عريض',   key: 'Almarai'   },
-    { label: 'Amiri — خط أميري',      key: 'Amiri'     },
-    { label: 'Cairo — خط القاهرة',    key: 'Cairo'     },
-    { label: 'ModernPro — مودرن برو', key: 'ModernPro' },
-    { label: 'NotoNaskh — النسخ',     key: 'NotoNaskh' },
-    { label: 'Omnia — أمنية',         key: 'Omnia'     },
-    { label: 'Thamanya — ثمانية',     key: 'Thamanya'  },
-  ];
+const FONT_CATALOG: Record<string, {
+  label: string;
+  arabic: boolean;
+  weights: Array<{ key: string; label: string; cssWeight: string }>;
+}> = {
+  'Almarai': {
+    label: 'Almarai — قلم عريض',
+    arabic: true,
+    weights: [
+      { key: 'light',     label: '🪶 رفيع',      cssWeight: '300'    },
+      { key: 'normal',    label: '📝 عادي',      cssWeight: 'normal' },
+      { key: 'bold',      label: '💪 عريض',      cssWeight: 'bold'   },
+      { key: 'extrabold', label: '🦾 ثخين جداً', cssWeight: '800'    },
+    ]
+  },
+  'Cormorant': {
+    label: 'Cormorant — كورموران',
+    arabic: false,
+    weights: [
+      { key: 'light',  label: '🪶 رفيع',  cssWeight: '300'    },
+      { key: 'normal', label: '📝 عادي',  cssWeight: 'normal' },
+      { key: 'medium', label: '⚖️ متوسط', cssWeight: '500'    },
+      { key: 'bold',   label: '💪 عريض',  cssWeight: 'bold'   },
+    ]
+  },
+  'NotoNaskh': {
+    label: 'NotoNaskh — الخط الرسمي',
+    arabic: true,
+    weights: [{ key: 'normal', label: '📝 عادي', cssWeight: 'normal' }]
+  },
+  'ModernPro': {
+    label: 'ModernPro — مودرن برو',
+    arabic: true,
+    weights: [{ key: 'normal', label: '📝 عادي', cssWeight: 'normal' }]
+  },
+  'Zeyada': {
+    label: 'Zeyada — زيادة',
+    arabic: true,
+    weights: [{ key: 'normal', label: '📝 عادي', cssWeight: 'normal' }]
+  },
+  'Bolding': {
+    label: 'Bolding — بولدينج',
+    arabic: false,
+    weights: [{ key: 'normal', label: '📝 عادي', cssWeight: 'normal' }]
+  },
+  'Blacksword': {
+    label: 'Blacksword — بلاك سورد',
+    arabic: false,
+    weights: [{ key: 'normal', label: '📝 عادي', cssWeight: 'normal' }]
+  },
+  'Canela': {
+    label: 'Canela — كانيلا',
+    arabic: false,
+    weights: [{ key: 'normal', label: '📝 عادي', cssWeight: 'normal' }]
+  },
+  'CanelaDeck': {
+    label: 'CanelaDeck — كانيلا ديك',
+    arabic: false,
+    weights: [{ key: 'normal', label: '📝 عادي', cssWeight: 'normal' }]
+  },
+  'Freight': {
+    label: 'Freight — فريت',
+    arabic: false,
+    weights: [{ key: 'normal', label: '📝 عادي', cssWeight: 'normal' }]
+  },
+  'Playfair': {
+    label: 'Playfair — بلايفير',
+    arabic: false,
+    weights: [{ key: 'normal', label: '📝 عادي', cssWeight: 'normal' }]
+  },
+};
 
+export function buildFontKeyboard(
+  selectedFont: string,
+  selectedWeight: string
+): { inline_keyboard: any[][] } {
   const rows: any[][] = [];
-  rows.push([{ text: '🔤 اختر الخط', callback_data: 'design_noop' }]);
 
-  for (let i = 0; i < fonts.length; i += 2) {
+  // ── Arabic fonts header ──
+  rows.push([{
+    text: '🔤 خطوط عربية',
+    callback_data: 'design_noop',
+    // @ts-ignore
+    color: '#37474F',
+  }]);
+
+  const arabicFonts = Object.entries(FONT_CATALOG).filter(([, v]) => v.arabic);
+  for (let i = 0; i < arabicFonts.length; i += 2) {
     const row: any[] = [];
-    const f1 = fonts[i];
-    const f2 = fonts[i + 1];
-    row.push({
-      text: selectedFont === f1.key ? `✅ ${f1.label}` : f1.label,
-      callback_data: `design_font_${f1.key}`,
-      style: 'primary' as const,
-    });
-    if (f2) {
+    for (let j = 0; j < 2 && i + j < arabicFonts.length; j++) {
+      const [key, font] = arabicFonts[i + j];
+      const isSelected = selectedFont === key;
       row.push({
-        text: selectedFont === f2.key ? `✅ ${f2.label}` : f2.label,
-        callback_data: `design_font_${f2.key}`,
-        style: 'primary' as const,
+        text: isSelected ? `✅ ${font.label}` : font.label,
+        callback_data: `design_font_${key}`,
+        // @ts-ignore
+        color: isSelected ? '#1565C0' : '#1E90FF',
       });
     }
     rows.push(row);
   }
 
-  rows.push([{ text: `✅ موافق — ${selectedFont}`, callback_data: 'design_font_confirm', style: 'success' as const }]);
-  rows.push([{ text: '🔙 رجوع', callback_data: 'design_back_to_content_type', style: 'danger' as const }]);
+  // ── English fonts header ──
+  rows.push([{
+    text: '🔤 خطوط إنجليزية',
+    callback_data: 'design_noop',
+    // @ts-ignore
+    color: '#37474F',
+  }]);
+
+  const englishFonts = Object.entries(FONT_CATALOG).filter(([, v]) => !v.arabic);
+  for (let i = 0; i < englishFonts.length; i += 2) {
+    const row: any[] = [];
+    for (let j = 0; j < 2 && i + j < englishFonts.length; j++) {
+      const [key, font] = englishFonts[i + j];
+      const isSelected = selectedFont === key;
+      row.push({
+        text: isSelected ? `✅ ${font.label}` : font.label,
+        callback_data: `design_font_${key}`,
+        // @ts-ignore
+        color: isSelected ? '#1565C0' : '#1E90FF',
+      });
+    }
+    rows.push(row);
+  }
+
+  // ── Weight buttons (4 fixed slots) ──
+  // Always show 4 weight buttons. If font has fewer weights,
+  // remaining buttons show as locked (color: '#37474F', callback: 'design_noop')
+  // with text: '🔒 غير متاح'
+  const fontData = FONT_CATALOG[selectedFont];
+  const weights = fontData?.weights || [];
+  const weightLabels = ['🪶 رفيع', '📝 عادي', '⚖️ متوسط', '💪 عريض'];
+  const weightKeys   = ['light', 'normal', 'medium', 'bold'];
+  const weightCss    = ['300', 'normal', '500', 'bold'];
+
+  // ── Weight separator ──
+  rows.push([{
+    text: '⚖️ وزن الخط',
+    callback_data: 'design_noop',
+    // @ts-ignore
+    color: '#37474F',
+  }]);
+
+  // Build 4 weight buttons (2 per row)
+  const weightRow1: any[] = [];
+  const weightRow2: any[] = [];
+
+  for (let i = 0; i < 4; i++) {
+    const availableWeight = weights.find(w => w.key === weightKeys[i]);
+    const isCurrentWeight = selectedWeight === weightCss[i];
+    const btn: any = availableWeight
+      ? {
+          text: isCurrentWeight ? `✅ ${weightLabels[i]}` : weightLabels[i],
+          callback_data: `design_weight_${weightCss[i]}`,
+          // @ts-ignore
+          color: isCurrentWeight ? '#2E7D32' : '#0D47A1',
+        }
+      : {
+          text: `🔒 ${weightLabels[i]}`,
+          callback_data: 'design_weight_locked',
+          // @ts-ignore
+          color: '#37474F',
+        };
+
+    if (i < 2) weightRow1.push(btn);
+    else weightRow2.push(btn);
+  }
+  rows.push(weightRow1);
+  rows.push(weightRow2);
+
+  // ── Actions ──
+  rows.push([{
+    text: `✅ موافق — ${fontData?.label || selectedFont}`,
+    callback_data: 'design_font_confirm',
+    // @ts-ignore
+    color: '#2E7D32',
+  }]);
+  rows.push([{
+    text: '🔙 رجوع',
+    callback_data: 'design_back_to_content_type',
+    // @ts-ignore
+    color: '#C62828',
+  }]);
 
   return { inline_keyboard: rows };
 }

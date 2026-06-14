@@ -793,6 +793,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           contentType: null,
           contentValue: '',
           selectedFont: 'Almarai',
+          fontWeight: 'normal',
           textColor: '#FFFFFF',
           imageEffects: { grayscale: false, saturate: false, invert: false, upscale: false },
           lastActivity: Date.now()

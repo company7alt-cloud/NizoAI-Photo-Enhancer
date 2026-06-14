@@ -566,7 +566,7 @@ imageBot.on('message:text', async (ctx, next) => {
     }
 
     const { buildFontKeyboard } = await import('./bot/handlers/callbackHandler');
-    const fontKb = buildFontKeyboard(state.selectedFont || 'Almarai');
+    const fontKb = buildFontKeyboard(state.selectedFont || 'Almarai', state.fontWeight || 'normal');
     const fontMsg = await ctx.reply(
       '🔤 <b>اختر الخط المناسب لنصك:</b>',
       { parse_mode: 'HTML', reply_markup: fontKb as any }

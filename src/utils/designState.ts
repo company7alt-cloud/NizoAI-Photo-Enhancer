@@ -9,7 +9,8 @@ export interface DesignState {
   contentType: 'text' | 'image' | null;
   contentValue: string;           // text string OR base64 of overlay image
   selectedCells: number[];
-  selectedFont: string;           // 'Almarai' | 'ModernPro' | 'NotoNaskh'
+  selectedFont: string;           // e.g. 'Almarai', 'Cormorant'
+  fontWeight: string;             // 'normal' | '300' | '500' | 'bold' | '800'
   textColor: string;              // hex e.g. '#FFFFFF'
   imageEffects: {
     grayscale: boolean;
