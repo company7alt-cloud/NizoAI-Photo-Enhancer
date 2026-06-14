@@ -11,6 +11,7 @@ export interface DesignState {
   selectedCells: number[];
   selectedFont: string;           // e.g. 'Almarai', 'Cormorant'
   selectedWeight: string;         // e.g. 'Light', 'Regular', 'Bold', 'Black'
+  fontWeight?: string;
   textColor: string;              // hex e.g. '#FFFFFF'
   offsetX?: number;
   offsetY?: number;
