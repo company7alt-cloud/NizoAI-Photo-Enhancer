@@ -14,6 +14,7 @@ export interface DesignState {
   textColor: string;              // hex e.g. '#FFFFFF'
   offsetX?: number;
   offsetY?: number;
+  scaleMultiplier?: number;
   imageEffects: {
     grayscale: boolean;
     saturate: boolean;

@@ -154,61 +154,69 @@ export async function compositeDesign(
   const bbox = calculateBoundingBox(state.selectedCells, state.cols, state.rows, W, H);
   const { x, y, w, h } = bbox;
 
-  let overlayBuf: Buffer | null = null;
+  // 3. Generate Overlay & Composite (full-screen canvas prevents clipping)
+  const moveX = state.offsetX || 0;
+  const moveY = state.offsetY || 0;
+  const scale = state.scaleMultiplier || 1.0;
+  let finalPipeline = sharp(processedBaseBuffer);
 
-  // 3. Generate Overlay based on the exact Bounding Box
   if (state.contentType === 'text') {
-    const canvas = createCanvas(w, h);
+    // Full-screen canvas — text can be nudged anywhere without being clipped
+    const canvas = createCanvas(W, H);
     const ctx = canvas.getContext('2d');
 
-    // STRICT USER-DEFINED LINES ONLY (No Auto-Wrap)
     const lines = state.contentValue.split('\n');
-    
-    let fontSize = Math.floor(h * 0.8); // Start large
-    if (fontSize > w) fontSize = Math.floor(w * 0.8);
+    let baseFontSize = Math.floor(h * 0.8);
+    if (baseFontSize > w) baseFontSize = Math.floor(w * 0.8);
 
-    // Calculate font size to fit the widest line and total height
-    while (fontSize > 5) {
-      let exactFontFamily = `${state.selectedFont}_${state.selectedWeight || 'Regular'}`;
-      ctx.font = `${fontSize}px "${exactFontFamily}"`;
+    // Calculate base font size to fit the grid bounding box
+    while (baseFontSize > 5) {
+      const exactFontFamily = `${state.selectedFont}_${state.selectedWeight || 'Regular'}`;
+      ctx.font = `${baseFontSize}px "${exactFontFamily}"`;
       const maxLineWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
-      const totalHeight = lines.length * (fontSize * 1.4);
-
-      if (maxLineWidth <= w * 0.95 && totalHeight <= h * 0.95) {
-        break; // Fits perfectly!
-      }
-      fontSize -= 2;
+      const totalHeight = lines.length * (baseFontSize * 1.4);
+      if (maxLineWidth <= w * 0.95 && totalHeight <= h * 0.95) break;
+      baseFontSize -= 2;
     }
 
-    ctx.fillStyle = state.textColor;
+    // Apply user scale multiplier on top of the fitted base size
+    const finalFontSize = baseFontSize * scale;
+    const exactFontFamily = `${state.selectedFont}_${state.selectedWeight || 'Regular'}`;
+    ctx.font = `${finalFontSize}px "${exactFontFamily}"`;
+    ctx.fillStyle = state.textColor || '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    
-    const lineHeight = fontSize * 1.4;
-    const totalTextHeight = lines.length * lineHeight;
-    const startY = (h - totalTextHeight) / 2 + (lineHeight / 2);
 
-    const moveX = state.offsetX || 0;
-    const moveY = state.offsetY || 0;
+    const lineHeight = finalFontSize * 1.4;
+    const totalTextHeight = lines.length * lineHeight;
+
+    // Centre on the bounding box, then apply offsets
+    const centerX = x + (w / 2) + moveX;
+    const centerY = y + (h / 2) + moveY;
+    const startY = centerY - (totalTextHeight / 2) + (lineHeight / 2);
 
     lines.forEach((line, index) => {
-      ctx.fillText(line, (w / 2) + moveX, startY + (index * lineHeight) + moveY);
+      ctx.fillText(line, centerX, startY + (index * lineHeight));
     });
 
-    overlayBuf = canvas.toBuffer('image/png');
-  } 
-  else if (state.contentType === 'image' && state.contentValue) {
+    const overlayBuf = canvas.toBuffer('image/png');
+    // Composite at 0,0 — full-screen transparent PNG
+    finalPipeline = finalPipeline.composite([{ input: overlayBuf, left: 0, top: 0 }]);
+
+  } else if (state.contentType === 'image' && state.contentValue) {
     const rawOverlay = Buffer.from(state.contentValue, 'base64');
-    overlayBuf = await sharp(rawOverlay)
-      .resize(w, h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    const scaledW = Math.max(1, Math.round(w * scale));
+    const scaledH = Math.max(1, Math.round(h * scale));
+
+    const resizedOverlay = await sharp(rawOverlay)
+      .resize(scaledW, scaledH, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
       .toBuffer();
-  }
 
-  // 4. Composite the Overlay onto the Processed Base Image
-  let finalPipeline = sharp(processedBaseBuffer);
-  if (overlayBuf) {
-    finalPipeline = finalPipeline.composite([{ input: overlayBuf, left: x, top: y }]);
+    const finalLeft = Math.round(x + (w - scaledW) / 2 + moveX);
+    const finalTop  = Math.round(y + (h - scaledH) / 2 + moveY);
+
+    finalPipeline = finalPipeline.composite([{ input: resizedOverlay, left: finalLeft, top: finalTop }]);
   }
 
   let resultBuffer = await finalPipeline.jpeg({ quality: 90 }).toBuffer();

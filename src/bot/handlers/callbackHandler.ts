@@ -4383,17 +4383,6 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   if (data.startsWith('design_font_') && data !== 'design_font_confirm') {
     const fontKey = data.replace('design_font_', '');
-    if (!FONT_CATALOG[fontKey]) return;
-
-    await ctx.answerCallbackQuery({
-      text: `✅ تم اختيار ${FONT_CATALOG[fontKey].label}`
-    }).catch(() => {});
-
-    const { getDesignState, setDesignState } = await import('../../utils/designState');
-    const state = getDesignState(ctx.from!.id);
-    if (!state) return;
-
-    // When font changes, reset weight to first available weight of new font
     const FONT_WEIGHTS_MAP: Record<string, string[]> = {
       'Almarai': ['Light', 'Regular', 'Bold', 'Black'],
       'ModernPro': ['Regular'],
@@ -4406,13 +4395,22 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       'Bolding': ['Regular'],
       'CanelaDeck': ['Light', 'Regular', 'Bold', 'Black']
     };
-    const firstWeight = FONT_WEIGHTS_MAP[fontKey]?.[0] || 'Regular';
+    if (!FONT_WEIGHTS_MAP[fontKey]) return; // Safe check — unknown font key
+
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
     state.selectedFont = fontKey;
-    state.selectedWeight = firstWeight;
+    const availableWeights = FONT_WEIGHTS_MAP[fontKey];
+    // Keep current weight if it's valid for this font, otherwise fall back to first
+    if (!availableWeights.includes(state.selectedWeight || 'Regular')) {
+      state.selectedWeight = availableWeights[0];
+    }
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
-    // Update keyboard with new font selected + its weights
+    await ctx.answerCallbackQuery({ text: `✅ تم اختيار خط ${fontKey}` }).catch(() => {});
     await showConsolidatedFontUI(ctx, state);
     return;
   }
@@ -4488,6 +4486,23 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     if (dir === 'down') state.offsetY = (state.offsetY || 0) + NUDGE_AMOUNT;
     if (dir === 'left') state.offsetX = (state.offsetX || 0) - NUDGE_AMOUNT;
     if (dir === 'right') state.offsetX = (state.offsetX || 0) + NUDGE_AMOUNT;
+
+    setDesignState(ctx.from!.id, state);
+    await ctx.answerCallbackQuery().catch(() => {});
+    await showConsolidatedFontUI(ctx, state);
+    return;
+  }
+
+  // ── design_scale_ handler ──
+  if (data.startsWith('design_scale_')) {
+    const action = data.replace('design_scale_', '');
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
+    state.scaleMultiplier = state.scaleMultiplier || 1.0;
+    if (action === 'up') state.scaleMultiplier += 0.15;
+    if (action === 'down') state.scaleMultiplier = Math.max(0.1, state.scaleMultiplier - 0.15);
 
     setDesignState(ctx.from!.id, state);
     await ctx.answerCallbackQuery().catch(() => {});
@@ -4892,6 +4907,13 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     { text: '⬇️ أسفل', callback_data: 'design_nudge_down', style: 'primary' as const },
     { text: '➡️ يمين', callback_data: 'design_nudge_right', style: 'primary' as const },
     { text: '⬅️ يسار', callback_data: 'design_nudge_left', style: 'primary' as const }
+  ]);
+
+  // 5.5 SCALE (ZOOM) CONTROLS
+  rows.push([{ text: '🔍 تكبير وتصغير', callback_data: 'design_noop', style: 'danger' as const }]);
+  rows.push([
+    { text: '➖ تصغير', callback_data: 'design_scale_down', style: 'primary' as const },
+    { text: '➕ تكبير', callback_data: 'design_scale_up', style: 'primary' as const }
   ]);
 
   // 6. ACTIONS
