@@ -4247,7 +4247,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   if (data === 'design_confirm_grid') {
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
-    if (!state || state.selectedCells.length === 0) {
+    if (!state || !state.originalBuffer) {
+      await ctx.answerCallbackQuery({ 
+        text: '⚠️ انتهت الجلسة بسبب تحديث النظام. يرجى إرسال الصورة والبدء من جديد.', 
+        show_alert: true 
+      }).catch(() => {});
+      return;
+    }
+
+    if (state.selectedCells.length === 0) {
       await ctx.answerCallbackQuery({
         text: '⚠️ يرجى تحديد مربع واحد على الأقل!',
         show_alert: true
@@ -4386,9 +4394,21 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     if (!state) return;
 
     // When font changes, reset weight to first available weight of new font
-    const firstWeight = FONT_CATALOG[fontKey].weights[0]?.cssWeight || 'normal';
+    const FONT_WEIGHTS_MAP: Record<string, string[]> = {
+      'Almarai': ['Light', 'Regular', 'Bold', 'Black'],
+      'ModernPro': ['Regular'],
+      'NotoNaskh': ['Regular'],
+      'Zeyada': ['Regular'],
+      'Blacksword': ['Regular'],
+      'Playfair': ['Regular'],
+      'Cormorant': ['Light', 'Regular', 'Bold'],
+      'Freight': ['Regular'],
+      'Bolding': ['Regular'],
+      'CanelaDeck': ['Light', 'Regular', 'Bold', 'Black']
+    };
+    const firstWeight = FONT_WEIGHTS_MAP[fontKey]?.[0] || 'Regular';
     state.selectedFont = fontKey;
-    state.fontWeight   = firstWeight;
+    state.selectedWeight = firstWeight;
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
@@ -4422,7 +4442,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
 
-    state.fontWeight = cssWeight;
+    state.selectedWeight = cssWeight;
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
@@ -4799,31 +4819,44 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     { text: state.selectedFont === 'Freight' ? '✅ Freight' : 'Freight', callback_data: 'design_font_Freight', style: 'primary' as const }
   ]);
   rows.push([
-    { text: state.selectedFont === 'Canela' ? '✅ Canela' : 'Canela', callback_data: 'design_font_Canela', style: 'primary' as const },
+    { text: state.selectedFont === 'Bolding' ? '✅ Bolding' : 'Bolding', callback_data: 'design_font_Bolding', style: 'primary' as const },
     { text: state.selectedFont === 'CanelaDeck' ? '✅ Canela Deck' : 'Canela Deck', callback_data: 'design_font_CanelaDeck', style: 'primary' as const }
   ]);
 
   // 3. WEIGHTS
   rows.push([{ text: '⚖️ وزن الخط', callback_data: 'design_noop', style: 'danger' as const }]);
-  const fontData = FONT_CATALOG[state.selectedFont];
-  const weights = fontData?.weights || [];
-  const weightLabels = ['🪶 رفيع', '📝 عادي', '⚖️ متوسط', '💪 عريض'];
-  const weightKeys   = ['light', 'normal', 'medium', 'bold'];
-  const weightCss    = ['300', 'normal', '500', 'bold'];
+  
+  const FONT_WEIGHTS_MAP: Record<string, string[]> = {
+    'Almarai': ['Light', 'Regular', 'Bold', 'Black'],
+    'ModernPro': ['Regular'],
+    'NotoNaskh': ['Regular'],
+    'Zeyada': ['Regular'],
+    'Blacksword': ['Regular'],
+    'Playfair': ['Regular'],
+    'Cormorant': ['Light', 'Regular', 'Bold'],
+    'Freight': ['Regular'],
+    'Bolding': ['Regular'],
+    'CanelaDeck': ['Light', 'Regular', 'Bold', 'Black']
+  };
+
+  const weights = FONT_WEIGHTS_MAP[state.selectedFont] || ['Regular'];
+  const weightLabels = ['Light', 'Regular', 'Bold', 'Black'];
+  const weightLabelsArabic = ['🪶 رفيع', '📝 عادي', '⚖️ متوسط/عريض', '💪 عريض جداً']; // Just a rough mapping for UX
 
   const weightRow1: any[] = [];
   const weightRow2: any[] = [];
   for (let i = 0; i < 4; i++) {
-    const availableWeight = weights.find(w => w.key === weightKeys[i]);
-    const isCurrentWeight = state.fontWeight === weightCss[i];
+    const wKey = weightLabels[i];
+    const availableWeight = weights.includes(wKey);
+    const isCurrentWeight = state.selectedWeight === wKey;
     const btn: any = availableWeight
       ? {
-          text: isCurrentWeight ? `✅ ${weightLabels[i]}` : weightLabels[i],
-          callback_data: `design_weight_${weightCss[i]}`,
+          text: isCurrentWeight ? `✅ ${wKey}` : wKey,
+          callback_data: `design_weight_${wKey}`,
           style: 'primary' as const
         }
       : {
-          text: `🔒 ${weightLabels[i]}`,
+          text: `🔒 ${wKey}`,
           callback_data: 'design_weight_locked',
           // @ts-ignore
           style: 'secondary' as const

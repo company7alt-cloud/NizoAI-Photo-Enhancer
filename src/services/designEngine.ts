@@ -8,28 +8,31 @@ import type { DesignState } from '../utils/designState';
 
 const FONTS_DIR = path.join(process.cwd(), 'assets', 'fonts');
 
-// Almarai — 4 weights
-registerFont(path.join(FONTS_DIR, 'Almarai-Light.ttf'),     { family: 'Almarai', weight: '300' });
-registerFont(path.join(FONTS_DIR, 'Almarai.ttf'),           { family: 'Almarai', weight: 'normal' });
-registerFont(path.join(FONTS_DIR, 'Almarai-Bold.ttf'),      { family: 'Almarai', weight: 'bold' });
-registerFont(path.join(FONTS_DIR, 'Almarai-ExtraBold.ttf'), { family: 'Almarai', weight: '800' });
+// Arabic Fonts
+registerFont(path.join(FONTS_DIR, 'Almarai_Light.ttf'), { family: 'Almarai_Light' });
+registerFont(path.join(FONTS_DIR, 'Almarai_Regular.ttf'), { family: 'Almarai_Regular' });
+registerFont(path.join(FONTS_DIR, 'Almarai_Bold.ttf'), { family: 'Almarai_Bold' });
+registerFont(path.join(FONTS_DIR, 'Almarai_Black.ttf'), { family: 'Almarai_Black' });
 
-// Cormorant — 4 weights
-registerFont(path.join(FONTS_DIR, 'Cormorant-Light.ttf'),  { family: 'Cormorant', weight: '300' });
-registerFont(path.join(FONTS_DIR, 'Cormorant.ttf'),        { family: 'Cormorant', weight: 'normal' });
-registerFont(path.join(FONTS_DIR, 'Cormorant-Medium.ttf'), { family: 'Cormorant', weight: '500' });
-registerFont(path.join(FONTS_DIR, 'Cormorant-Bold.ttf'),   { family: 'Cormorant', weight: 'bold' });
+registerFont(path.join(FONTS_DIR, 'ModernPro_Regular.ttf'), { family: 'ModernPro_Regular' });
+registerFont(path.join(FONTS_DIR, 'NotoNaskh_Regular.ttf'), { family: 'NotoNaskh_Regular' });
+registerFont(path.join(FONTS_DIR, 'Zeyada_Regular.ttf'), { family: 'Zeyada_Regular' });
 
-// Single-weight fonts
-registerFont(path.join(FONTS_DIR, 'Blacksword.otf'),  { family: 'Blacksword',  weight: 'normal' });
-registerFont(path.join(FONTS_DIR, 'Bolding.ttf'),     { family: 'Bolding',     weight: 'normal' });
-registerFont(path.join(FONTS_DIR, 'Canela.ttf'),      { family: 'Canela',      weight: 'normal' });
-registerFont(path.join(FONTS_DIR, 'CanelaDeck.ttf'),  { family: 'CanelaDeck',  weight: 'normal' });
-registerFont(path.join(FONTS_DIR, 'Freight.ttf'),     { family: 'Freight',     weight: 'normal' });
-registerFont(path.join(FONTS_DIR, 'ModernPro.ttf'),   { family: 'ModernPro',   weight: 'normal' });
-registerFont(path.join(FONTS_DIR, 'NotoNaskh.ttf'),   { family: 'NotoNaskh',   weight: 'normal' });
-registerFont(path.join(FONTS_DIR, 'Playfair.ttf'),    { family: 'Playfair',    weight: 'normal' });
-registerFont(path.join(FONTS_DIR, 'Zeyada.ttf'),      { family: 'Zeyada',      weight: 'normal' });
+// English Fonts
+registerFont(path.join(FONTS_DIR, 'Blacksword_Regular.otf'), { family: 'Blacksword_Regular' });
+registerFont(path.join(FONTS_DIR, 'Playfair_Regular.ttf'), { family: 'Playfair_Regular' });
+
+registerFont(path.join(FONTS_DIR, 'Cormorant_Light.ttf'), { family: 'Cormorant_Light' });
+registerFont(path.join(FONTS_DIR, 'Cormorant_Regular.ttf'), { family: 'Cormorant_Regular' });
+registerFont(path.join(FONTS_DIR, 'Cormorant_Bold.ttf'), { family: 'Cormorant_Bold' });
+
+registerFont(path.join(FONTS_DIR, 'Freight_Regular.ttf'), { family: 'Freight_Regular' });
+registerFont(path.join(FONTS_DIR, 'Bolding_Regular.ttf'), { family: 'Bolding_Regular' }); // Replaced Canela
+
+registerFont(path.join(FONTS_DIR, 'CanelaDeck_Light.otf'), { family: 'CanelaDeck_Light' });
+registerFont(path.join(FONTS_DIR, 'CanelaDeck_Regular.otf'), { family: 'CanelaDeck_Regular' });
+registerFont(path.join(FONTS_DIR, 'CanelaDeck_Bold.otf'), { family: 'CanelaDeck_Bold' });
+registerFont(path.join(FONTS_DIR, 'CanelaDeck_Black.otf'), { family: 'CanelaDeck_Black' });
 
 // ── EXPORT 1: calculateBoundingBox ───────────────────────────────────────────
 export function calculateBoundingBox(
@@ -152,7 +155,8 @@ export async function compositeDesign(
 
     // Calculate font size to fit the widest line and total height
     while (fontSize > 5) {
-      ctx.font = `${state.fontWeight || 'normal'} ${fontSize}px "${state.selectedFont}"`;
+      let exactFontFamily = `${state.selectedFont}_${state.selectedWeight || 'Regular'}`;
+      ctx.font = `${fontSize}px "${exactFontFamily}"`;
       const maxLineWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
       const totalHeight = lines.length * (fontSize * 1.4);
 

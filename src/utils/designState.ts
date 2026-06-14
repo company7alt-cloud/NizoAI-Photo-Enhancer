@@ -10,7 +10,7 @@ export interface DesignState {
   contentValue: string;           // text string OR base64 of overlay image
   selectedCells: number[];
   selectedFont: string;           // e.g. 'Almarai', 'Cormorant'
-  fontWeight: string;             // 'normal' | '300' | '500' | 'bold' | '800'
+  selectedWeight: string;         // e.g. 'Light', 'Regular', 'Bold', 'Black'
   textColor: string;              // hex e.g. '#FFFFFF'
   offsetX?: number;
   offsetY?: number;
