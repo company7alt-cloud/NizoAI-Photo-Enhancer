@@ -9,8 +9,12 @@ import type { DesignState } from '../utils/designState';
 // ── Register fonts at module load ────────────────────────────────────────────
 const FONTS_DIR = path.join(process.cwd(), 'assets', 'fonts');
 registerFont(path.join(FONTS_DIR, 'Almarai.ttf'),   { family: 'Almarai' });
+registerFont(path.join(FONTS_DIR, 'Amiri.ttf'),     { family: 'Amiri' });
+registerFont(path.join(FONTS_DIR, 'Cairo.ttf'),     { family: 'Cairo' });
 registerFont(path.join(FONTS_DIR, 'ModernPro.ttf'), { family: 'ModernPro' });
 registerFont(path.join(FONTS_DIR, 'NotoNaskh.ttf'), { family: 'NotoNaskh' });
+registerFont(path.join(FONTS_DIR, 'Omnia.ttf'),     { family: 'Omnia' });
+registerFont(path.join(FONTS_DIR, 'Thamanya.ttf'),  { family: 'Thamanya' });
 
 // ── EXPORT 1: calculateBoundingBox ───────────────────────────────────────────
 export function calculateBoundingBox(

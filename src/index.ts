@@ -558,43 +558,24 @@ imageBot.on('message:text', async (ctx, next) => {
     if (!state) return;
 
     state.contentValue = textValue.trim();
+    state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
-    await ctx.reply("✅ <b>تم استلام المحتوى!</b>\n📐 اختر حجم الشبكة لتحديد مكان الإضافة (كلما زاد التقسيم، زادت دقة التحديد):", {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            // @ts-ignore
-            { text: '30 تقسيم', callback_data: 'design_grid_30', style: 'primary' as const },
-            // @ts-ignore
-            { text: '40 تقسيم', callback_data: 'design_grid_40', style: 'primary' as const }
-          ],
-          [
-            // @ts-ignore
-            { text: '50 تقسيم', callback_data: 'design_grid_50', style: 'primary' as const },
-            // @ts-ignore
-            { text: '70 تقسيم', callback_data: 'design_grid_70', style: 'primary' as const }
-          ],
-          [
-            // @ts-ignore
-            { text: '80 تقسيم', callback_data: 'design_grid_80', style: 'primary' as const },
-            // @ts-ignore
-            { text: '100 تقسيم 🔒', callback_data: 'design_grid_100', style: 'primary' as const }
-          ],
-          [
-            // @ts-ignore
-            { text: '120 تقسيم 🔒', callback_data: 'design_grid_120', style: 'primary' as const }
-          ],
-          [
-            // @ts-ignore
-            { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }
-          ]
-        ]
-      }
-    });
+    if (state.stepMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+    }
+
+    const { buildFontKeyboard } = await import('./bot/handlers/callbackHandler');
+    const fontKb = buildFontKeyboard(state.selectedFont || 'Almarai');
+    const fontMsg = await ctx.reply(
+      '🔤 <b>اختر الخط المناسب لنصك:</b>',
+      { parse_mode: 'HTML', reply_markup: fontKb as any }
+    );
+    state.stepMsgId = fontMsg.message_id;
+    setDesignState(ctx.from!.id, state);
     return;
   }
+
 
   // 0. VIP Size Bypass Command (Admin Only)
   if (isAdm && messageText.startsWith('/vip')) {

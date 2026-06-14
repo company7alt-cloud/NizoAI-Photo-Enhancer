@@ -4023,6 +4023,67 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  if (data === 'design_noop') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    return;
+  }
+
+  if (data === 'design_back_to_content_type') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
+    state.contentType = null;
+    state.contentValue = '';
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingDesignText: false, awaitingDesignContent: false } }
+    );
+    if (state.stepMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+    }
+    const stepMsg = await ctx.reply(
+      '🎨 <b>ماذا تريد أن تضيف على صورتك؟</b>',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              // @ts-ignore
+              { text: '📝 نص', callback_data: 'design_type_text', style: 'primary' as const },
+              // @ts-ignore
+              { text: '🖼️ صورة', callback_data: 'design_type_image', style: 'primary' as const }
+            ],
+            [{ text: '🔙 رجوع لتحديد المربعات', callback_data: 'design_back_to_cells', style: 'danger' as const }],
+            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
+          ]
+        }
+      }
+    );
+    state.stepMsgId = stepMsg.message_id;
+    setDesignState(ctx.from!.id, state);
+    return;
+  }
+
+  if (data === 'design_back_to_cells') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+    if (state.stepMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+    }
+    const cellKb = buildDesignCellKeyboard(state.gridSize, state.selectedCells);
+    const kbMsg = await ctx.reply('👇 <b>اختر المربعات:</b>', {
+      parse_mode: 'HTML',
+      reply_markup: cellKb as any
+    });
+    state.stepMsgId = kbMsg.message_id;
+    setDesignState(ctx.from!.id, state);
+    return;
+  }
+
   if (data === 'cancel_design') {
     await ctx.answerCallbackQuery({ text: 'تم الإلغاء ❌' }).catch(() => { });
     await User.findOneAndUpdate(
@@ -4202,40 +4263,27 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       state.stepMsgId = undefined;
     }
 
-    if (state.contentType === 'text') {
-      const colorMsg = await ctx.reply(
-        "🔤 <b>اختيار نوع الخط</b>\n\n" +
-        "✨ لقد قمنا بتوفير أرقى الخطوط العربية لتناسب ذوقك.\n" +
-        "👇 يرجى اختيار الخط المناسب لنصك من القائمة أدناه:\n\n" +
-        "<i>(ملاحظة: سيتم عرض معاينة للخط على صورتك مباشرة بعد الاختيار)</i>",
-        {
+    // Show content type selection
+    const stepMsg = await ctx.reply(
+      '🎨 <b>ماذا تريد أن تضيف على صورتك؟</b>',
+      {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
             [
               // @ts-ignore
-              { text: 'قلم عريض احترافي (Almarai)', callback_data: 'design_font_almarai', style: 'primary' as const },
-            ],
-            [
+              { text: '📝 نص', callback_data: 'design_type_text', style: 'primary' as const },
               // @ts-ignore
-              { text: '🎨 Modern Pro (مودرن برو)', callback_data: 'design_font_modern', style: 'primary' as const },
+              { text: '🖼️ صورة', callback_data: 'design_type_image', style: 'primary' as const }
             ],
-            [
-              // @ts-ignore
-              { text: 'الخط الرسمي الشامل (Noto Naskh)', callback_data: 'design_font_noto', style: 'primary' as const },
-            ],
-            [
-              // @ts-ignore
-              { text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }
-            ]
+            [{ text: '🔙 رجوع لتحديد المربعات', callback_data: 'design_back_to_cells', style: 'danger' as const }],
+            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
           ]
         }
-      });
-      state.stepMsgId = colorMsg.message_id;
-      setDesignState(ctx.from!.id, state);
-    } else {
-      await generateDesignPreview(ctx, state);
-    }
+      }
+    );
+    state.stepMsgId = stepMsg.message_id;
+    setDesignState(ctx.from!.id, state);
     return;
   }
 
@@ -4297,98 +4345,114 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  if (data === 'design_back_to_fonts') {
-    await ctx.answerCallbackQuery().catch(() => {});
-    await ctx.editMessageText(
-      "🔤 <b>اختيار نوع الخط</b>\n\n" +
-      "✨ لقد قمنا بتوفير أرقى الخطوط العربية لتناسب ذوقك.\n" +
-      "👇 يرجى اختيار الخط المناسب لنصك من القائمة أدناه:\n\n" +
-      "<i>(ملاحظة: سيتم عرض معاينة للخط على صورتك مباشرة بعد الاختيار)</i>",
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: 'قلم عريض احترافي (Almarai)', callback_data: 'design_font_almarai', style: 'primary' as const }],
-            [{ text: '🎨 Modern Pro (مودرن برو)', callback_data: 'design_font_modern', style: 'primary' as const }],
-            [{ text: 'الخط الرسمي الشامل (Noto Naskh)', callback_data: 'design_font_noto', style: 'primary' as const }],
-            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
-          ]
-        }
-      }
-    ).catch(() => {});
-    return;
-  }
-
-  if (data.startsWith('design_font_')) {
+  if (data === 'design_type_text') {
     await ctx.answerCallbackQuery().catch(() => { });
-
-    if (data === 'design_font_modern') {
-      await ctx.editMessageText(
-        "⚠️ <b>تنبيه هام:</b>\n\n" +
-        "الخط الحديث (Modern) لا يدعم الحروف الإنجليزية أو الرموز الخاصة.\n" +
-        "استخدامه مع نصوص تحتوي على إنجليزي سيؤدي لظهور مربعات فارغة.\n\n" +
-        "هل أنت متأكد من رغبتك في استخدام هذا الخط؟",
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '✅ موافق', callback_data: 'design_font_ModernPro_confirm', style: 'success' as const }],
-              [{ text: '🔙 رجوع لاختيار خط آخر', callback_data: 'design_back_to_fonts', style: 'danger' as const }]
-            ]
-          }
-        }
-      ).catch(() => {});
-      return;
-    }
-
-    const fontMap: Record<string, string> = {
-      almarai: 'Almarai',
-      ModernPro_confirm: 'ModernPro',
-      noto: 'NotoNaskh'
-    };
-
-    const font = data.replace('design_font_', '');
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
 
-    state.selectedFont = fontMap[font] || 'Almarai';
+    state.contentType = 'text';
     setDesignState(ctx.from!.id, state);
 
-    const colorMsg = await ctx.reply('🎨 <b>اختر لون النص:</b>', {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: 'الأبيض ⚪', callback_data: 'design_color_#FFFFFF', style: 'primary' as const },
-            { text: 'الأسود ⚫', callback_data: 'design_color_#000000', style: 'primary' as const },
-            { text: 'الأحمر 🔴', callback_data: 'design_color_#FF0000', style: 'primary' as const }
-          ],
-          [
-            { text: 'الأزرق 🔵', callback_data: 'design_color_#0000FF', style: 'primary' as const },
-            { text: 'الأخضر 🟢', callback_data: 'design_color_#00CC44', style: 'primary' as const },
-            { text: 'الأصفر 🟡', callback_data: 'design_color_#FFD700', style: 'primary' as const }
-          ],
-          [
-            { text: 'البرتقالي 🟠', callback_data: 'design_color_#FF6600', style: 'primary' as const },
-            { text: 'البنفسجي 🟣', callback_data: 'design_color_#8B00FF', style: 'primary' as const },
-            { text: 'الوردي 🌸', callback_data: 'design_color_#FF69B4', style: 'primary' as const }
-          ],
-          [
-            { text: 'السماوي 🩵', callback_data: 'design_color_#00BFFF', style: 'primary' as const },
-            { text: 'البني 🟤', callback_data: 'design_color_#8B4513', style: 'primary' as const },
-            { text: 'الرمادي 🔘', callback_data: 'design_color_#808080', style: 'primary' as const }
-          ],
-          [{ text: '✅ موافق', callback_data: 'design_effects_confirm', style: 'primary' as const }],
-          [{ text: '🔙 رجوع', callback_data: 'design_back_to_fonts', style: 'danger' as const }]
-        ]
-      }
-    });
+    await User.findOneAndUpdate(
+      { telegramId: ctx.from!.id.toString() },
+      { $set: { awaitingDesignText: true } }
+    );
 
-    state.colorMsgId = colorMsg.message_id;
+    if (state.stepMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+    }
+
+    const textMsg = await ctx.reply(
+      '✏️ <b>أرسل النص الذي تريد إضافته</b>\n(يدعم العربية والإنجليزية)',
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[
+            // @ts-ignore
+            { text: '🔙 رجوع', callback_data: 'design_back_to_content_type', style: 'danger' as const }
+          ]]
+        }
+      }
+    );
+    state.stepMsgId = textMsg.message_id;
     setDesignState(ctx.from!.id, state);
     return;
   }
+
+  if (data === 'design_back_to_fonts') {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const { getDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+    const fontKb = buildFontKeyboard(state.selectedFont || 'Almarai');
+    if (state.stepMsgId) {
+      await ctx.api.editMessageReplyMarkup(
+        ctx.chat!.id, state.stepMsgId, { reply_markup: fontKb as any }
+      ).catch(() => {});
+    } else {
+      const fMsg = await ctx.reply('🔤 <b>اختر الخط:</b>', {
+        parse_mode: 'HTML',
+        reply_markup: fontKb as any
+      });
+      const { setDesignState } = await import('../../utils/designState');
+      state.stepMsgId = fMsg.message_id;
+      setDesignState(ctx.from!.id, state);
+    }
+    return;
+  }
+
+  if (data.startsWith('design_font_') && data !== 'design_font_confirm') {
+    await ctx.answerCallbackQuery().catch(() => { });
+
+    const fontKey = data.replace('design_font_', '');
+    const validFonts: Record<string, string> = {
+      'Almarai':   'Almarai',
+      'Amiri':     'Amiri',
+      'Cairo':     'Cairo',
+      'ModernPro': 'ModernPro',
+      'NotoNaskh': 'NotoNaskh',
+      'Omnia':     'Omnia',
+      'Thamanya':  'Thamanya',
+    };
+    if (!validFonts[fontKey]) return;
+
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
+    state.selectedFont = validFonts[fontKey];
+    state.lastActivity = Date.now();
+    setDesignState(ctx.from!.id, state);
+
+    await ctx.answerCallbackQuery({ text: `✅ تم اختيار خط ${fontKey}` }).catch(() => {});
+
+    const fontKb = buildFontKeyboard(state.selectedFont);
+    if (state.stepMsgId) {
+      await ctx.api.editMessageReplyMarkup(
+        ctx.chat!.id, state.stepMsgId, { reply_markup: fontKb as any }
+      ).catch(() => {});
+    }
+    return;
+  }
+
+  if (data === 'design_font_confirm') {
+    await ctx.answerCallbackQuery().catch(() => { });
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
+    if (state.stepMsgId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+      state.stepMsgId = undefined;
+    }
+    setDesignState(ctx.from!.id, state);
+
+    await generateDesignPreview(ctx, state);
+    return;
+  }
+
+
 
   if (data.startsWith('design_color_')) {
     await ctx.answerCallbackQuery().catch(() => { });
@@ -4605,7 +4669,48 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Font Keyboard Builder ────────────────────────────────────────────────────
+
+export function buildFontKeyboard(selectedFont: string): { inline_keyboard: any[][] } {
+  const fonts = [
+    { label: 'Almarai — قلم عريض',   key: 'Almarai'   },
+    { label: 'Amiri — خط أميري',      key: 'Amiri'     },
+    { label: 'Cairo — خط القاهرة',    key: 'Cairo'     },
+    { label: 'ModernPro — مودرن برو', key: 'ModernPro' },
+    { label: 'NotoNaskh — النسخ',     key: 'NotoNaskh' },
+    { label: 'Omnia — أمنية',         key: 'Omnia'     },
+    { label: 'Thamanya — ثمانية',     key: 'Thamanya'  },
+  ];
+
+  const rows: any[][] = [];
+  rows.push([{ text: '🔤 اختر الخط', callback_data: 'design_noop' }]);
+
+  for (let i = 0; i < fonts.length; i += 2) {
+    const row: any[] = [];
+    const f1 = fonts[i];
+    const f2 = fonts[i + 1];
+    row.push({
+      text: selectedFont === f1.key ? `✅ ${f1.label}` : f1.label,
+      callback_data: `design_font_${f1.key}`,
+      style: 'primary' as const,
+    });
+    if (f2) {
+      row.push({
+        text: selectedFont === f2.key ? `✅ ${f2.label}` : f2.label,
+        callback_data: `design_font_${f2.key}`,
+        style: 'primary' as const,
+      });
+    }
+    rows.push(row);
+  }
+
+  rows.push([{ text: `✅ موافق — ${selectedFont}`, callback_data: 'design_font_confirm', style: 'success' as const }]);
+  rows.push([{ text: '🔙 رجوع', callback_data: 'design_back_to_content_type', style: 'danger' as const }]);
+
+  return { inline_keyboard: rows };
+}
+
+
 
 function buildDesignCellKeyboard(
   totalCells: number,
