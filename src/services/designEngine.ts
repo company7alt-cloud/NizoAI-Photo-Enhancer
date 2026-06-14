@@ -10,7 +10,7 @@ import type { DesignState } from '../utils/designState';
 const FONTS_DIR = path.join(process.cwd(), 'assets', 'fonts');
 
 // ── Safe Font Registration Wrapper ──────────────────────────────────────────
-function safeRegisterFont(fontPath: string, config: { family: string }): void {
+function safeRegisterFont(fontPath: string, config: { family: string; weight?: string }): void {
   if (fs.existsSync(fontPath)) {
     try {
       registerFont(fontPath, config);
@@ -22,31 +22,26 @@ function safeRegisterFont(fontPath: string, config: { family: string }): void {
   }
 }
 
-// Arabic Fonts
-safeRegisterFont(path.join(FONTS_DIR, 'Almarai_Light.ttf'), { family: 'Almarai_Light' });
-safeRegisterFont(path.join(FONTS_DIR, 'Almarai_Regular.ttf'), { family: 'Almarai_Regular' });
-safeRegisterFont(path.join(FONTS_DIR, 'Almarai_Bold.ttf'), { family: 'Almarai_Bold' });
-safeRegisterFont(path.join(FONTS_DIR, 'Almarai_Black.ttf'), { family: 'Almarai_Black' });
+// ── Arabic Fonts ──
+safeRegisterFont(path.join(FONTS_DIR, 'Almarai-Light.ttf'),     { family: 'Almarai', weight: '300'    });
+safeRegisterFont(path.join(FONTS_DIR, 'Almarai.ttf'),           { family: 'Almarai', weight: 'normal' });
+safeRegisterFont(path.join(FONTS_DIR, 'Almarai-Bold.ttf'),      { family: 'Almarai', weight: 'bold'   });
+safeRegisterFont(path.join(FONTS_DIR, 'Almarai-ExtraBold.ttf'), { family: 'Almarai', weight: '800'    });
+safeRegisterFont(path.join(FONTS_DIR, 'ModernPro.ttf'),         { family: 'ModernPro', weight: 'normal' });
+safeRegisterFont(path.join(FONTS_DIR, 'NotoNaskh.ttf'),         { family: 'NotoNaskh', weight: 'normal' });
+safeRegisterFont(path.join(FONTS_DIR, 'Zeyada.ttf'),            { family: 'Zeyada',    weight: 'normal' });
 
-safeRegisterFont(path.join(FONTS_DIR, 'ModernPro_Regular.ttf'), { family: 'ModernPro_Regular' });
-safeRegisterFont(path.join(FONTS_DIR, 'NotoNaskh_Regular.ttf'), { family: 'NotoNaskh_Regular' });
-safeRegisterFont(path.join(FONTS_DIR, 'Zeyada_Regular.ttf'), { family: 'Zeyada_Regular' });
-
-// English Fonts
-safeRegisterFont(path.join(FONTS_DIR, 'Blacksword_Regular.otf'), { family: 'Blacksword_Regular' });
-safeRegisterFont(path.join(FONTS_DIR, 'Playfair_Regular.ttf'), { family: 'Playfair_Regular' });
-
-safeRegisterFont(path.join(FONTS_DIR, 'Cormorant_Light.ttf'), { family: 'Cormorant_Light' });
-safeRegisterFont(path.join(FONTS_DIR, 'Cormorant_Regular.ttf'), { family: 'Cormorant_Regular' });
-safeRegisterFont(path.join(FONTS_DIR, 'Cormorant_Bold.ttf'), { family: 'Cormorant_Bold' });
-
-safeRegisterFont(path.join(FONTS_DIR, 'Freight_Regular.ttf'), { family: 'Freight_Regular' });
-safeRegisterFont(path.join(FONTS_DIR, 'Bolding_Regular.ttf'), { family: 'Bolding_Regular' }); // Replaced Canela
-
-safeRegisterFont(path.join(FONTS_DIR, 'CanelaDeck_Light.otf'), { family: 'CanelaDeck_Light' });
-safeRegisterFont(path.join(FONTS_DIR, 'CanelaDeck_Regular.otf'), { family: 'CanelaDeck_Regular' });
-safeRegisterFont(path.join(FONTS_DIR, 'CanelaDeck_Bold.otf'), { family: 'CanelaDeck_Bold' });
-safeRegisterFont(path.join(FONTS_DIR, 'CanelaDeck_Black.otf'), { family: 'CanelaDeck_Black' });
+// ── English Fonts ──
+safeRegisterFont(path.join(FONTS_DIR, 'Blacksword.otf'),        { family: 'Blacksword',  weight: 'normal' });
+safeRegisterFont(path.join(FONTS_DIR, 'Bolding.ttf'),           { family: 'Bolding',     weight: 'normal' });
+safeRegisterFont(path.join(FONTS_DIR, 'Canela.ttf'),            { family: 'Canela',      weight: 'normal' });
+safeRegisterFont(path.join(FONTS_DIR, 'CanelaDeck.ttf'),        { family: 'CanelaDeck',  weight: 'normal' });
+safeRegisterFont(path.join(FONTS_DIR, 'Cormorant-Light.ttf'),   { family: 'Cormorant',   weight: '300'    });
+safeRegisterFont(path.join(FONTS_DIR, 'Cormorant.ttf'),         { family: 'Cormorant',   weight: 'normal' });
+safeRegisterFont(path.join(FONTS_DIR, 'Cormorant-Medium.ttf'),  { family: 'Cormorant',   weight: '500'    });
+safeRegisterFont(path.join(FONTS_DIR, 'Cormorant-Bold.ttf'),    { family: 'Cormorant',   weight: 'bold'   });
+safeRegisterFont(path.join(FONTS_DIR, 'Freight.ttf'),           { family: 'Freight',     weight: 'normal' });
+safeRegisterFont(path.join(FONTS_DIR, 'Playfair.ttf'),          { family: 'Playfair',    weight: 'normal' });
 
 // ── EXPORT 1: calculateBoundingBox ───────────────────────────────────────────
 export function calculateBoundingBox(
