@@ -4493,8 +4493,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  // ── design_opacity_ handler ──
   if (data.startsWith('design_opacity_')) {
-    const opacityValue = parseInt(data.replace('design_opacity_', ''));
+    const opacityValue = parseInt(data.replace('design_opacity_', ''), 10);
     if (isNaN(opacityValue)) return;
 
     const { getDesignState, setDesignState } = await import('../../utils/designState');
@@ -4505,11 +4506,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
-    await ctx.answerCallbackQuery({
-      text: `✅ الشفافية: ${opacityValue}%`
-    }).catch(() => {});
-
-    await generateDesignPreview(ctx, state);
+    await ctx.answerCallbackQuery().catch(() => {});
+    // CRITICAL FIX: Live update the UI, do NOT delete or regenerate preview blindly
+    await showConsolidatedFontUI(ctx, state);
     return;
   }
 
@@ -4940,36 +4939,27 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
   rows.push([{
     text: '🎨 شفافية النص',
     callback_data: 'design_noop',
-    // @ts-ignore
-    color: '#C62828',
+    style: 'danger' as const
   }]);
-  const opacityLevels = [
-    { label: '100%', value: 100 },
-    { label: '80%',  value: 80  },
-    { label: '60%',  value: 60  },
-    { label: '40%',  value: 40  },
-    { label: '20%',  value: 20  },
-    { label: '10%',  value: 10  },
-  ];
+  
+  const opacityLevels = [100, 80, 60, 40, 20, 10];
   const currentOpacity = (state.textOpacity ?? 100);
   const opacityRow1: any[] = [];
   const opacityRow2: any[] = [];
-  const opacityRow3: any[] = [];
+  
   opacityLevels.forEach((op, i) => {
-    const isSelected = currentOpacity === op.value;
+    const isSelected = currentOpacity === op;
     const btn = {
-      text: isSelected ? `✅ ${op.label}` : op.label,
-      callback_data: `design_opacity_${op.value}`,
-      // @ts-ignore
-      color: isSelected ? '#1565C0' : '#1E90FF',
+      text: isSelected ? `✅ ${op}%` : `${op}%`,
+      callback_data: `design_opacity_${op}`,
+      style: 'primary' as const
     };
-    if (i < 2) opacityRow1.push(btn);
-    else if (i < 4) opacityRow2.push(btn);
-    else opacityRow3.push(btn);
+    if (i < 3) opacityRow1.push(btn);
+    else opacityRow2.push(btn);
   });
+  
   rows.push(opacityRow1);
   rows.push(opacityRow2);
-  rows.push(opacityRow3);
 
   // 6. ACTIONS
   rows.push([{ text: '✅ موافق', callback_data: 'design_font_confirm', style: 'success' as const }]);
