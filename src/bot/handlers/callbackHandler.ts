@@ -4481,35 +4481,40 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
 
-    // Fix: Base nudge is 50px, multiplied by user's selected speed
-    const BASE_NUDGE = 50;
-    const speed = state.nudgeSpeed || 1;
-    const NUDGE_AMOUNT = BASE_NUDGE * speed;
+    // Reset old absolute pixels if they exist from previous versions
+    if (state.offsetX && (state.offsetX > 1 || state.offsetX < -1)) state.offsetX = 0;
+    if (state.offsetY && (state.offsetY > 1 || state.offsetY < -1)) state.offsetY = 0;
 
-    if (dir === 'up') state.offsetY = (state.offsetY || 0) - NUDGE_AMOUNT;
-    if (dir === 'down') state.offsetY = (state.offsetY || 0) + NUDGE_AMOUNT;
-    if (dir === 'left') state.offsetX = (state.offsetX || 0) - NUDGE_AMOUNT;
-    if (dir === 'right') state.offsetX = (state.offsetX || 0) + NUDGE_AMOUNT;
+    // RELATIVE NUDGE: Fraction of the image
+    const speedPct = state.nudgeSpeedPct || 2;
+    const nudgeFraction = speedPct / 100; // e.g., 2% -> 0.02
+
+    if (dir === 'up') state.offsetY = (state.offsetY || 0) - nudgeFraction;
+    if (dir === 'down') state.offsetY = (state.offsetY || 0) + nudgeFraction;
+    if (dir === 'left') state.offsetX = (state.offsetX || 0) - nudgeFraction;
+    if (dir === 'right') state.offsetX = (state.offsetX || 0) + nudgeFraction;
 
     setDesignState(ctx.from!.id, state);
     await ctx.answerCallbackQuery().catch(() => {});
-    await showConsolidatedFontUI(ctx, state); // Live update
+    await showConsolidatedFontUI(ctx, state); // Live UI update
     return;
   }
 
   // ── design_speed_ handler ──
   if (data.startsWith('design_speed_')) {
-    const speedVal = parseInt(data.replace('design_speed_', ''), 10);
+    const speedVal = parseFloat(data.replace('design_speed_', ''));
+    if (isNaN(speedVal)) return;
+
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
 
-    state.nudgeSpeed = speedVal;
+    state.nudgeSpeedPct = speedVal;
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
     await ctx.answerCallbackQuery().catch(() => {});
-    await showConsolidatedFontUI(ctx, state); // Live update without closing menu
+    await showConsolidatedFontUI(ctx, state); // Live update, no message deletion
     return;
   }
 
@@ -4948,13 +4953,20 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     { text: '⬅️ يسار', callback_data: 'design_nudge_left', style: 'primary' as const }
   ]);
 
-  // NUDGE SPEED CONTROLS
-  const currentSpeed = state.nudgeSpeed || 1;
-  rows.push([
-    { text: currentSpeed === 4 ? '✅ سريع جداً' : 'سريع جداً', callback_data: 'design_speed_4', style: 'primary' as const },
-    { text: currentSpeed === 2 ? '✅ متوسط' : 'متوسط', callback_data: 'design_speed_2', style: 'primary' as const },
-    { text: currentSpeed === 1 ? '✅ طبيعي' : 'طبيعي', callback_data: 'design_speed_1', style: 'primary' as const }
-  ]);
+  // NUDGE SPEED CONTROLS (5 Buttons in one row)
+  const currentSpeed = state.nudgeSpeedPct || 2; // Default is 2%
+  const speedOptions = [
+    { label: '8%', val: 8 },
+    { label: '4%', val: 4 },
+    { label: 'طبيعي', val: 2 },
+    { label: '1%', val: 1 },
+    { label: '0.5%', val: 0.5 }
+  ];
+  rows.push(speedOptions.map(s => ({
+    text: currentSpeed === s.val ? `✅ ${s.label}` : s.label,
+    callback_data: `design_speed_${s.val}`,
+    style: 'primary' as const
+  })));
 
   // 5.5 SCALE (ZOOM) CONTROLS
   rows.push([{ text: '🔍 تكبير وتصغير', callback_data: 'design_noop', style: 'danger' as const }]);

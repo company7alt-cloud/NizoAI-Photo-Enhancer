@@ -150,8 +150,9 @@ export async function compositeDesign(
   const { x, y, w, h } = bbox;
 
   // 3. Generate Overlay & Composite (full-screen canvas prevents clipping)
-  const moveX = state.offsetX || 0;
-  const moveY = state.offsetY || 0;
+  // Multiply the fraction by the total processed image Width (W) and Height (H)
+  const moveX = (state.offsetX || 0) * W;
+  const moveY = (state.offsetY || 0) * H;
   const scale = state.scaleMultiplier || 1.0;
   let finalPipeline = sharp(processedBaseBuffer);
 
