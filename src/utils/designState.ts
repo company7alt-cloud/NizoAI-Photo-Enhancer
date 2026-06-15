@@ -13,6 +13,7 @@ export interface DesignState {
   selectedWeight: string;         // e.g. 'Light', 'Regular', 'Bold', 'Black'
   fontWeight?: string;
   textColor: string;              // hex e.g. '#FFFFFF'
+  textOpacity?: number; // 10 | 20 | 40 | 60 | 80 | 100
   offsetX?: number;
   offsetY?: number;
   scaleMultiplier?: number;

@@ -180,7 +180,13 @@ export async function compositeDesign(
     const cssWeight = state.fontWeight || 'normal';
     const fontFamily = state.selectedFont || 'Almarai';
     ctx.font = `${cssWeight} ${finalFontSize}px "${fontFamily}"`;
-    ctx.fillStyle = state.textColor || '#FFFFFF';
+    const opacity = (state.textOpacity ?? 100) / 100;
+    const hexColor = state.textColor || '#FFFFFF';
+    // Convert hex + opacity to rgba
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
