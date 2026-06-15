@@ -4481,7 +4481,11 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
 
-    const NUDGE_AMOUNT = 20; // Approx 2-3mm on 4k canvas
+    // Fix: Base nudge is 50px, multiplied by user's selected speed
+    const BASE_NUDGE = 50;
+    const speed = state.nudgeSpeed || 1;
+    const NUDGE_AMOUNT = BASE_NUDGE * speed;
+
     if (dir === 'up') state.offsetY = (state.offsetY || 0) - NUDGE_AMOUNT;
     if (dir === 'down') state.offsetY = (state.offsetY || 0) + NUDGE_AMOUNT;
     if (dir === 'left') state.offsetX = (state.offsetX || 0) - NUDGE_AMOUNT;
@@ -4489,7 +4493,23 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
     setDesignState(ctx.from!.id, state);
     await ctx.answerCallbackQuery().catch(() => {});
-    await showConsolidatedFontUI(ctx, state);
+    await showConsolidatedFontUI(ctx, state); // Live update
+    return;
+  }
+
+  // ── design_speed_ handler ──
+  if (data.startsWith('design_speed_')) {
+    const speedVal = parseInt(data.replace('design_speed_', ''), 10);
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
+    state.nudgeSpeed = speedVal;
+    state.lastActivity = Date.now();
+    setDesignState(ctx.from!.id, state);
+
+    await ctx.answerCallbackQuery().catch(() => {});
+    await showConsolidatedFontUI(ctx, state); // Live update without closing menu
     return;
   }
 
@@ -4926,6 +4946,14 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     { text: '⬇️ أسفل', callback_data: 'design_nudge_down', style: 'primary' as const },
     { text: '➡️ يمين', callback_data: 'design_nudge_right', style: 'primary' as const },
     { text: '⬅️ يسار', callback_data: 'design_nudge_left', style: 'primary' as const }
+  ]);
+
+  // NUDGE SPEED CONTROLS
+  const currentSpeed = state.nudgeSpeed || 1;
+  rows.push([
+    { text: currentSpeed === 4 ? '✅ سريع جداً' : 'سريع جداً', callback_data: 'design_speed_4', style: 'primary' as const },
+    { text: currentSpeed === 2 ? '✅ متوسط' : 'متوسط', callback_data: 'design_speed_2', style: 'primary' as const },
+    { text: currentSpeed === 1 ? '✅ طبيعي' : 'طبيعي', callback_data: 'design_speed_1', style: 'primary' as const }
   ]);
 
   // 5.5 SCALE (ZOOM) CONTROLS

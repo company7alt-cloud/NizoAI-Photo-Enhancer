@@ -14,6 +14,7 @@ export interface DesignState {
   fontWeight?: string;
   textColor: string;              // hex e.g. '#FFFFFF'
   textOpacity?: number; // 10 | 20 | 40 | 60 | 80 | 100
+  nudgeSpeed?: number; // 1 | 2 | 4
   offsetX?: number;
   offsetY?: number;
   scaleMultiplier?: number;
