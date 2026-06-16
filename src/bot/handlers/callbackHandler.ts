@@ -287,6 +287,70 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
 
+  if (data.startsWith('captcha_') && data !== 'captcha_refresh') {
+    const { captchaStore, generateCaptcha } = await import('../../services/captchaService');
+    const userId = ctx.from!.id;
+    const selectedIndex = parseInt(data.replace('captcha_', ''), 10);
+    const entry = captchaStore.get(userId);
+
+    if (!entry) {
+      await ctx.answerCallbackQuery({ text: '⚠️ انتهت صلاحية التحقق، أعد المحاولة.', show_alert: true }).catch(() => {});
+      return;
+    }
+
+    if (selectedIndex === entry.correctIndex) {
+      captchaStore.delete(userId);
+      await User.updateOne({ telegramId: userId }, { isVerified: true });
+      await ctx.answerCallbackQuery({ text: '✅ تم التحقق! مرحباً بك 🎉', show_alert: true }).catch(() => {});
+      await ctx.deleteMessage().catch(() => {});
+      return;
+    }
+
+    entry.attempts += 1;
+    if (entry.attempts >= 3) {
+      captchaStore.delete(userId);
+      const { targetEmoji, keyboard } = generateCaptcha(userId);
+      await ctx.answerCallbackQuery({ text: '❌ ثلاث محاولات خاطئة! تم تجديد التحقق.', show_alert: true }).catch(() => {});
+      await ctx.editMessageText(
+        `🔐 <b>تحقق أمني</b>\n\n` +
+        `للحماية من البوتات، اضغط على الزر الذي يحتوي على:\n\n` +
+        `<b>${targetEmoji}</b>\n\n` +
+        `<i>لديك 3 محاولات فقط</i>`,
+        { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } }
+      ).catch(() => {});
+      return;
+    }
+
+    const remaining = 3 - entry.attempts;
+    const { generateCaptcha: regenCaptcha } = await import('../../services/captchaService');
+    const { targetEmoji, keyboard } = regenCaptcha(userId);
+    entry.correctIndex = captchaStore.get(userId)!.correctIndex;
+    await ctx.answerCallbackQuery({ text: `❌ خاطئ! تبقى لك ${remaining} محاولات.`, show_alert: true }).catch(() => {});
+    await ctx.editMessageText(
+      `🔐 <b>تحقق أمني</b>\n\n` +
+      `للحماية من البوتات، اضغط على الزر الذي يحتوي على:\n\n` +
+      `<b>${targetEmoji}</b>\n\n` +
+      `<i>تبقى لك ${remaining} محاولات</i>`,
+      { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } }
+    ).catch(() => {});
+    return;
+  }
+
+  if (data === 'captcha_refresh') {
+    const { generateCaptcha } = await import('../../services/captchaService');
+    const userId = ctx.from!.id;
+    const { targetEmoji, keyboard } = generateCaptcha(userId);
+    await ctx.answerCallbackQuery({ text: '🔄 تم تجديد التحقق' }).catch(() => {});
+    await ctx.editMessageText(
+      `🔐 <b>تحقق أمني</b>\n\n` +
+      `للحماية من البوتات، اضغط على الزر الذي يحتوي على:\n\n` +
+      `<b>${targetEmoji}</b>\n\n` +
+      `<i>لديك 3 محاولات فقط</i>`,
+      { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } }
+    ).catch(() => {});
+    return;
+  }
+
   if (data === 'check_force_sub') {
     await ctx.answerCallbackQuery().catch(() => { });
 
@@ -315,11 +379,24 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     }
 
     if (allSubscribed) {
-      await ctx.answerCallbackQuery({
-        text: '✅ تم التحقق! يمكنك استخدام البوت الآن 🎉',
-        show_alert: true,
-      }).catch(() => { });
-      await ctx.deleteMessage().catch(() => { });
+      await ctx.answerCallbackQuery().catch(() => { });
+      const verifyUser = await User.findOne({ telegramId: userId });
+      if (verifyUser?.isVerified) {
+        await ctx.deleteMessage().catch(() => { });
+        return;
+      }
+      const { generateCaptcha } = await import('../../services/captchaService');
+      const { targetEmoji, keyboard } = generateCaptcha(userId);
+      await ctx.editMessageText(
+        `🔐 <b>تحقق أمني</b>\n\n` +
+        `للحماية من البوتات، اضغط على الزر الذي يحتوي على:\n\n` +
+        `<b>${targetEmoji}</b>\n\n` +
+        `<i>لديك 3 محاولات فقط</i>`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: keyboard },
+        }
+      ).catch(() => { });
     } else {
       await ctx.answerCallbackQuery({
         text: '❌ لم تشترك في جميع القنوات بعد!',

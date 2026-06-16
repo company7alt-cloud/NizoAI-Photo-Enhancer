@@ -35,6 +35,7 @@ export interface IUser extends Document {
   supportSessionAdminId: string | null;
   adminAwaitingInput: string | null;
   adminTargetUserId: string | null;
+  isVerified: boolean;
   isBlocked: boolean;
   lastSeenAt: Date | null;
   dailyReminderEnabled: boolean;
@@ -252,6 +253,7 @@ const UserSchema = new Schema<IUser>(
     supportSessionAdminId: { type: String, default: null },
     adminAwaitingInput: { type: String, default: null },
     adminTargetUserId: { type: String, default: null },
+    isVerified: { type: Boolean, default: false },
     isBlocked: { type: Boolean, default: false },
     lastSeenAt: { type: Date, default: null },
     dailyReminderEnabled: { type: Boolean, default: false },
