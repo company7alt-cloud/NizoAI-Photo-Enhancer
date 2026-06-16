@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NizoAI — استوديو التصميم المجاني</title>
+<meta name="description" content="دليل شامل لاستخدام ميزة التصميم المجاني في بوت NizoAI — أضف نصوصاً وصوراً على صورك بدقة احترافية مجاناً.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Almarai:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--accent:#3390ec;--green:#4caf50;--red:#e53935;
+  --card:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.08);
+  --text:#e8eaed;--muted:#8b949e;--radius:16px;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Tajawal',sans-serif;font-size:15px;line-height:1.7;
+  min-height:100vh;overflow-x:hidden;
+}
+canvas#stars{position:fixed;inset:0;z-index:0;pointer-events:none}
+.wrap{position:relative;z-index:1;max-width:720px;margin:0 auto;padding:24px 16px 60px}
+
+/* HERO */
+.hero{text-align:center;padding:60px 16px 40px}
+.hero h1{font-family:'Almarai',sans-serif;font-size:clamp(1.6rem,5vw,2.4rem);font-weight:800;color:#fff;line-height:1.3}
+.hero-line{width:60px;height:3px;background:var(--accent);border-radius:2px;margin:14px auto 18px}
+.hero p{color:var(--muted);font-size:15px;max-width:480px;margin:0 auto}
+.img-slot{display:block;margin:20px auto}
+.section-img{max-width:100%;border-radius:12px;border:1px solid var(--border);display:block;margin:0 auto}
+.hero-placeholder{max-width:480px;border-radius:12px;border:2px solid var(--accent);margin:20px auto;display:none}
+.hero-img{max-width:100%;border-radius:10px;display:block}
+
+/* CARDS */
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  box-shadow:0 8px 32px rgba(0,0,0,.4);padding:28px 24px;margin-bottom:20px;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  opacity:0;transform:translateY(30px);transition:opacity .5s ease,transform .5s ease;
+}
+.card.visible{opacity:1;transform:translateY(0)}
+.card-title{font-family:'Almarai',sans-serif;font-size:1.2rem;font-weight:700;color:#fff;margin-bottom:16px}
+
+/* STEPS */
+.steps{display:flex;flex-direction:column;gap:12px;margin-bottom:20px}
+.step{display:flex;align-items:flex-start;gap:14px;background:rgba(255,255,255,.03);border-radius:12px;padding:14px}
+.step-num{flex-shrink:0;width:36px;height:36px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;color:#fff}
+.step-text{font-size:14px;padding-top:6px}
+
+/* GRID DEMO */
+.grid-demo{display:grid;grid-template-columns:repeat(5,44px);gap:4px;margin:16px auto;width:fit-content}
+.grid-cell{width:44px;height:44px;background:#1e2430;border:1px solid rgba(255,255,255,.1);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
+.grid-cell.sel{background:var(--accent);color:#fff;font-weight:700}
+.grid-label{text-align:center;font-size:12px;color:var(--muted);margin-top:8px}
+
+/* FAKE KEYBOARD BUTTONS */
+.kb-wrap{display:flex;flex-direction:column;gap:6px;margin:16px 0}
+.kb-row{display:flex;gap:6px;flex-wrap:wrap}
+.kb-btn{
+  background:#1e2430;border:1px solid var(--accent);color:var(--accent);
+  border-radius:8px;padding:8px 16px;font-size:13px;font-family:'Tajawal',sans-serif;
+  cursor:default;transition:filter .15s;
+}
+.kb-btn:hover{filter:brightness(1.15)}
+.kb-btn.active{background:var(--accent);color:#fff}
+.kb-btn.locked{background:#1e2430;border-color:#444;color:#444;cursor:default}
+.kb-btn.sq{width:52px;height:52px;display:flex;align-items:center;justify-content:center;padding:0;font-size:1.1rem;border-radius:10px}
+
+/* FONT PILLS */
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.pill{background:rgba(51,144,236,.15);border:1px solid var(--accent);color:var(--text);border-radius:20px;padding:4px 14px;font-size:13px}
+.sub-cols{display:flex;gap:24px;flex-wrap:wrap}
+.sub-col{flex:1;min-width:140px}
+.sub-col h4{font-size:13px;color:var(--muted);margin-bottom:8px}
+
+/* OPACITY PILLS */
+.op-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:280px}
+
+/* COLOR SWATCHES */
+.swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:16px 0}
+.swatch-wrap{display:flex;flex-direction:column;align-items:center;gap:6px}
+.swatch{width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,.15)}
+.swatch.selected{outline:2px solid var(--accent);outline-offset:3px}
+.swatch-label{font-size:11px;color:var(--muted);text-align:center}
+
+/* FEATURE ROWS */
+.feature-row{border-top:1px solid var(--border);padding:16px 0;display:flex;flex-direction:column;gap:8px}
+.feature-row:first-child{border-top:none}
+.feature-title{font-weight:700;font-size:14px;color:#fff}
+.feature-desc{font-size:13px;color:var(--muted)}
+
+/* TIP BOX */
+.tip-box{background:rgba(51,144,236,.1);border-right:3px solid var(--accent);padding:12px 16px;border-radius:8px;font-size:13px;margin:14px 0}
+
+/* TIPS LIST */
+.tips{display:flex;flex-direction:column;gap:12px}
+.tip-item{display:flex;align-items:flex-start;gap:12px;background:rgba(255,255,255,.03);border-radius:10px;padding:12px}
+.tip-badge{flex-shrink:0;font-size:1.2rem;line-height:1}
+.tip-text{font-size:13px;line-height:1.6}
+
+/* DIRECTION PAD */
+.dpad{display:grid;grid-template-columns:52px 52px 52px;grid-template-rows:52px 52px 52px;gap:6px;width:fit-content;margin:14px auto;place-items:center}
+
+/* FOOTER */
+footer{text-align:center;color:#555d6b;font-size:13px;padding:40px 16px 20px;line-height:2}
+
+@media(max-width:600px){
+  .sub-cols{flex-direction:column}
+  .op-grid{max-width:100%}
+  .swatches{grid-template-columns:repeat(4,1fr)}
+  .card{padding:20px 16px}
+}
+@media(prefers-reduced-motion:reduce){
+  .card{transition:none}
+  canvas#stars{display:none}
+}
+</style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<div class="wrap">
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>🟦 استوديو التصميم المجاني</h1>
+    <div class="hero-line"></div>
+    <p>أضف نصوصاً وصوراً على صورك بدقة احترافية — مجاناً تماماً</p>
+    <div class="hero-placeholder" id="hero-ph">
+      <!-- PLACEHOLDER: INTRO_GIF — replace src with your intro GIF/image -->
+      <img src="" alt="مقدمة التصميم المجاني" class="hero-img" onerror="this.closest('#hero-ph').style.display='none'">
+    </div>
+  </div>
+
+  <!-- SECTION 1 -->
+  <div class="card">
+    <div class="card-title">🚀 كيف تبدأ؟</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text">اضغط على زر <b>🟦 تصميم مجاني</b> من القائمة الرئيسية</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">أرسل الصورة التي تريد التصميم عليها</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">اختر حجم الشبكة ثم حدد المربعات التي تريد التصميم فيها</div>
+      </div>
+    </div>
+    <div class="img-slot">
+      <!-- PLACEHOLDER: STEPS_IMAGE — replace src with your screenshot -->
+      <img src="" alt="خطوات البداية" class="section-img" onerror="this.closest('.img-slot').style.display='none'">
+    </div>
+  </div>
+
+  <!-- SECTION 2 -->
+  <div class="card">
+    <div class="card-title">📐 نظام الشبكة الذكي</div>
+    <p style="font-size:14px;color:var(--muted);margin-bottom:16px">
+      عند إرسال الصورة، يتم تقسيمها إلى شبكة من المربعات المرقمة.
+      تختار الأرقام التي تريد وضع التصميم فيها — كلما زاد عدد المربعات، زادت دقة التحكم في المكان.
+    </p>
+    <div class="grid-demo" id="grid-demo"></div>
+    <div class="grid-label">المربعات الزرقاء = المنطقة المحددة للتصميم</div>
+    <div class="kb-wrap" style="margin-top:20px">
+      <div class="kb-row">
+        <div class="kb-btn">30 تقسيم</div>
+        <div class="kb-btn">40 تقسيم</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-btn">50 تقسيم</div>
+        <div class="kb-btn">70 تقسيم</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-btn">80 تقسيم</div>
+        <div class="kb-btn locked">🔒 100 تقسيم</div>
+      </div>
+    </div>
+    <div class="img-slot">
+      <!-- PLACEHOLDER: GRID_IMAGE — replace src with your screenshot -->
+      <img src="" alt="شرح الشبكة" class="section-img" onerror="this.closest('.img-slot').style.display='none'">
+    </div>
+  </div>
+
+  <!-- SECTION 3 -->
+  <div class="card">
+    <div class="card-title">🔤 الخطوط والأوزان</div>
+    <div class="sub-cols">
+      <div class="sub-col">
+        <h4>الخطوط العربية</h4>
+        <div class="pills">
+          <span class="pill">Almarai — قلم عريض</span>
+          <span class="pill">ModernPro</span>
+          <span class="pill">NotoNaskh</span>
+          <span class="pill">Zeyada</span>
+        </div>
+      </div>
+      <div class="sub-col">
+        <h4>الخطوط الإنجليزية</h4>
+        <div class="pills">
+          <span class="pill">Blacksword</span>
+          <span class="pill">Playfair</span>
+          <span class="pill">Cormorant</span>
+          <span class="pill">Freight</span>
+          <span class="pill">Bolding</span>
+          <span class="pill">Canela Deck</span>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:18px">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px">أوزان خط Almarai:</div>
+      <div class="kb-wrap">
+        <div class="kb-row">
+          <div class="kb-btn">🪶 رفيع</div>
+          <div class="kb-btn">📝 عادي</div>
+        </div>
+        <div class="kb-row">
+          <div class="kb-btn active">✅ قلم عريض</div>
+          <div class="kb-btn" style="color:var(--muted)">💪 ثخين جداً</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">الوزن المحدد يظهر بعلامة ✅</div>
+    </div>
+    <div class="img-slot">
+      <!-- PLACEHOLDER: FONTS_IMAGE — replace src with your screenshot -->
+      <img src="" alt="اختيار الخطوط" class="section-img" onerror="this.closest('.img-slot').style.display='none'">
+    </div>
+  </div>
+
+  <!-- SECTION 4 -->
+  <div class="card">
+    <div class="card-title">🎛️ التحريك الدقيق بالنسبة المئوية</div>
+    <p style="font-size:14px;color:var(--muted);margin-bottom:16px">
+      المحرك يستخدم نسب مئوية من حجم الصورة — وليس بكسلات ثابتة.
+      هذا يعني أن التحريك يعمل بدقة مثالية على أي دقة (حتى 4K).
+    </p>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:8px">اختيار السرعة:</div>
+    <div class="kb-row" style="flex-wrap:wrap;gap:6px">
+      <div class="kb-btn">8%</div>
+      <div class="kb-btn">4%</div>
+      <div class="kb-btn active">✅ طبيعي</div>
+      <div class="kb-btn">1%</div>
+      <div class="kb-btn">0.5%</div>
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin:18px 0 8px">لوحة الاتجاهات:</div>
+    <div class="dpad">
+      <div></div>
+      <div class="kb-btn sq">⬆️</div>
+      <div></div>
+      <div class="kb-btn sq">⬅️</div>
+      <div></div>
+      <div class="kb-btn sq">➡️</div>
+      <div></div>
+      <div class="kb-btn sq">⬇️</div>
+      <div></div>
+    </div>
+    <div class="tip-box">💡 اختر السرعة المناسبة أولاً ثم استخدم أسهم التحريك لضبط المكان بدقة</div>
+    <div class="img-slot">
+      <!-- PLACEHOLDER: MOVEMENT_IMAGE — replace src with your screenshot -->
+      <img src="" alt="التحريك والسرعات" class="section-img" onerror="this.closest('.img-slot').style.display='none'">
+    </div>
+  </div>
+
+  <!-- SECTION 5 -->
+  <div class="card">
+    <div class="card-title">🔍 التكبير والشفافية</div>
+    <div class="feature-row">
+      <div class="feature-title">🔍 التكبير / التصغير</div>
+      <div class="feature-desc">كبّر النص أو صغّره بضغطة زر، دون أي فقد في الجودة.</div>
+      <div class="kb-row" style="margin-top:8px">
+        <div class="kb-btn">➖ تصغير</div>
+        <div class="kb-btn">➕ تكبير</div>
+      </div>
+    </div>
+    <div class="feature-row">
+      <div class="feature-title">💧 شفافية النص</div>
+      <div class="feature-desc">امزج النص مع الخلفية بمستويات شفافية من 10% إلى 100%.</div>
+      <div class="op-grid" style="margin-top:10px">
+        <div class="kb-btn active" style="text-align:center;padding:8px 4px">✅ 100%</div>
+        <div class="kb-btn" style="text-align:center;padding:8px 4px">80%</div>
+        <div class="kb-btn" style="text-align:center;padding:8px 4px">60%</div>
+        <div class="kb-btn" style="text-align:center;padding:8px 4px">40%</div>
+        <div class="kb-btn" style="text-align:center;padding:8px 4px">20%</div>
+        <div class="kb-btn" style="text-align:center;padding:8px 4px">10%</div>
+      </div>
+    </div>
+    <div class="feature-row">
+      <div class="feature-title">🌑 ظل النص</div>
+      <div class="feature-desc">أضف ظلاً ناعماً أو قوياً ليبرز النص على الخلفيات المعقدة.</div>
+    </div>
+    <div class="img-slot">
+      <!-- PLACEHOLDER: OPACITY_IMAGE — replace src with your screenshot -->
+      <img src="" alt="التكبير والشفافية" class="section-img" onerror="this.closest('.img-slot').style.display='none'">
+    </div>
+  </div>
+
+  <!-- SECTION 6 -->
+  <div class="card">
+    <div class="card-title">🎨 اختيار اللون</div>
+    <p style="font-size:14px;color:var(--muted);margin-bottom:16px">12 لون جاهز للاختيار، وسيتم إضافة المزيد قريباً.</p>
+    <div class="swatches">
+      <div class="swatch-wrap"><div class="swatch selected" style="background:#fff"></div><div class="swatch-label">أبيض</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#000;border-color:#444"></div><div class="swatch-label">أسود</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#f00"></div><div class="swatch-label">أحمر</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#00f"></div><div class="swatch-label">أزرق</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#00cc44"></div><div class="swatch-label">أخضر</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#ffd700"></div><div class="swatch-label">أصفر</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#f60"></div><div class="swatch-label">برتقالي</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#8b00ff"></div><div class="swatch-label">بنفسجي</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#ff69b4"></div><div class="swatch-label">وردي</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#00bfff"></div><div class="swatch-label">سماوي</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#8b4513"></div><div class="swatch-label">بني</div></div>
+      <div class="swatch-wrap"><div class="swatch" style="background:#808080"></div><div class="swatch-label">رمادي</div></div>
+    </div>
+    <div class="img-slot">
+      <!-- PLACEHOLDER: COLOR_IMAGE — replace src with your screenshot -->
+      <img src="" alt="اختيار اللون" class="section-img" onerror="this.closest('.img-slot').style.display='none'">
+    </div>
+  </div>
+
+  <!-- SECTION 7 -->
+  <div class="card">
+    <div class="card-title">⭐ نصائح للحصول على أفضل نتيجة</div>
+    <div class="tips">
+      <div class="tip-item"><div class="tip-badge">🎯</div><div class="tip-text">ابدأ بحجم شبكة كبير (80 مربع) لدقة أعلى في التحديد</div></div>
+      <div class="tip-item"><div class="tip-badge">🖼️</div><div class="tip-text">الصور بصيغة PNG بخلفية شفافة تعطي أفضل نتيجة عند الإضافة فوق صورة</div></div>
+      <div class="tip-item"><div class="tip-badge">⚡</div><div class="tip-text">استخدم سرعة 0.5% للضبط الدقيق، و8% للتنقل السريع</div></div>
+      <div class="tip-item"><div class="tip-badge">💎</div><div class="tip-text">التصميم مجاني تماماً — التأثيرات (رمادي، عكس، تشبع) تخصم محاولتين فقط</div></div>
+      <div class="tip-item"><div class="tip-badge">🔄</div><div class="tip-text">يمكنك إرسال صور متعددة وتصميم كل واحدة منها بشكل منفصل</div></div>
+    </div>
+  </div>
+
+  <footer>
+    🤖 NizoAI Bot — استوديو التصميم المجاني<br>
+    جميع الحقوق محفوظة © 2025
+  </footer>
+</div>
+
+<script>
+// ── Starry canvas ──────────────────────────────────────────────
+(function(){
+  const c=document.getElementById('stars');
+  const ctx=c.getContext('2d');
+  let stars=[];
+  function resize(){c.width=innerWidth;c.height=innerHeight}
+  function init(){
+    stars=[];
+    for(let i=0;i<120;i++){
+      stars.push({
+        x:Math.random()*c.width,y:Math.random()*c.height,
+        r:0.8+Math.random()*1.2,phase:Math.random()*Math.PI*2,
+        speed:0.5+Math.random()*1.5,baseA:0.3+Math.random()*0.6
+      });
+    }
+  }
+  function draw(t){
+    ctx.clearRect(0,0,c.width,c.height);
+    for(const s of stars){
+      const a=s.baseA*(0.5+0.5*Math.sin(t*s.speed*0.001+s.phase));
+      ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+      ctx.fillStyle=`rgba(255,255,255,${a})`;ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  resize();init();
+  window.addEventListener('resize',()=>{resize();init()});
+  requestAnimationFrame(draw);
+})();
+
+// ── Grid demo ──────────────────────────────────────────────────
+(function(){
+  const selected=[7,8,12,13];
+  const el=document.getElementById('grid-demo');
+  for(let i=1;i<=20;i++){
+    const d=document.createElement('div');
+    d.className='grid-cell'+(selected.includes(i)?' sel':'');
+    d.textContent=i;
+    el.appendChild(d);
+  }
+})();
+
+// ── IntersectionObserver fade-in ───────────────────────────────
+(function(){
+  const cards=document.querySelectorAll('.card');
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach((e,i)=>{
+      if(e.isIntersecting){
+        setTimeout(()=>e.target.classList.add('visible'),i*80);
+        obs.unobserve(e.target);
+      }
+    });
+  },{threshold:0.08});
+  cards.forEach(c=>obs.observe(c));
+})();
+
+// Show hero image only when src is set
+(function(){
+  const ph=document.getElementById('hero-ph');
+  const img=ph&&ph.querySelector('img');
+  if(img&&img.src&&img.src!==location.href)ph.style.display='block';
+})();
+</script>
+</body>
+</html>

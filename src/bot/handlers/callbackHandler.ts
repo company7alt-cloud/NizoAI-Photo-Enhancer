@@ -4024,7 +4024,16 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       {
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' }]]
+          inline_keyboard: [
+            [
+              {
+                text: '📖 تعليمات الاستخدام (شرح بالصور)',
+                web_app: { url: 'https://nizoai.github.io/free-design-tutorial' }
+              }
+            ],
+            // @ts-ignore
+            [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
+          ]
         }
       }
     );
