@@ -18,7 +18,7 @@ import cron from 'node-cron';
 
 import { BotContext, isAdmin, SessionData } from './utils/validators';
 import { safeReplyWithPhoto } from './utils/assetGuard';
-import { connectDatabase } from './database/connection';
+import { connectDatabase, waitForConnection } from './database/connection';
 import { Settings } from './database/models/Settings';
 import { User } from './database/models/User';
 // ForceSubChannel static import removed — clawback system disabled
@@ -301,6 +301,7 @@ imageBot.use(async (ctx: BotContext, next: NextFunction): Promise<void> => {
   const userId = ctx.from?.id;
   if (!userId) return next();
   try {
+    await waitForConnection();
     const user = await User.findOne({ telegramId: userId });
     if (user?.isBanned) {
       const msg = '🚫 أنت محظور من استخدام البوت.';

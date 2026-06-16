@@ -49,6 +49,29 @@ mongoose.connection.on('reconnected', () => {
   console.log('[Database] ✅ Reconnected to MongoDB');
 });
 
+export async function waitForConnection(timeoutMs = 20000): Promise<void> {
+  const state = mongoose.connection.readyState;
+  if (state === 1) return;
+  if (state === 0 || state === 3) {
+    mongoose.connect(process.env.MONGODB_URI!, {
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS:          0,
+      heartbeatFrequencyMS:     10000,
+      maxPoolSize:              10,
+      minPoolSize:              2,
+      retryWrites:              true,
+      retryReads:               true,
+    }).catch(() => {});
+  }
+  const start = Date.now();
+  while (mongoose.connection.readyState !== 1) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('[Database] Timed out waiting for MongoDB reconnection');
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
 // Graceful shutdown — closes DB before process exits
 export async function closeDatabaseConnection(): Promise<void> {
   await mongoose.connection.close();
