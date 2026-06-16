@@ -810,7 +810,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
               // @ts-ignore
               { text: '📝 نص', callback_data: 'design_content_text', style: 'primary' as const },
               // @ts-ignore
-              { text: '🖼️ صورة', callback_data: 'design_content_image', style: 'primary' as const }
+              { text: '🖼️ صورة', callback_data: 'under_maintenance', style: 'primary' as const }
             ],
             [
               // @ts-ignore

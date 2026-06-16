@@ -168,6 +168,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
   if (!data || !ctx.from) return;
 
+  if (data === 'under_maintenance') {
+    await ctx.answerCallbackQuery({
+      text: '🛠️ هذه الميزة تحت الصيانة حالياً\n\n✨ سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n💙 نعتذر عن الإزعاج',
+      show_alert: true
+    }).catch(() => {});
+    return;
+  }
+
   // ── [KILL-SWITCH — ABSOLUTE TOP] Admin Toggle Internet Fetcher ──
   if (data === 'admin_toggle_internet_fetcher') {
     if (!isAdmin(ctx.from!.id)) {
@@ -5072,12 +5080,12 @@ async function generateDesignPreview(ctx: any, state: any) {
     const replyMarkup = {
       inline_keyboard: [
         [
-          { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'design_eff_gray', style: 'primary' },
-          { text: state.imageEffects.saturate ? '✅ تشبع' : '🔆 تشبع', callback_data: 'design_eff_sat', style: 'primary' },
+          { text: state.imageEffects.grayscale ? '✅ رمادي' : '🔲 رمادي', callback_data: 'under_maintenance', style: 'primary' },
+          { text: state.imageEffects.saturate ? '✅ تشبع' : '🔆 تشبع', callback_data: 'under_maintenance', style: 'primary' },
         ],
         [
-          { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'design_eff_inv', style: 'primary' },
-          { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'design_eff_ups', style: 'primary' },
+          { text: state.imageEffects.invert ? '✅ عكس' : '🔄 عكس الألوان', callback_data: 'under_maintenance', style: 'primary' },
+          { text: state.imageEffects.upscale ? '✅ 2x' : '🚀 تكبير (2x)', callback_data: 'under_maintenance', style: 'primary' },
         ],
         [
           { text: '✅ تطبيق وحفظ', callback_data: 'design_apply', style: 'success' }
