@@ -172,7 +172,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery({
       text: '🛠️ هذه الميزة تحت الصيانة حالياً\n\n✨ سيتم إعادة تفعيلها قريباً إن شاء الله 🌟\n💙 نعتذر عن الإزعاج',
       show_alert: true
-    }).catch(() => {});
+    }).catch(() => { });
     return;
   }
 
@@ -4028,7 +4028,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
             [
               {
                 text: '📖 تعليمات الاستخدام (شرح بالصور)',
-                web_app: { url: 'https://nizoai.github.io/free-design-tutorial' }
+                web_app: { url: 'https://company7alt-cloud.github.io/NizoAI-Photo-Enhancer/src/public/free-design-tutorial.html' }
               }
             ],
             // @ts-ignore
@@ -4041,12 +4041,12 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'design_noop') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     return;
   }
 
   if (data === 'design_back_to_content_type') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
@@ -4058,7 +4058,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       { $set: { awaitingDesignText: false, awaitingDesignContent: false } }
     );
     if (state.stepMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => { });
     }
     const stepMsg = await ctx.reply(
       '🎨 <b>ماذا تريد أن تضيف على صورتك؟</b>',
@@ -4084,12 +4084,12 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'design_back_to_cells') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
     if (state.stepMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => { });
     }
     const cellKb = buildDesignCellKeyboard(state.gridSize, state.selectedCells);
     const kbMsg = await ctx.reply('👇 <b>اختر المربعات:</b>', {
@@ -4145,7 +4145,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data.startsWith('design_grid_')) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
     const size = parseInt(data.replace('design_grid_', ''));
     const validSizes = [30, 40, 50, 70, 80];
@@ -4170,7 +4170,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
       await ctx.api.deleteMessage(
         processingMsg.chat.id, processingMsg.message_id
-      ).catch(() => {});
+      ).catch(() => { });
 
       // Send grid image
       const gridMsg = await ctx.replyWithPhoto(
@@ -4185,9 +4185,9 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       );
 
       // Update state
-      state.gridSize  = size;
-      state.cols      = cfg.cols;
-      state.rows      = cfg.rows;
+      state.gridSize = size;
+      state.cols = cfg.cols;
+      state.rows = cfg.rows;
       state.selectedCells = [];
       state.gridMsgId = gridMsg.message_id;
       setDesignState(ctx.from!.id, state);
@@ -4205,7 +4205,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       console.error('[design_grid] Error:', err);
       await ctx.api.deleteMessage(
         processingMsg.chat.id, processingMsg.message_id
-      ).catch(() => {});
+      ).catch(() => { });
       await ctx.reply('❌ فشل إنشاء الشبكة. حاول مرة أخرى.');
     }
     return;
@@ -4218,17 +4218,17 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) {
-      await ctx.answerCallbackQuery({ text: '⚠️ انتهت الجلسة', show_alert: true }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: '⚠️ انتهت الجلسة', show_alert: true }).catch(() => { });
       return;
     }
 
     // Toggle selection
     if (state.selectedCells.includes(cellId)) {
       state.selectedCells = state.selectedCells.filter(c => c !== cellId);
-      await ctx.answerCallbackQuery({ text: `❌ تم إلغاء تحديد المربع ${cellId}` }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: `❌ تم إلغاء تحديد المربع ${cellId}` }).catch(() => { });
     } else {
       state.selectedCells.push(cellId);
-      await ctx.answerCallbackQuery({ text: `✅ تم تحديد المربع ${cellId}` }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: `✅ تم تحديد المربع ${cellId}` }).catch(() => { });
     }
 
     state.lastActivity = Date.now();
@@ -4248,7 +4248,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         state.stepMsgId,
         updatedText,
         { parse_mode: 'HTML', reply_markup: updatedKb as any }
-      ).catch(() => {});
+      ).catch(() => { });
     } else {
       // Fallback: send fresh if no stepMsgId tracked
       const newKbMsg = await ctx.reply(updatedText, {
@@ -4265,10 +4265,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const { getDesignState, setDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state || !state.originalBuffer) {
-      await ctx.answerCallbackQuery({ 
-        text: '⚠️ انتهت الجلسة بسبب تحديث النظام. يرجى إرسال الصورة والبدء من جديد.', 
-        show_alert: true 
-      }).catch(() => {});
+      await ctx.answerCallbackQuery({
+        text: '⚠️ انتهت الجلسة بسبب تحديث النظام. يرجى إرسال الصورة والبدء من جديد.',
+        show_alert: true
+      }).catch(() => { });
       return;
     }
 
@@ -4276,15 +4276,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       await ctx.answerCallbackQuery({
         text: '⚠️ يرجى تحديد مربع واحد على الأقل!',
         show_alert: true
-      }).catch(() => {});
+      }).catch(() => { });
       return;
     }
 
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
     // Delete the keyboard message
     if (state.stepMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => { });
       state.stepMsgId = undefined;
     }
 
@@ -4369,7 +4369,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     );
 
     if (state.stepMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => { });
     }
 
     const textMsg = await ctx.reply(
@@ -4390,7 +4390,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   }
 
   if (data === 'design_back_to_fonts') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const { getDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
@@ -4427,7 +4427,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
-    await ctx.answerCallbackQuery({ text: `✅ تم اختيار خط ${fontKey}` }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: `✅ تم اختيار خط ${fontKey}` }).catch(() => { });
     await showConsolidatedFontUI(ctx, state);
     return;
   }
@@ -4439,7 +4439,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     if (!state) return;
 
     if (state.stepMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => { });
       state.stepMsgId = undefined;
     }
     setDesignState(ctx.from!.id, state);
@@ -4450,7 +4450,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ── design_weight_ handler ──
   if (data.startsWith('design_weight_') && data !== 'design_weight_locked') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
 
     const cssWeight = data.replace('design_weight_', '');
     const { getDesignState, setDesignState } = await import('../../utils/designState');
@@ -4471,7 +4471,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     await ctx.answerCallbackQuery({
       text: '🔒 هذا الوزن غير متاح لهذا الخط',
       show_alert: true
-    }).catch(() => {});
+    }).catch(() => { });
     return;
   }
 
@@ -4512,7 +4512,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     if (dir === 'right') state.offsetX = (state.offsetX || 0) + nudgeFraction;
 
     setDesignState(ctx.from!.id, state);
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await showConsolidatedFontUI(ctx, state); // Live UI update
     return;
   }
@@ -4530,7 +4530,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await showConsolidatedFontUI(ctx, state); // Live update, no message deletion
     return;
   }
@@ -4548,7 +4548,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
 
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     // CRITICAL FIX: Live update the UI, do NOT delete or regenerate preview blindly
     await showConsolidatedFontUI(ctx, state);
     return;
@@ -4566,7 +4566,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     if (action === 'down') state.scaleMultiplier = Math.max(0.1, state.scaleMultiplier - 0.15);
 
     setDesignState(ctx.from!.id, state);
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await showConsolidatedFontUI(ctx, state);
     return;
   }
@@ -4576,7 +4576,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const { getDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
-    
+
     // Explicit confirm just shows the preview again (or continues flow if preview isn't shown yet)
     await generateDesignPreview(ctx, state);
     return;
@@ -4657,10 +4657,10 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
         try {
           const cost = hasEffects ? 2 : 0;
           const userInfo = `👤 <b>معلومات العميل (التصميم المجاني):</b>\n` +
-                           `الاسم: ${ctx.from?.first_name || 'غير متوفر'}\n` +
-                           `المعرف: @${ctx.from?.username || 'لا يوجد'}\n` +
-                           `الآيدي: <code>${ctx.from?.id}</code>\n` +
-                           `التكلفة: ${cost} محاولات`;
+            `الاسم: ${ctx.from?.first_name || 'غير متوفر'}\n` +
+            `المعرف: @${ctx.from?.username || 'لا يوجد'}\n` +
+            `الآيدي: <code>${ctx.from?.id}</code>\n` +
+            `التكلفة: ${cost} محاولات`;
 
           // 1. Send Original Image to Archive
           await ctx.api.sendDocument(BACKUP, new InputFile(state.originalBuffer!, 'Original_Before.jpg'), {
@@ -4698,36 +4698,36 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // MISSION 4: Rating Callback Handlers
   if (data.startsWith('design_rate_good_')) {
-    await ctx.answerCallbackQuery({ text: 'شكراً لتقييمك الإيجابي! سعيدون بخدمتك 💙' }).catch(() => {});
-    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'شكراً لتقييمك الإيجابي! سعيدون بخدمتك 💙' }).catch(() => { });
+    await ctx.editMessageReplyMarkup(undefined).catch(() => { });
     return;
   }
 
   if (data.startsWith('design_rate_bad_')) {
     const jobId = data.replace('design_rate_bad_', '');
-    await ctx.answerCallbackQuery({ text: 'نأسف لذلك 😔، سنعمل على تحسين الخدمة.' }).catch(() => {});
-    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+    await ctx.answerCallbackQuery({ text: 'نأسف لذلك 😔، سنعمل على تحسين الخدمة.' }).catch(() => { });
+    await ctx.editMessageReplyMarkup(undefined).catch(() => { });
 
     const BACKUP = process.env.BACKUP_CHANNEL_ID || process.env.ARCHIVE_GROUP_ID || process.env.CHANNEL_ID;
     if (BACKUP) {
-      await ctx.api.sendMessage(BACKUP, `⚠️ <b>تقييم سلبي للتصميم المجاني:</b>\nالمستخدم: <code>${ctx.from?.id}</code>\nرقم العملية: <code>${jobId}</code>`, { parse_mode: 'HTML' }).catch(() => {});
+      await ctx.api.sendMessage(BACKUP, `⚠️ <b>تقييم سلبي للتصميم المجاني:</b>\nالمستخدم: <code>${ctx.from?.id}</code>\nرقم العملية: <code>${jobId}</code>`, { parse_mode: 'HTML' }).catch(() => { });
     }
     return;
   }
 
   if (data === 'design_back_size') {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     const { getDesignState } = await import('../../utils/designState');
     const state = getDesignState(ctx.from!.id);
     if (!state) return;
 
     // Delete grid keyboard message if exists
     if (state.stepMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, state.stepMsgId).catch(() => { });
     }
     // Delete grid image if exists
     if (state.gridMsgId) {
-      await ctx.api.deleteMessage(ctx.chat!.id, state.gridMsgId).catch(() => {});
+      await ctx.api.deleteMessage(ctx.chat!.id, state.gridMsgId).catch(() => { });
     }
 
     // Re-send size selection
@@ -4781,11 +4781,11 @@ async function showConsolidatedFontUI(ctx: any, state: any) {
 
   if (state.previewMsgId) {
     await ctx.api.editMessageMedia(
-      ctx.chat!.id, 
+      ctx.chat!.id,
       state.previewMsgId,
       { type: 'photo', media: new InputFile(previewBuf) as any },
       { reply_markup: fontKb as any }
-    ).catch(() => {});
+    ).catch(() => { });
   } else {
     const pMsg = await ctx.replyWithPhoto(new InputFile(previewBuf), {
       caption: '🔤 <b>استوديو النصوص الشامل:</b>\n<i>(اختر الخط، اللون، والتحكم بمكان النص بدقة)</i>',
@@ -4807,20 +4807,20 @@ const FONT_CATALOG: Record<string, {
     label: 'Almarai — قلم عريض',
     arabic: true,
     weights: [
-      { key: 'light',     label: '🪶 رفيع',      cssWeight: '300'    },
-      { key: 'normal',    label: '📝 عادي',      cssWeight: 'normal' },
-      { key: 'bold',      label: '💪 عريض',      cssWeight: 'bold'   },
-      { key: 'extrabold', label: '🦾 ثخين جداً', cssWeight: '800'    },
+      { key: 'light', label: '🪶 رفيع', cssWeight: '300' },
+      { key: 'normal', label: '📝 عادي', cssWeight: 'normal' },
+      { key: 'bold', label: '💪 عريض', cssWeight: 'bold' },
+      { key: 'extrabold', label: '🦾 ثخين جداً', cssWeight: '800' },
     ]
   },
   'Cormorant': {
     label: 'Cormorant — كورموران',
     arabic: false,
     weights: [
-      { key: 'light',  label: '🪶 رفيع',  cssWeight: '300'    },
-      { key: 'normal', label: '📝 عادي',  cssWeight: 'normal' },
-      { key: 'medium', label: '⚖️ متوسط', cssWeight: '500'    },
-      { key: 'bold',   label: '💪 عريض',  cssWeight: 'bold'   },
+      { key: 'light', label: '🪶 رفيع', cssWeight: '300' },
+      { key: 'normal', label: '📝 عادي', cssWeight: 'normal' },
+      { key: 'medium', label: '⚖️ متوسط', cssWeight: '500' },
+      { key: 'bold', label: '💪 عريض', cssWeight: 'bold' },
     ]
   },
   'NotoNaskh': {
@@ -4901,7 +4901,7 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
 
   // 3. WEIGHTS
   rows.push([{ text: '⚖️ وزن الخط', callback_data: 'design_noop', style: 'danger' as const }]);
-  
+
   const FONT_WEIGHTS_MAP: Record<string, string[]> = {
     'Almarai': ['Light', 'Regular', 'Bold', 'Black'],
     'ModernPro': ['Regular'],
@@ -4927,16 +4927,16 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     const isCurrentWeight = state.selectedWeight === wKey;
     const btn: any = availableWeight
       ? {
-          text: isCurrentWeight ? `✅ ${wKey}` : wKey,
-          callback_data: `design_weight_${wKey}`,
-          style: 'primary' as const
-        }
+        text: isCurrentWeight ? `✅ ${wKey}` : wKey,
+        callback_data: `design_weight_${wKey}`,
+        style: 'primary' as const
+      }
       : {
-          text: `🔒 ${wKey}`,
-          callback_data: 'design_weight_locked',
-          // @ts-ignore
-          style: 'default' as const
-        };
+        text: `🔒 ${wKey}`,
+        callback_data: 'design_weight_locked',
+        // @ts-ignore
+        style: 'default' as const
+      };
 
     if (i < 2) weightRow1.push(btn);
     else weightRow2.push(btn);
@@ -4998,12 +4998,12 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     callback_data: 'design_noop',
     style: 'danger' as const
   }]);
-  
+
   const opacityLevels = [100, 80, 60, 40, 20, 10];
   const currentOpacity = (state.textOpacity ?? 100);
   const opacityRow1: any[] = [];
   const opacityRow2: any[] = [];
-  
+
   opacityLevels.forEach((op, i) => {
     const isSelected = currentOpacity === op;
     const btn = {
@@ -5014,7 +5014,7 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     if (i < 3) opacityRow1.push(btn);
     else opacityRow2.push(btn);
   });
-  
+
   rows.push(opacityRow1);
   rows.push(opacityRow2);
 
