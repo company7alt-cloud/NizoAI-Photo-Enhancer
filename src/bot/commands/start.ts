@@ -29,6 +29,31 @@ export async function startCommand(ctx: BotContext): Promise<void> {
   })();
 
   try {
+    const { captchaStore, captchaBanStore } = await import('../../services/captchaService');
+    const existingUserCheck = await User.findOne({ telegramId });
+    if (existingUserCheck && !existingUserCheck.isVerified) {
+      const banExpiry = captchaBanStore.get(telegramId);
+      if (banExpiry && Date.now() < banExpiry) {
+        const minutesLeft = Math.ceil((banExpiry - Date.now()) / 60000);
+        await ctx.reply(`🚫 أنت محظور مؤقتاً. حاول بعد ${minutesLeft} دقيقة.`);
+        return;
+      }
+      const entry = captchaStore.get(telegramId);
+      const { generateCaptcha } = await import('../../services/captchaService');
+      const currentAttempts = entry ? entry.attempts : 0;
+      const { targetEmoji, keyboard } = generateCaptcha(telegramId);
+      captchaStore.get(telegramId)!.attempts = currentAttempts;
+      const remaining = 3 - currentAttempts;
+      await ctx.reply(
+        `🔐 <b>تحقق أمني</b>\n\n` +
+        `للحماية من البوتات، اضغط على الزر الذي يحتوي على:\n\n` +
+        `<b>${targetEmoji}</b>\n\n` +
+        `<i>تبقى لك ${remaining} محاولة</i>`,
+        { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } }
+      );
+      return;
+    }
+
     if (rawPayload.startsWith('magic_')) {
       const code = rawPayload.replace('magic_', '');
       const { MagicLink } = await import('../../database/models/MagicLink');
