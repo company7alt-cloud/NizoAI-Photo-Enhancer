@@ -44,7 +44,7 @@ import {
 import { checkAndResetDailyFree } from './handlers/docmaker/freeLimit';
 import { initGhostResetService } from './services/ghostResetService';
 import { handleAdminGhostText } from './bot/handlers/adminGhostHandler';
-import { handleFreeEnhanceDocument, handleFreeEnhanceCancel } from './bot/handlers/freeEnhanceHandler';
+import { handleFreeEnhanceDocument } from './bot/handlers/freeEnhanceHandler';
 import { getPdfCost } from './handlers/docmaker/pricing';
 import { sendTextChunksWithEditButton } from './handlers/docmaker/textOutput';
 // @ts-ignore — handleProEditConfirm kept for backward compat
@@ -528,11 +528,7 @@ imageBot.on('message:text', async (ctx, next) => {
 });
 
 imageBot.on('message:text', async (ctx, next) => {
-  // ── Handle cancel command for free enhance ────────────────────────────────
-  if (ctx.message?.text === '/cancel') {
-    const cancelHandled = await handleFreeEnhanceCancel(ctx);
-    if (cancelHandled) return;
-  }
+
 
   // ── Ghost Army: admin linking flow has highest priority ──────────────────
   const ghostHandled = await handleAdminGhostText(ctx);

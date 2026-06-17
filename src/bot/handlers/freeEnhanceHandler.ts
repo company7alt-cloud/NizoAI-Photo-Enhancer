@@ -6,7 +6,7 @@ import {
   NoGhostAvailableError,
   GhostTimeoutError
 } from '../../services/ghostEngine';
-import { getGlobalLock } from '../../services/ghostResetService';
+import { getGlobalLock, getAdminMaintenanceLock } from '../../services/ghostResetService';
 import { v4 as uuidv4 } from 'uuid';
 
 type UserState = 'waiting_image' | 'processing';
@@ -39,8 +39,24 @@ export const handleFreeEnhanceButton = async (ctx: Context): Promise<void> => {
 
   await ctx.answerCallbackQuery();
 
+  const ADMIN_IDS = process.env.ADMIN_IDS?.split(',').map(Number) || [];
+  const userIsAdmin = ADMIN_IDS.includes(userId);
+
+  // ─── CHECK 0: Admin Maintenance Lock ───
+  // Admins bypass this check completely
+  if (getAdminMaintenanceLock() && !userIsAdmin) {
+    await ctx.reply(
+      `🛠️ *هذا القسم تحت الصيانة الدورية حالياً*\n\n` +
+      `⏰ سيعود قريباً إن شاء الله\n` +
+      `نعتذر عن الإزعاج 🙏`,
+      { parse_mode: 'Markdown' }
+    );
+    return;
+  }
+
+  // ─── CHECK 1: Global system lock ───
   const { isGloballyLocked } = getGlobalLock();
-  if (isGloballyLocked) {
+  if (isGloballyLocked && !userIsAdmin) {
     await ctx.reply(
       `🛠️ *سيرفرات التحسين المجاني تحت الصيانة الدورية*\n\n` +
       `⏰ تعود تلقائياً بعد منتصف الليل\n` +
@@ -58,32 +74,39 @@ export const handleFreeEnhanceButton = async (ctx: Context): Promise<void> => {
     return;
   }
 
-  const usageCheck = await FreeEnhance.canUse(userId);
-  
-  if (!usageCheck.allowed) {
-    await ctx.reply(
-      `⏳ *نعتذر، استنفدت محاولاتك المجانية لهذا اليوم!*\n\n` +
-      `🔄 تتجدد محاولاتك تلقائياً بعد:\n` +
-      `⏰ ${formatTimeRemaining(usageCheck.resetInMs)}\n\n` +
-      `💎 للاستخدام غير المحدود، جرّب النسخة المطورة!`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🚀 ترقية للمطور', callback_data: 'enhance_pro' }
-          ]]
+  // ─── CHECK 2: Daily limit (Admins bypass) ───
+  if (!userIsAdmin) {
+    const usageCheck = await FreeEnhance.canUse(userId);
+    if (!usageCheck.allowed) {
+      await ctx.reply(
+        `⏳ *نعتذر، استنفدت محاولاتك المجانية لهذا اليوم!*\n\n` +
+        `🔄 تتجدد محاولاتك تلقائياً بعد:\n` +
+        `⏰ ${formatTimeRemaining(usageCheck.resetInMs)}\n\n` +
+        `💎 للاستخدام غير المحدود، جرّب النسخة المطورة!`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🚀 ترقية للمطور', callback_data: 'enhance_pro' }
+            ]]
+          }
         }
-      }
-    );
-    return;
+      );
+      return;
+    }
   }
 
+  // ─── CHECK 3: Already processing ───
   if (freeEnhanceStates.get(userId) === 'processing') {
     await ctx.reply('⚠️ لديك طلب قيد المعالجة، انتظر حتى ينتهي.');
     return;
   }
 
+  // ─── ALL CHECKS PASSED ───
   freeEnhanceStates.set(userId, 'waiting_image');
+
+  const remaining = userIsAdmin ? '∞' : 
+    String((await FreeEnhance.canUse(userId)).remaining);
 
   await ctx.reply(
     `✨ *تحسين مجاني بالذكاء الاصطناعي*\n\n` +
@@ -92,9 +115,15 @@ export const handleFreeEnhanceButton = async (ctx: Context): Promise<void> => {
     `• اضغط 📎 ← اختر الملف ← حدد صورتك\n` +
     `• أو في الكيبورد اختر "ملف" بدل "صورة"\n\n` +
     `⚡ وقت المعالجة: 60-90 ثانية\n` +
-    `🎯 المحاولات المتبقية: ${usageCheck.remaining} من 3\n\n` +
-    `أو /cancel للإلغاء`,
-    { parse_mode: 'Markdown' }
+    `🎯 المحاولات المتبقية: ${remaining} من 3`,
+    { 
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '❌ إلغاء', callback_data: 'cancel_free_enhance' }
+        ]]
+      }
+    }
   );
 };
 
@@ -321,14 +350,4 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
   return true;
 };
 
-export const handleFreeEnhanceCancel = async (ctx: Context): Promise<boolean> => {
-  const userId = ctx.from?.id;
-  if (!userId) return false;
-  
-  const state = freeEnhanceStates.get(userId);
-  if (state !== 'waiting_image') return false;
-  
-  freeEnhanceStates.delete(userId);
-  await ctx.reply('❌ تم الإلغاء');
-  return true;
-};
+

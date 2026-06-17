@@ -17,6 +17,14 @@ export const setGlobalLock = (locked: boolean, reason = '') => {
 
 export const getGlobalLock = () => ({ isGloballyLocked, globalLockReason });
 
+let isAdminMaintenanceLocked = false;
+
+export const setAdminMaintenanceLock = (locked: boolean) => {
+  isAdminMaintenanceLocked = locked;
+};
+
+export const getAdminMaintenanceLock = () => isAdminMaintenanceLocked;
+
 // ═══════════════════════════════════════════════════
 // Check if ALL ghost accounts are exhausted
 // ═══════════════════════════════════════════════════

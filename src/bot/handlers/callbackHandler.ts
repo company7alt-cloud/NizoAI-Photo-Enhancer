@@ -24,6 +24,10 @@ import {
 import { ForceSubChannel } from '../../database/models/ForceSubChannel';
 import { handleAddGhost, handleGhostStats } from './adminGhostHandler';
 import { handleFreeEnhanceButton } from './freeEnhanceHandler';
+import { 
+  getAdminMaintenanceLock, 
+  setAdminMaintenanceLock 
+} from '../../services/ghostResetService';
 
 import { execFile } from 'child_process';
 import util from 'util';
@@ -3589,6 +3593,41 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
   // ── Ghost Army Proxy callbacks ─────────────────────────────────────────
   if (data === 'free_enhance') {
     await handleFreeEnhanceButton(ctx);
+    return;
+  }
+
+  if (data === 'cancel_free_enhance') {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const { freeEnhanceStates } = await import('./freeEnhanceHandler');
+    freeEnhanceStates.delete(userId);
+    await ctx.answerCallbackQuery({ text: '✅ تم الإلغاء' });
+    try { await ctx.deleteMessage(); } catch {}
+    return;
+  }
+
+  if (data === 'admin_toggle_free_enhance_lock') {
+    const userId = ctx.from?.id;
+    const ADMIN_IDS = process.env.ADMIN_IDS?.split(',').map(Number) || [];
+    if (!userId || !ADMIN_IDS.includes(userId)) {
+      await ctx.answerCallbackQuery({ 
+        text: '⛔ غير مصرح', 
+        show_alert: true 
+      });
+      return;
+    }
+
+    const currentStatus = getAdminMaintenanceLock();
+    setAdminMaintenanceLock(!currentStatus);
+    
+    await ctx.answerCallbackQuery({ 
+      text: !currentStatus 
+        ? '🔒 تم قفل الزر المجاني عن المستخدمين!' 
+        : '✅ تم فتح الزر المجاني للجميع!', 
+      show_alert: true 
+    });
+    
+    await handleGhostStats(ctx);
     return;
   }
 

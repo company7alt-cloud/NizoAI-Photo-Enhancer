@@ -7,6 +7,7 @@ import {
   validateSession,
   pendingSessions 
 } from '../../services/gramjsSessionService';
+import { getAdminMaintenanceLock } from '../../services/ghostResetService';
 
 const ADMIN_IDS = process.env.ADMIN_IDS?.split(',').map(Number) || [];
 
@@ -93,6 +94,8 @@ export const handleGhostStats = async (ctx: Context): Promise<void> => {
   const todayUsed = usageResult[0]?.totalUsed || 0;
   const totalCapacity = active * 10;
 
+  const isMaintenanceLocked = getAdminMaintenanceLock();
+
   await ctx.reply(
     `👻 *إحصائيات الجيش الشبح*\n\n` +
     `📊 إجمالي الحسابات: ${total}\n` +
@@ -103,7 +106,19 @@ export const handleGhostStats = async (ctx: Context): Promise<void> => {
     `❌ معطلة: ${total - active}\n\n` +
     `📸 معالجة اليوم: ${todayUsed}/${totalCapacity}\n` +
     `⏰ تصفير العدادات بعد: ${getTimeUntilMidnight()}`,
-    { parse_mode: 'Markdown' }
+    { 
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{
+            text: isMaintenanceLocked 
+              ? '🔴 الزر المجاني: [مغلق 🔒] - اضغط للفتح' 
+              : '🟢 الزر المجاني: [مفتوح ✅] - اضغط للقفل',
+            callback_data: 'admin_toggle_free_enhance_lock'
+          }]
+        ]
+      }
+    }
   );
 };
 
