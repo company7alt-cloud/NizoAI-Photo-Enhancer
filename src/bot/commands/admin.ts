@@ -36,6 +36,8 @@ export function registerAdminCommands(bot: any) {
             [{ text: '🎯 إدارة المحاولات', callback_data: 'admin_manage_attempts' , style: 'primary' as const}],
             [{ text: '🔗 إنشاء رابط مكافأة', callback_data: 'admin_create_magic_link' , style: 'primary' as const}],
             [{ text: '✏️ تعديل النصوص', callback_data: 'admin_text_override' , style: 'primary' as const}],
+            [{ text: '🔗 ربط حساب شبح', callback_data: 'admin_add_ghost', style: 'success' as const }],
+            [{ text: '👻 إحصائيات الجيش', callback_data: 'admin_ghost_stats', style: 'primary' as const }],
           ],
         },
       }

@@ -22,6 +22,8 @@ import {
   getQueuePosition,
 } from '../../services/onnxEnhanceService';
 import { ForceSubChannel } from '../../database/models/ForceSubChannel';
+import { handleAddGhost, handleGhostStats } from './adminGhostHandler';
+import { handleFreeEnhanceButton } from './freeEnhanceHandler';
 
 import { execFile } from 'child_process';
 import util from 'util';
@@ -3581,6 +3583,22 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
       { $set: { adminAwaitingInput: 'attempts_reset_one_id', adminTargetUserId: null } }
     );
     await ctx.reply('🔄 <b>تصفير شخص محدد</b>\n\nأرسل الـ ID الخاص بالمستخدم:', { parse_mode: 'HTML' });
+    return;
+  }
+
+  // ── Ghost Army Proxy callbacks ─────────────────────────────────────────
+  if (data === 'free_enhance') {
+    await handleFreeEnhanceButton(ctx);
+    return;
+  }
+
+  if (data === 'admin_add_ghost') {
+    await handleAddGhost(ctx);
+    return;
+  }
+
+  if (data === 'admin_ghost_stats') {
+    await handleGhostStats(ctx);
     return;
   }
 

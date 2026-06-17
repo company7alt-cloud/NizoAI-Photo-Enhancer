@@ -296,7 +296,10 @@ export async function startCommand(ctx: BotContext): Promise<void> {
           { text: 'القناة', url: chanLink, style: 'primary' }
         ]] : []),
 
-        // ROW 5.5 — Free Design
+        // ROW 5.5 — Free Enhance & Design
+        [
+          { text: '✨ تحسين مجاني بالذكاء', callback_data: 'free_enhance', style: 'primary' as const },
+        ],
         [
           { text: '🟦 تصميم مجاني', callback_data: 'start_free_design', style: 'primary' },
         ],
