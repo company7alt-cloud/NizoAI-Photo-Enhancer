@@ -294,15 +294,15 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const entry = captchaStore.get(userId);
 
     if (!entry) {
-      await ctx.answerCallbackQuery({ text: '⚠️ انتهت صلاحية التحقق، أعد المحاولة.', show_alert: true }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: '⚠️ انتهت صلاحية التحقق، أعد المحاولة.', show_alert: true }).catch(() => { });
       return;
     }
 
     if (selectedIndex === entry.correctIndex) {
       captchaStore.delete(userId);
       await User.updateOne({ telegramId: userId }, { isVerified: true });
-      await ctx.answerCallbackQuery({ text: '✅ تم التحقق! مرحباً بك 🎉', show_alert: true }).catch(() => {});
-      await ctx.deleteMessage().catch(() => {});
+      await ctx.answerCallbackQuery({ text: '✅ تم التحقق! مرحباً بك 🎉', show_alert: true }).catch(() => { });
+      await ctx.deleteMessage().catch(() => { });
       return;
     }
 
@@ -310,14 +310,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     if (entry.attempts >= 3) {
       captchaStore.delete(userId);
       const { targetEmoji, keyboard } = generateCaptcha(userId);
-      await ctx.answerCallbackQuery({ text: '❌ ثلاث محاولات خاطئة! تم تجديد التحقق.', show_alert: true }).catch(() => {});
+      await ctx.answerCallbackQuery({ text: '❌ ثلاث محاولات خاطئة! تم تجديد التحقق.', show_alert: true }).catch(() => { });
       await ctx.editMessageText(
         `🔐 <b>تحقق أمني</b>\n\n` +
         `للحماية من البوتات، اضغط على الزر الذي يحتوي على:\n\n` +
         `<b>${targetEmoji}</b>\n\n` +
         `<i>لديك 3 محاولات فقط</i>`,
         { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } }
-      ).catch(() => {});
+      ).catch(() => { });
       return;
     }
 
@@ -325,14 +325,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const { generateCaptcha: regenCaptcha } = await import('../../services/captchaService');
     const { targetEmoji, keyboard } = regenCaptcha(userId);
     entry.correctIndex = captchaStore.get(userId)!.correctIndex;
-    await ctx.answerCallbackQuery({ text: `❌ خاطئ! تبقى لك ${remaining} محاولات.`, show_alert: true }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: `❌ خاطئ! تبقى لك ${remaining} محاولات.`, show_alert: true }).catch(() => { });
     await ctx.editMessageText(
       `🔐 <b>تحقق أمني</b>\n\n` +
       `للحماية من البوتات، اضغط على الزر الذي يحتوي على:\n\n` +
       `<b>${targetEmoji}</b>\n\n` +
       `<i>تبقى لك ${remaining} محاولات</i>`,
       { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } }
-    ).catch(() => {});
+    ).catch(() => { });
     return;
   }
 
@@ -340,14 +340,14 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const { generateCaptcha } = await import('../../services/captchaService');
     const userId = ctx.from!.id;
     const { targetEmoji, keyboard } = generateCaptcha(userId);
-    await ctx.answerCallbackQuery({ text: '🔄 تم تجديد التحقق' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: '🔄 تم تجديد التحقق' }).catch(() => { });
     await ctx.editMessageText(
       `🔐 <b>تحقق أمني</b>\n\n` +
       `للحماية من البوتات، اضغط على الزر الذي يحتوي على:\n\n` +
       `<b>${targetEmoji}</b>\n\n` +
       `<i>لديك 3 محاولات فقط</i>`,
       { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } }
-    ).catch(() => {});
+    ).catch(() => { });
     return;
   }
 
@@ -4105,8 +4105,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
             [
               {
                 text: '📖 تعليمات الاستخدام (شرح بالصور)',
-                web_app: { url: 'https://company7alt-cloud.github.io/NizoAI-Photo-Enhancer/src/public/free-design-tutorial.html' }
-              }
+                url: 'https://company7alt-cloud.github.io/NizoAI-Photo-Enhancer/src/public/free-design-tutorial.html'
             ],
             // @ts-ignore
             [{ text: '❌ إلغاء', callback_data: 'cancel_design', style: 'danger' as const }]
