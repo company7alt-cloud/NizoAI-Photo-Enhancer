@@ -26,6 +26,8 @@ export interface DesignState {
   shadowOffsetY?: number;
   shadowBlur?: number;
   shadowSpeed?: 'normal' | 'fast';
+  shadowColor?: string;
+  shadowOpacity?: number; // 0.1 to 1.0
   imageEffects: {
     grayscale: boolean;
     saturate: boolean;

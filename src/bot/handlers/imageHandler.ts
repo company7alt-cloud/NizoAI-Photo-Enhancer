@@ -803,6 +803,8 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           shadowOffsetY: 0,
           shadowBlur: 10,
           shadowSpeed: 'normal',
+          shadowColor: '#000000',
+          shadowOpacity: 0.8,
         };
       }
       state.originalBuffer = buffer;

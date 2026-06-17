@@ -207,25 +207,29 @@ export async function compositeDesign(
         const sOffsetX = state.shadowOffsetX ?? 0;
         const sOffsetY = state.shadowOffsetY ?? 0;
         const sBlur    = state.shadowBlur    ?? 10;
+        
+        // Convert Hex to RGBA for Opacity support
+        const hex = state.shadowColor || '#000000';
+        const opacity = state.shadowOpacity ?? 0.8;
+        const rr = parseInt(hex.slice(1,3), 16) || 0;
+        const gg = parseInt(hex.slice(3,5), 16) || 0;
+        const bb = parseInt(hex.slice(5,7), 16) || 0;
+        const dynamicShadowColor = `rgba(${rr},${gg},${bb},${opacity})`;
 
         ctx.save();
 
         if (sType === 'glow') {
-          // Glow: tight repeated passes in text colour
-          const hex = state.textColor || '#FFFFFF';
-          const rr = parseInt(hex.slice(1, 3), 16);
-          const gg = parseInt(hex.slice(3, 5), 16);
-          const bb = parseInt(hex.slice(5, 7), 16);
-          ctx.shadowColor   = `rgba(${rr},${gg},${bb},0.85)`;
+          // Glow: tight repeated passes
+          ctx.shadowColor   = dynamicShadowColor;
           ctx.shadowBlur    = sBlur * 2;
           ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = 0;
-          ctx.fillText(line, centerX, lineY); // 1st pass (glow)
-          ctx.fillText(line, centerX, lineY); // 2nd pass (intensify)
+          ctx.fillText(line, centerX, lineY); 
+          ctx.fillText(line, centerX, lineY); 
 
         } else if (sType === 'inner') {
-          // Inner: dark tight shadow with source-atop trick
-          ctx.shadowColor   = 'rgba(0,0,0,0.9)';
+          // Inner: tight shadow with source-atop
+          ctx.shadowColor   = dynamicShadowColor;
           ctx.shadowBlur    = Math.min(sBlur, 8);
           ctx.shadowOffsetX = sOffsetX * 0.5;
           ctx.shadowOffsetY = sOffsetY * 0.5;
@@ -234,8 +238,8 @@ export async function compositeDesign(
           ctx.globalCompositeOperation = 'source-over';
 
         } else {
-          // drop (default)
-          ctx.shadowColor   = 'rgba(0,0,0,0.8)';
+          // Drop (default)
+          ctx.shadowColor   = dynamicShadowColor;
           ctx.shadowBlur    = sBlur;
           ctx.shadowOffsetX = sOffsetX;
           ctx.shadowOffsetY = sOffsetY;
@@ -244,7 +248,7 @@ export async function compositeDesign(
 
         ctx.restore();
 
-        // Draw real text clean on top (no shadow on this pass)
+        // Draw real text clean on top
         ctx.save();
         ctx.shadowColor = 'transparent';
         ctx.fillText(line, centerX, lineY);

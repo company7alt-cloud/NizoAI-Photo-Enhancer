@@ -4621,24 +4621,30 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     // Auto-enable shadow the moment user interacts
     state.shadowEnabled = true;
 
-    const step = (state.shadowSpeed === 'fast') ? 15 : 5;
+    if (data.startsWith('shadow_color_')) {
+      state.shadowColor = '#' + data.replace('shadow_color_', '');
+    } else {
+      const step = (state.shadowSpeed === 'fast') ? 120 : 30; // Fixed for 4K
 
-    switch (data) {
-      // Type
-      case 'shadow_type_drop':  state.shadowType = 'drop';   break;
-      case 'shadow_type_glow':  state.shadowType = 'glow';   break;
-      case 'shadow_type_inner': state.shadowType = 'inner';  break;
-      // Speed
-      case 'shadow_speed_fast':   state.shadowSpeed = 'fast';   break;
-      case 'shadow_speed_normal': state.shadowSpeed = 'normal'; break;
-      // D-Pad
-      case 'shadow_move_up':    state.shadowOffsetY = (state.shadowOffsetY ?? 0) - step; break;
-      case 'shadow_move_down':  state.shadowOffsetY = (state.shadowOffsetY ?? 0) + step; break;
-      case 'shadow_move_left':  state.shadowOffsetX = (state.shadowOffsetX ?? 0) - step; break;
-      case 'shadow_move_right': state.shadowOffsetX = (state.shadowOffsetX ?? 0) + step; break;
-      // Blur
-      case 'shadow_blur_plus':  state.shadowBlur = (state.shadowBlur ?? 10) + 5;                      break;
-      case 'shadow_blur_minus': state.shadowBlur = Math.max(0, (state.shadowBlur ?? 10) - 5);         break;
+      switch (data) {
+        // Type
+        case 'shadow_type_drop':  state.shadowType = 'drop';   break;
+        case 'shadow_type_glow':  state.shadowType = 'glow';   break;
+        case 'shadow_type_inner': state.shadowType = 'inner';  break;
+        // Speed
+        case 'shadow_speed_fast':   state.shadowSpeed = 'fast';   break;
+        case 'shadow_speed_normal': state.shadowSpeed = 'normal'; break;
+        // D-Pad
+        case 'shadow_move_up':    state.shadowOffsetY = (state.shadowOffsetY ?? 0) - step; break;
+        case 'shadow_move_down':  state.shadowOffsetY = (state.shadowOffsetY ?? 0) + step; break;
+        case 'shadow_move_left':  state.shadowOffsetX = (state.shadowOffsetX ?? 0) - step; break;
+        case 'shadow_move_right': state.shadowOffsetX = (state.shadowOffsetX ?? 0) + step; break;
+        // Opacity and Blur
+        case 'shadow_soft':    state.shadowBlur = (state.shadowBlur ?? 10) + 15;                      break;
+        case 'shadow_sharp':   state.shadowBlur = 0;                                                  break;
+        case 'shadow_op_up':   state.shadowOpacity = Math.min(1.0, (state.shadowOpacity ?? 0.8) + 0.1); break;
+        case 'shadow_op_down': state.shadowOpacity = Math.max(0.1, (state.shadowOpacity ?? 0.8) - 0.1); break;
+      }
     }
 
     state.lastActivity = Date.now();
@@ -5124,6 +5130,20 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     { text: state.shadowSpeed === 'normal' ? '✅ عادي'    : 'عادي',    callback_data: 'shadow_speed_normal', style: 'primary' as const },
   ]);
 
+  // ── ألوان الظل (8 ألوان) ────────────────────────
+  rows.push([
+    { text: state.shadowColor === '#000000' ? '✅ أسود' : 'أسود', callback_data: 'shadow_color_000000', style: 'primary' as const },
+    { text: state.shadowColor === '#FFFFFF' ? '✅ أبيض' : 'أبيض', callback_data: 'shadow_color_FFFFFF', style: 'primary' as const },
+    { text: state.shadowColor === '#FF0000' ? '✅ أحمر' : 'أحمر', callback_data: 'shadow_color_FF0000', style: 'primary' as const },
+    { text: state.shadowColor === '#0000FF' ? '✅ أزرق' : 'أزرق', callback_data: 'shadow_color_0000FF', style: 'primary' as const }
+  ]);
+  rows.push([
+    { text: state.shadowColor === '#00CC44' ? '✅ أخضر'   : 'أخضر',   callback_data: 'shadow_color_00CC44', style: 'primary' as const },
+    { text: state.shadowColor === '#FFD700' ? '✅ أصفر'   : 'أصفر',   callback_data: 'shadow_color_FFD700', style: 'primary' as const },
+    { text: state.shadowColor === '#8B00FF' ? '✅ بنفسجي' : 'بنفسجي', callback_data: 'shadow_color_8B00FF', style: 'primary' as const },
+    { text: state.shadowColor === '#FF69B4' ? '✅ وردي'   : 'وردي',   callback_data: 'shadow_color_FF69B4', style: 'primary' as const }
+  ]);
+
   // D-Pad — move shadow
   rows.push([
     { text: '⬆️', callback_data: 'shadow_move_up', style: 'primary' as const }
@@ -5136,10 +5156,12 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     { text: '⬇️', callback_data: 'shadow_move_down', style: 'primary' as const }
   ]);
 
-  // Blur/spread control
+  // ── التحكم بالحدة والشفافية ───────────────────────
   rows.push([
-    { text: '➖ تخفيف الظل', callback_data: 'shadow_blur_minus', style: 'primary' as const },
-    { text: '➕ زيادة الظل', callback_data: 'shadow_blur_plus',  style: 'primary' as const }
+    { text: '✨ تنعيم', callback_data: 'shadow_soft', style: 'primary' as const },
+    { text: '🔪 حاد', callback_data: 'shadow_sharp', style: 'primary' as const },
+    { text: '➖ شفافية', callback_data: 'shadow_op_down', style: 'primary' as const },
+    { text: '➕ شفافية', callback_data: 'shadow_op_up', style: 'primary' as const }
   ]);
 
   // 5.6 OPACITY CONTROLS
