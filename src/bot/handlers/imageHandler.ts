@@ -796,7 +796,13 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
           selectedWeight: 'Regular',
           textColor: '#FFFFFF',
           imageEffects: { grayscale: false, saturate: false, invert: false, upscale: false },
-          lastActivity: Date.now()
+          lastActivity: Date.now(),
+          shadowEnabled: false,
+          shadowType: 'drop',
+          shadowOffsetX: 0,
+          shadowOffsetY: 0,
+          shadowBlur: 10,
+          shadowSpeed: 'normal',
         };
       }
       state.originalBuffer = buffer;

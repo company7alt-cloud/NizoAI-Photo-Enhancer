@@ -19,6 +19,13 @@ export interface DesignState {
   offsetX?: number;
   offsetY?: number;
   scaleMultiplier?: number;
+  // ── Text Shadow ──────────────────────────────────
+  shadowEnabled?: boolean;
+  shadowType?: 'drop' | 'glow' | 'inner';
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+  shadowBlur?: number;
+  shadowSpeed?: 'normal' | 'fast';
   imageEffects: {
     grayscale: boolean;
     saturate: boolean;

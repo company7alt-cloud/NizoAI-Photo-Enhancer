@@ -4612,6 +4612,43 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  // ── shadow_ handler ──────────────────────────────────────────────────────
+  if (data.startsWith('shadow_')) {
+    const { getDesignState, setDesignState } = await import('../../utils/designState');
+    const state = getDesignState(ctx.from!.id);
+    if (!state) return;
+
+    // Auto-enable shadow the moment user interacts
+    state.shadowEnabled = true;
+
+    const step = (state.shadowSpeed === 'fast') ? 15 : 5;
+
+    switch (data) {
+      // Type
+      case 'shadow_type_drop':  state.shadowType = 'drop';   break;
+      case 'shadow_type_glow':  state.shadowType = 'glow';   break;
+      case 'shadow_type_inner': state.shadowType = 'inner';  break;
+      // Speed
+      case 'shadow_speed_fast':   state.shadowSpeed = 'fast';   break;
+      case 'shadow_speed_normal': state.shadowSpeed = 'normal'; break;
+      // D-Pad
+      case 'shadow_move_up':    state.shadowOffsetY = (state.shadowOffsetY ?? 0) - step; break;
+      case 'shadow_move_down':  state.shadowOffsetY = (state.shadowOffsetY ?? 0) + step; break;
+      case 'shadow_move_left':  state.shadowOffsetX = (state.shadowOffsetX ?? 0) - step; break;
+      case 'shadow_move_right': state.shadowOffsetX = (state.shadowOffsetX ?? 0) + step; break;
+      // Blur
+      case 'shadow_blur_plus':  state.shadowBlur = (state.shadowBlur ?? 10) + 5;                      break;
+      case 'shadow_blur_minus': state.shadowBlur = Math.max(0, (state.shadowBlur ?? 10) - 5);         break;
+    }
+
+    state.lastActivity = Date.now();
+    setDesignState(ctx.from!.id, state);
+    await ctx.answerCallbackQuery().catch(() => {});
+    await showConsolidatedFontUI(ctx, state); // Live preview
+    return;
+  }
+  // ── end shadow_ handler ─────────────────────────────────────────────────
+
   // ── design_opacity_ handler ──
   if (data.startsWith('design_opacity_')) {
     const opacityValue = parseInt(data.replace('design_opacity_', ''), 10);
@@ -5067,6 +5104,42 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
   rows.push([
     { text: '➖ تصغير', callback_data: 'design_scale_down', style: 'primary' as const },
     { text: '➕ تكبير', callback_data: 'design_scale_up', style: 'primary' as const }
+  ]);
+
+  // 5.55 SHADOW (ظل النص) CONTROLS
+  rows.push([
+    { text: '🌑 ظل النص', callback_data: 'design_noop', style: 'danger' as const }
+  ]);
+
+  // Shadow type — 3 blue buttons
+  rows.push([
+    { text: state.shadowType === 'drop'  ? '✅ تحت النص' : 'تحت النص',  callback_data: 'shadow_type_drop',  style: 'primary' as const },
+    { text: state.shadowType === 'glow'  ? '✅ مضيئ'     : 'مضيئ',      callback_data: 'shadow_type_glow',  style: 'primary' as const },
+    { text: state.shadowType === 'inner' ? '✅ داخلي'    : 'داخلي',     callback_data: 'shadow_type_inner', style: 'primary' as const },
+  ]);
+
+  // Movement speed — 2 blue buttons
+  rows.push([
+    { text: state.shadowSpeed === 'fast'   ? '✅ سريع 🚀' : 'سريع 🚀', callback_data: 'shadow_speed_fast',   style: 'primary' as const },
+    { text: state.shadowSpeed === 'normal' ? '✅ عادي'    : 'عادي',    callback_data: 'shadow_speed_normal', style: 'primary' as const },
+  ]);
+
+  // D-Pad — move shadow
+  rows.push([
+    { text: '⬆️', callback_data: 'shadow_move_up', style: 'primary' as const }
+  ]);
+  rows.push([
+    { text: '⬅️', callback_data: 'shadow_move_left',  style: 'primary' as const },
+    { text: '➡️', callback_data: 'shadow_move_right', style: 'primary' as const }
+  ]);
+  rows.push([
+    { text: '⬇️', callback_data: 'shadow_move_down', style: 'primary' as const }
+  ]);
+
+  // Blur/spread control
+  rows.push([
+    { text: '➖ تخفيف الظل', callback_data: 'shadow_blur_minus', style: 'primary' as const },
+    { text: '➕ زيادة الظل', callback_data: 'shadow_blur_plus',  style: 'primary' as const }
   ]);
 
   // 5.6 OPACITY CONTROLS

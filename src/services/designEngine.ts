@@ -200,7 +200,59 @@ export async function compositeDesign(
     const startY = centerY - (totalTextHeight / 2) + (lineHeight / 2);
 
     lines.forEach((line, index) => {
-      ctx.fillText(line, centerX, startY + (index * lineHeight));
+      const lineY = startY + (index * lineHeight);
+
+      if (state.shadowEnabled) {
+        const sType    = state.shadowType    ?? 'drop';
+        const sOffsetX = state.shadowOffsetX ?? 0;
+        const sOffsetY = state.shadowOffsetY ?? 0;
+        const sBlur    = state.shadowBlur    ?? 10;
+
+        ctx.save();
+
+        if (sType === 'glow') {
+          // Glow: tight repeated passes in text colour
+          const hex = state.textColor || '#FFFFFF';
+          const rr = parseInt(hex.slice(1, 3), 16);
+          const gg = parseInt(hex.slice(3, 5), 16);
+          const bb = parseInt(hex.slice(5, 7), 16);
+          ctx.shadowColor   = `rgba(${rr},${gg},${bb},0.85)`;
+          ctx.shadowBlur    = sBlur * 2;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+          ctx.fillText(line, centerX, lineY); // 1st pass (glow)
+          ctx.fillText(line, centerX, lineY); // 2nd pass (intensify)
+
+        } else if (sType === 'inner') {
+          // Inner: dark tight shadow with source-atop trick
+          ctx.shadowColor   = 'rgba(0,0,0,0.9)';
+          ctx.shadowBlur    = Math.min(sBlur, 8);
+          ctx.shadowOffsetX = sOffsetX * 0.5;
+          ctx.shadowOffsetY = sOffsetY * 0.5;
+          ctx.globalCompositeOperation = 'source-atop';
+          ctx.fillText(line, centerX, lineY);
+          ctx.globalCompositeOperation = 'source-over';
+
+        } else {
+          // drop (default)
+          ctx.shadowColor   = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur    = sBlur;
+          ctx.shadowOffsetX = sOffsetX;
+          ctx.shadowOffsetY = sOffsetY;
+          ctx.fillText(line, centerX, lineY);
+        }
+
+        ctx.restore();
+
+        // Draw real text clean on top (no shadow on this pass)
+        ctx.save();
+        ctx.shadowColor = 'transparent';
+        ctx.fillText(line, centerX, lineY);
+        ctx.restore();
+
+      } else {
+        ctx.fillText(line, centerX, lineY);
+      }
     });
 
     const overlayBuf = canvas.toBuffer('image/png');
