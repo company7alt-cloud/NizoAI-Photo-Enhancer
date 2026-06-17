@@ -4105,7 +4105,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
             [
               {
                 text: '📖 تعليمات الاستخدام (شرح بالصور)',
-                url: 'https://company7alt-cloud.github.io/NizoAI-Photo-Enhancer/src/public/free-design-tutorial.html'
+                web_app: { url: 'https://company7alt-cloud.github.io/NizoAI-Photo-Enhancer/src/public/free-design-tutorial.html' }
               }
             ],
             // @ts-ignore
