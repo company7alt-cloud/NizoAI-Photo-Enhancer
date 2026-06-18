@@ -112,10 +112,11 @@ export const handleGhostStats = async (ctx: Context): Promise<void> => {
         inline_keyboard: [
           [{
             text: isMaintenanceLocked 
-              ? '🔴 الزر المجاني: [مغلق 🔒] - اضغط للفتح' 
-              : '🟢 الزر المجاني: [مفتوح ✅] - اضغط للقفل',
-            callback_data: 'admin_toggle_free_enhance_lock'
-          }]
+              ? '🔴 فتح الزر المجاني للعملاء' 
+              : '🟢 قفل الزر المجاني عن العملاء',
+            callback_data: 'admin_toggle_free_enhance_lock',
+            color: isMaintenanceLocked ? 'green' as const : 'red' as const
+          } as any]
         ]
       }
     }

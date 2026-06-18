@@ -120,7 +120,11 @@ export const handleFreeEnhanceButton = async (ctx: Context): Promise<void> => {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
-          { text: '❌ إلغاء', callback_data: 'cancel_free_enhance' }
+          { 
+            text: '❌ إلغاء', 
+            callback_data: 'cancel_free_enhance',
+            color: 'red' as const
+          } as any
         ]]
       }
     }
@@ -257,7 +261,11 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
               { text: '💾 حفظ PNG', callback_data: 'save_as_png' }
             ],
             [
-              { text: '✨ تحسين صورة أخرى', callback_data: 'free_enhance' }
+              { 
+                text: '✨ تحسين صورة أخرى', 
+                callback_data: 'free_enhance',
+                color: 'green' as const
+              } as any
             ]
           ]
         }
@@ -323,7 +331,11 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [[
-              { text: '🔄 حاول مجدداً', callback_data: 'free_enhance' }
+              { 
+                text: '🔄 حاول مجدداً', 
+                callback_data: 'free_enhance',
+                color: 'green' as const
+              } as any
             ]]
           }
         }
@@ -337,7 +349,11 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [[
-              { text: '🔄 حاول مجدداً', callback_data: 'free_enhance' }
+              { 
+                text: '🔄 حاول مجدداً', 
+                callback_data: 'free_enhance',
+                color: 'green' as const
+              }
             ]]
           }
         }
