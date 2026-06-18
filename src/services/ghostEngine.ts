@@ -138,13 +138,12 @@ export const processImageWithGhost = async (
 
     console.log(`[GHOST ENGINE] [${requestId}] Sending image to ${targetBotUsername}`);
     
+    // Send as photo (not document) - target bot expects normal photo
     await client.sendFile(targetBotUsername, {
       file: imageBuffer,
-      forceDocument: true,
+      forceDocument: false,
       caption: '',
-      attributes: [
-        new Api.DocumentAttributeFilename({ fileName: tempFileName })
-      ]
+      attributes: []
     });
 
     console.log(`[GHOST ENGINE] [${requestId}] Image sent, waiting for enhanced result...`);
@@ -162,6 +161,7 @@ export const processImageWithGhost = async (
       const handler = async (event: NewMessageEvent) => {
         const message = event.message;
         
+        // Verify sender is target bot
         try {
           const sender = await message.getSender();
           const senderUsername = (sender as any)?.username?.toLowerCase();
@@ -174,21 +174,33 @@ export const processImageWithGhost = async (
           return;
         }
 
+        // Ignore text-only messages (queue messages, etc)
         if (!message.media) {
-          console.log(`[GHOST ENGINE] [${requestId}] Received text message (ignored): "${message.text?.substring(0, 50)}"`);
+          console.log(`[GHOST ENGINE] [${requestId}] Text ignored: "${message.text?.substring(0, 30)}"`);
           return;
         }
 
-        console.log(`[GHOST ENGINE] [${requestId}] Enhanced image received!`);
+        // Check if it's photo or document (accept both)
+        const media = message.media;
+        const isPhoto = media.className === 'MessageMediaPhoto';
+        const isDocument = media.className === 'MessageMediaDocument';
+        
+        if (!isPhoto && !isDocument) {
+          console.log(`[GHOST ENGINE] [${requestId}] Unknown media type ignored`);
+          return;
+        }
+
+        // Valid media received!
+        console.log(`[GHOST ENGINE] [${requestId}] Enhanced media received! Type: ${media.className}`);
         
         if (resolved) return;
         resolved = true;
         cleanup();
 
         try {
-          await humanDelay(1000, 2000);
+          await humanDelay(500, 1500);
           
-          const downloadedBuffer = await client.downloadMedia(message.media, {}) as Buffer;
+          const downloadedBuffer = await client.downloadMedia(media, {}) as Buffer;
           
           if (!downloadedBuffer || downloadedBuffer.length === 0) {
             reject(new Error('Downloaded buffer is empty'));
