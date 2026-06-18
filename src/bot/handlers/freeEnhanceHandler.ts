@@ -353,7 +353,7 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
                 text: '🔄 حاول مجدداً',
                 callback_data: 'free_enhance',
                 color: 'green' as const
-              }
+              } as any
             ]]
           }
         }
