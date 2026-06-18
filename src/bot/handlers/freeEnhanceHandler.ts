@@ -1,7 +1,7 @@
 import { Context } from 'grammy';
 import { InputFile } from 'grammy';
 import { FreeEnhance } from '../../database/models/FreeEnhance';
-import { 
+import {
   processImageWithGhost,
   NoGhostAvailableError,
   GhostTimeoutError
@@ -105,7 +105,7 @@ export const handleFreeEnhanceButton = async (ctx: Context): Promise<void> => {
   // ─── ALL CHECKS PASSED ───
   freeEnhanceStates.set(userId, 'waiting_image');
 
-  const remaining = userIsAdmin ? '∞' : 
+  const remaining = userIsAdmin ? '∞' :
     String((await FreeEnhance.canUse(userId)).remaining);
 
   await ctx.reply(
@@ -116,12 +116,12 @@ export const handleFreeEnhanceButton = async (ctx: Context): Promise<void> => {
     `• أو في الكيبورد اختر "ملف" بدل "صورة"\n\n` +
     `⚡ وقت المعالجة: 60-90 ثانية\n` +
     `🎯 المحاولات المتبقية: ${remaining} من 3`,
-    { 
+    {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
-          { 
-            text: '❌ إلغاء', 
+          {
+            text: '❌ إلغاء',
             callback_data: 'cancel_free_enhance',
             color: 'red' as const
           } as any
@@ -159,7 +159,7 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
 
   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
   const mimeType = document.mime_type || 'image/jpeg';
-  
+
   if (!allowedTypes.includes(mimeType)) {
     await ctx.reply('❌ صيغة الملف غير مدعومة. أرسل صورة بصيغة JPG أو PNG.');
     return true;
@@ -189,7 +189,7 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
   ];
 
   const progressTimers: NodeJS.Timeout[] = [];
-  
+
   for (const stage of progressStages) {
     const timer = setTimeout(async () => {
       try {
@@ -202,7 +202,7 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
           `_يُرجى الانتظار..._`,
           { parse_mode: 'Markdown' }
         );
-      } catch {}
+      } catch { }
     }, stage.delay);
     progressTimers.push(timer);
   }
@@ -215,12 +215,12 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
   try {
     const fileInfo = await ctx.api.getFile(document.file_id);
     const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${fileInfo.file_path}`;
-    
+
     const fetch = (await import('node-fetch')).default;
     const response = await fetch(fileUrl);
-    
+
     if (!response.ok) throw new Error('Failed to download image from Telegram');
-    
+
     const arrayBuffer = await response.arrayBuffer();
     imageBuffer = Buffer.from(arrayBuffer);
 
@@ -243,7 +243,7 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
 
     try {
       await ctx.api.deleteMessage(ctx.chat!.id, progressMsg.message_id);
-    } catch {}
+    } catch { }
 
     await ctx.replyWithDocument(
       new InputFile(result.enhancedBuffer, result.fileName),
@@ -261,8 +261,8 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
               { text: '💾 حفظ PNG', callback_data: 'save_as_png' }
             ],
             [
-              { 
-                text: '✨ تحسين صورة أخرى', 
+              {
+                text: '✨ تحسين صورة أخرى',
                 callback_data: 'free_enhance',
                 color: 'green' as const
               } as any
@@ -302,7 +302,7 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
 
     try {
       await ctx.api.deleteMessage(ctx.chat!.id, progressMsg.message_id);
-    } catch {}
+    } catch { }
 
     console.error(`[FREE ENHANCE] [${requestId}] ERROR:`, error.message);
 
@@ -331,8 +331,8 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [[
-              { 
-                text: '🔄 حاول مجدداً', 
+              {
+                text: '🔄 حاول مجدداً',
                 callback_data: 'free_enhance',
                 color: 'green' as const
               } as any
@@ -349,8 +349,8 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [[
-              { 
-                text: '🔄 حاول مجدداً', 
+              {
+                text: '🔄 حاول مجدداً',
                 callback_data: 'free_enhance',
                 color: 'green' as const
               }
