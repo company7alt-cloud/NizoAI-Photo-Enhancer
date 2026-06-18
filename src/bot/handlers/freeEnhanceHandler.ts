@@ -123,7 +123,7 @@ export const handleFreeEnhanceButton = async (ctx: Context): Promise<void> => {
           {
             text: '❌ إلغاء',
             callback_data: 'cancel_free_enhance',
-            color: 'red' as const
+            style: 'danger' as const
           } as any
         ]]
       }
@@ -264,7 +264,7 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
               {
                 text: '✨ تحسين صورة أخرى',
                 callback_data: 'free_enhance',
-                color: 'green' as const
+                style: 'success' as const
               } as any
             ]
           ]
@@ -334,7 +334,7 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
               {
                 text: '🔄 حاول مجدداً',
                 callback_data: 'free_enhance',
-                color: 'green' as const
+                style: 'success' as const
               } as any
             ]]
           }
@@ -352,7 +352,7 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
               {
                 text: '🔄 حاول مجدداً',
                 callback_data: 'free_enhance',
-                color: 'green' as const
+                style: 'success' as const
               } as any
             ]]
           }

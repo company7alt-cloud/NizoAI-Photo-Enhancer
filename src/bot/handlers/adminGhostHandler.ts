@@ -115,7 +115,7 @@ export const handleGhostStats = async (ctx: Context): Promise<void> => {
               ? '🔴 فتح الزر المجاني للعملاء' 
               : '🟢 قفل الزر المجاني عن العملاء',
             callback_data: 'admin_toggle_free_enhance_lock',
-            color: isMaintenanceLocked ? 'green' as const : 'red' as const
+            style: isMaintenanceLocked ? 'success' as const : 'danger' as const
           } as any]
         ]
       }

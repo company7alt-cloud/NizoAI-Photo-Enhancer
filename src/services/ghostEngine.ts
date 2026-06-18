@@ -136,15 +136,27 @@ export const processImageWithGhost = async (
                      mimeType === 'image/webp' ? 'webp' : 'jpg';
     const tempFileName = `photo_${requestId}.${extension}`;
 
+    // SAVE TO DISK TO FORCE CORRECT MIME TYPE
+    const fs = await import('fs');
+    const os = await import('os');
+    const pathMod = await import('path');
+    const tempFilePath = pathMod.join(os.tmpdir(), tempFileName);
+    fs.writeFileSync(tempFilePath, imageBuffer);
+
     console.log(`[GHOST ENGINE] [${requestId}] Sending image to ${targetBotUsername}`);
-    
-    // Send as photo (not document) - target bot expects normal photo
-    await client.sendFile(targetBotUsername, {
-      file: imageBuffer,
-      forceDocument: false,
-      caption: '',
-      attributes: []
-    });
+
+    try {
+      await client.sendFile(targetBotUsername, {
+        file: tempFilePath,
+        forceDocument: true,
+        caption: ''
+      });
+    } finally {
+      // CLEANUP TEMP FILE
+      if (fs.existsSync(tempFilePath)) {
+        fs.unlinkSync(tempFilePath);
+      }
+    }
 
     console.log(`[GHOST ENGINE] [${requestId}] Image sent, waiting for enhanced result...`);
 
