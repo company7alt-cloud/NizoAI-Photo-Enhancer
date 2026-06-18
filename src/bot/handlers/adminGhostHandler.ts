@@ -223,8 +223,9 @@ export const handleAdminGhostText = async (ctx: Context): Promise<boolean> => {
       }
 
       if (result.success && result.sessionString) {
+        const phoneForSave = pendingSessions.get(userId)?.phone || 'Unknown';
         await ctx.api.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
-        await saveGhostAccount(ctx, userId, result.sessionString);
+        await saveGhostAccount(ctx, userId, result.sessionString, phoneForSave);
       }
     } catch (error: any) {
       await ctx.api.editMessageText(
@@ -244,13 +245,14 @@ export const handleAdminGhostText = async (ctx: Context): Promise<boolean> => {
     const statusMsg = await ctx.reply('⏳ جاري التحقق من كلمة المرور...');
 
     try {
+      const phoneBeforeDelete = pendingSessions.get(userId)?.phone || 'Unknown';
       const sessionString = await submitPassword(userId, text);
       
       // Delete the password message immediately for security
       try { await ctx.deleteMessage(); } catch {}
       
       await ctx.api.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
-      await saveGhostAccount(ctx, userId, sessionString);
+      await saveGhostAccount(ctx, userId, sessionString, phoneBeforeDelete);
     } catch (error: any) {
       await ctx.api.editMessageText(
         ctx.chat!.id,
@@ -271,10 +273,9 @@ export const handleAdminGhostText = async (ctx: Context): Promise<boolean> => {
 const saveGhostAccount = async (
   ctx: Context,
   adminId: number,
-  sessionString: string
+  sessionString: string,
+  phoneNumber: string
 ): Promise<void> => {
-  const pending = pendingSessions.get(adminId);
-  const phoneNumber = pending?.phone || 'Unknown';
   
   try {
     await GhostAccount.create({
