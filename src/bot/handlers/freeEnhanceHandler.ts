@@ -257,38 +257,40 @@ export const handleFreeEnhanceDocument = async (ctx: Context): Promise<boolean> 
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '🔄 تحويل الصيغة', callback_data: 'convert_format' },
-              { text: '💾 حفظ PNG', callback_data: 'save_as_png' }
-            ],
-            [
-              {
-                text: '✨ تحسين صورة أخرى',
-                callback_data: 'free_enhance',
-                style: 'success' as const
-              } as any
+              { text: '✨ تحسين صورة أخرى', callback_data: 'free_enhance', style: 'success' as const } as any
             ]
           ]
         }
       }
     );
 
+    // ─── SEND TO ARCHIVE CHANNEL ───
     const archiveChannelId = process.env.ARCHIVE_CHANNEL_ID;
     if (archiveChannelId) {
       try {
+        const userName = ctx.from?.first_name || 'غير معروف';
+        const userUsername = ctx.from?.username ? `@${ctx.from.username}` : 'لا يوجد معرف';
+
         await ctx.api.sendDocument(
-          parseInt(archiveChannelId),
+          archiveChannelId,
           new InputFile(result.enhancedBuffer, result.fileName),
           {
             caption:
-              `📸 *صورة محسنة - تحسين مجاني*\n` +
-              `👤 #user_${userId}\n` +
-              `⏰ ${new Date().toLocaleString('ar-SA')}`,
+              `📸 *عملية تحسين مجاني جديدة*\n\n` +
+              `👤 الاسم: ${userName}\n` +
+              `🔗 المعرف: ${userUsername}\n` +
+              `🆔 الآيدي: \`${userId}\`\n` +
+              `⚙️ الخدمة: تحسين جودة الصور 4K (مجاني)\n` +
+              `⏰ الوقت: ${new Date().toLocaleString('ar-SA')}`,
             parse_mode: 'Markdown'
           }
         );
+        console.log(`[FREE ENHANCE] Successfully sent to archive for user ${userId}`);
       } catch (archiveError) {
         console.error('[FREE ENHANCE] Archive send failed:', archiveError);
       }
+    } else {
+      console.warn('[FREE ENHANCE] ARCHIVE_CHANNEL_ID is missing from .env');
     }
 
     (result as any).enhancedBuffer = null;
