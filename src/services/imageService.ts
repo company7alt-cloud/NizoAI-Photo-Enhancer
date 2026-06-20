@@ -397,7 +397,7 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
 }
 
 
-// ── AUTO WATERMARK REMOVAL (bottom-right corner, SDXL inpainting + sharp fallback) ──
+// ── AUTO WATERMARK REMOVAL (bottom-right corner, Lama surgical inpainting) ──
 export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Buffer> {
   // STEP 1 — Download original image
   const imageResponse = await fetch(imageUrl);
@@ -409,50 +409,63 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
   const W = meta.width!;
   const H = meta.height!;
   const fmt = (meta.format ?? 'jpeg') as keyof sharp.FormatEnum;
-  console.log(`[AutoEraser] Dimensions: ${W}x${H}`);
+  console.log(`[AutoEraser] Original Dimensions: ${W}x${H}`);
 
-  // STEP 3 — Define watermark zone (bottom-right corner)
-  const zoneX = Math.round(W * 0.70);
-  const zoneY = Math.round(H * 0.83);
-  const zoneW = W - zoneX;
-  const zoneH = H - zoneY;
-  console.log(`[AutoEraser] Zone: x=${zoneX} y=${zoneY} w=${zoneW} h=${zoneH}`);
+  // STEP 3 — Define SURGICAL watermark zone (Gemini Watermark is small, bottom-right)
+  // Instead of taking 30% of the image, we take exactly 15% width and 7% height at the extreme corner.
+  const zoneW = Math.round(W * 0.15);
+  const zoneH = Math.round(H * 0.07);
+  const zoneX = W - zoneW;
+  const zoneY = H - zoneH;
+  console.log(`[AutoEraser] Surgical Zone: x=${zoneX} y=${zoneY} w=${zoneW} h=${zoneH}`);
 
-  // STEP 4 — Build black mask with white rectangle over the watermark zone (sharp only)
+  // STEP 4 — Resize to fit Lama Model requirements (max ~1024px)
+  const resizedInput = await sharp(inputBuffer)
+    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 95 })
+    .toBuffer();
+
+  const rMeta = await sharp(resizedInput).metadata();
+  const rW = rMeta.width!;
+  const rH = rMeta.height!;
+
+  // Map surgical zone coordinates to the resized image
+  const scaleX = rW / W;
+  const scaleY = rH / H;
+  const rZoneX = Math.round(zoneX * scaleX);
+  const rZoneY = Math.round(zoneY * scaleY);
+  const rZoneW = Math.round(zoneW * scaleX);
+  const rZoneH = Math.round(zoneH * scaleY);
+
+  // STEP 5 — Build EXACT Black/White mask
   const maskBuffer = await sharp({
-    create: { width: W, height: H, channels: 3, background: { r: 0, g: 0, b: 0 } }
+    create: { width: rW, height: rH, channels: 3, background: { r: 0, g: 0, b: 0 } }
   })
     .composite([{
       input: await sharp({
-        create: { width: zoneW, height: zoneH, channels: 3, background: { r: 255, g: 255, b: 255 } }
+        create: { width: rZoneW, height: rZoneH, channels: 3, background: { r: 255, g: 255, b: 255 } }
       }).png().toBuffer(),
-      left: zoneX,
-      top: zoneY
+      left: rZoneX,
+      top: rZoneY
     }])
     .png()
     .toBuffer();
 
-  // STEP 5 — Base64 data URIs
-  const imageB64 = `data:image/jpeg;base64,${(await sharp(inputBuffer).jpeg({ quality: 95 }).toBuffer()).toString('base64')}`;
+  const imageB64 = `data:image/jpeg;base64,${resizedInput.toString('base64')}`;
   const maskB64 = `data:image/png;base64,${maskBuffer.toString('base64')}`;
 
-  // STEP 6 — Replicate SDXL inpainting with 120 s timeout
-  console.log(`[AutoEraser] Calling Replicate...`);
+  console.log(`[AutoEraser] Calling Replicate (Lama Model)...`);
   let resultBuffer: Buffer;
 
   try {
-    const replicateOutput = await Promise.race<unknown>([
+    // STEP 6 — Call Lama (Surgical Inpainting, does not alter prompt geometry)
+    const replicateOutput = await Promise.race<any>([
       replicate.run(
-        "lucataco/sdxl-inpainting:a5b13068cc81a89a4fbeefeccc774869fcb34df4dbc92c1555e0f2771d49dde7",
+        "allenhooo/lama:cdac78a1bec5b23c07fd29692fb70baa513ea403a39e643c48ec5edadb15fe72",
         {
           input: {
             image: imageB64,
-            mask: maskB64,
-            prompt: "seamless background continuation, matching texture and lighting, photorealistic, no watermark, no logo, no text, 8k quality",
-            negative_prompt: "watermark, logo, text, star, mark, signature, blur, distortion, artifact, smear, low quality",
-            num_inference_steps: 40,
-            guidance_scale: 8,
-            strength: 0.99,
+            mask: maskB64
           }
         }
       ),
@@ -461,62 +474,43 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
       )
     ]);
 
-    // STEP 7 — Fetch and decode the output URL
-    const outputUrl = Array.isArray(replicateOutput)
-      ? String(replicateOutput[0])
-      : String(replicateOutput);
+    const outputUrl = typeof replicateOutput?.url === 'function'
+      ? replicateOutput.url().toString()
+      : Array.isArray(replicateOutput) ? String(replicateOutput[0]) : String(replicateOutput);
+
+    if (!outputUrl || outputUrl === 'undefined') throw new Error('No output from Lama');
 
     const replicateResponse = await fetch(outputUrl);
     const resultArrayBuffer = await replicateResponse.arrayBuffer();
-    resultBuffer = Buffer.from(resultArrayBuffer);
+    const rawResultBuffer = Buffer.from(resultArrayBuffer);
 
-    // STEP 8 — Resize to exact original dimensions and format
+    // STEP 7 — Extract ONLY the inpainted patch and composite it back onto the HIGH-RES original.
+    // This guarantees the rest of the 4K image is 100% untouched.
+    const restoredPatch = await sharp(rawResultBuffer)
+      .extract({ left: rZoneX, top: rZoneY, width: rZoneW, height: rZoneH })
+      .resize(zoneW, zoneH, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+      .toBuffer();
+
     resultBuffer = fmt === 'png'
-      ? await sharp(resultBuffer)
-        .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
+      ? await sharp(inputBuffer)
+        .composite([{ input: restoredPatch, left: zoneX, top: zoneY }])
         .png({ compressionLevel: 0 })
         .toBuffer()
       : fmt === 'webp'
-        ? await sharp(resultBuffer)
-          .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
+        ? await sharp(inputBuffer)
+          .composite([{ input: restoredPatch, left: zoneX, top: zoneY }])
           .webp({ quality: 100, lossless: true })
           .toBuffer()
-        : await sharp(resultBuffer)
-          .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
+        : await sharp(inputBuffer)
+          .composite([{ input: restoredPatch, left: zoneX, top: zoneY }])
           .jpeg({ quality: 100 })
           .toBuffer();
 
     console.log(`[AutoEraser] Done. Output size: ${resultBuffer.length} bytes`);
 
   } catch (err: any) {
-    // ── FALLBACK: sharp patch clone from the region directly LEFT of the zone ──
-    console.log(`[AutoEraser] Replicate failed, using fallback: ${err?.message}`);
-
-    const patchBuffer = await sharp(inputBuffer)
-      .extract({ left: zoneX - zoneW, top: zoneY, width: zoneW, height: zoneH })
-      .resize(zoneW, zoneH, { fit: 'fill' })
-      .sharpen({ sigma: 1.2 })
-      .toBuffer();
-
-    resultBuffer = fmt === 'png'
-      ? await sharp(inputBuffer)
-        .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
-        .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
-        .png({ compressionLevel: 0 })
-        .toBuffer()
-      : fmt === 'webp'
-        ? await sharp(inputBuffer)
-          .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
-          .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
-          .webp({ quality: 100, lossless: true })
-          .toBuffer()
-        : await sharp(inputBuffer)
-          .composite([{ input: patchBuffer, left: zoneX, top: zoneY }])
-          .resize(W, H, { fit: 'fill', kernel: sharp.kernel.lanczos3, withoutEnlargement: false })
-          .jpeg({ quality: 100 })
-          .toBuffer();
-
-    console.log(`[AutoEraser] Fallback done. Output size: ${resultBuffer.length} bytes`);
+    console.error(`[AutoEraser] Lama failed: ${err?.message}`);
+    throw err; // Propagate error so user gets refund
   }
 
   return resultBuffer;
