@@ -3,7 +3,12 @@ import { Context, NextFunction } from 'grammy';
 import type { InlineKeyboardButton } from '@grammyjs/types';
 import { ForceSubChannel } from '../../database/models/ForceSubChannel';
 
-const WHITELIST_CALLBACKS = ['check_force_sub', 'captcha_', 'captcha_refresh'];
+const WHITELIST_CALLBACKS = [
+  'check_force_sub', 'captcha_', 'captcha_refresh',
+  'my_orders_menu', 'order_details_', 'refresh_order_',
+  'request_cancel_', 'approve_cancel_', 'reject_cancel_',
+  'back_to_main',
+];
 
 export async function forceSubMiddleware(
   ctx: Context,
