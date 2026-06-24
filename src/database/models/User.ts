@@ -84,6 +84,8 @@ export interface IUser extends Document {
   vipSizeBypass: boolean;
   successfulReferrals: number;
   canBypassLocks: boolean;
+  cancellationsToday: number;
+  lastCancellationDate: Date | null;
   // Document Maker (session data)
   isInDocMaker?: boolean;
   tempLine?: string | null;
@@ -308,6 +310,8 @@ const UserSchema = new Schema<IUser>(
     vipSizeBypass: { type: Boolean, default: false },
     successfulReferrals: { type: Number, default: 0 },
     canBypassLocks: { type: Boolean, default: false },
+    cancellationsToday:   { type: Number, default: 0 },
+    lastCancellationDate: { type: Date, default: null },
     // Document Maker (session data)
     isInDocMaker: { type: Boolean, default: false },
     tempLine: { type: String, default: null },

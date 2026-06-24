@@ -24,6 +24,14 @@ import { User } from './database/models/User';
 // ForceSubChannel static import removed — clawback system disabled
 
 import { startCommand, inviteCommand } from './bot/commands/start';
+import {
+  handleMyOrdersMenu,
+  handleOrderDetails,
+  handleRefreshOrder,
+  handleRequestCancel,
+  handleApproveCancel,
+  handleRejectCancel,
+} from './bot/handlers/myOrdersHandler';
 import { registerAdminCommands } from './bot/commands/admin';
 import { imageHandler } from './bot/handlers/imageHandler';
 import { callbackHandler } from './bot/handlers/callbackHandler';
@@ -3539,6 +3547,38 @@ docBot.on(['message', 'callback_query'], withDocBotHandler('docmaker_router', as
     if (!handled) return next();
   }
 }));
+
+// ─── My Orders Callbacks ───────────────────────────────────────────────────────
+imageBot.callbackQuery('my_orders_menu', async (ctx) => {
+  await handleMyOrdersMenu(ctx);
+});
+
+imageBot.callbackQuery(/^order_details_(.+)$/, async (ctx) => {
+  const orderId = ctx.match[1];
+  await handleOrderDetails(ctx, orderId);
+});
+
+imageBot.callbackQuery(/^refresh_order_(.+)$/, async (ctx) => {
+  const orderId = ctx.match[1];
+  await handleRefreshOrder(ctx, orderId);
+});
+
+imageBot.callbackQuery(/^request_cancel_(.+)$/, async (ctx) => {
+  const orderId = ctx.match[1];
+  await handleRequestCancel(ctx, orderId);
+});
+
+imageBot.callbackQuery(/^approve_cancel_([^_]+)_(\d+)$/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const userId  = ctx.match[2];
+  await handleApproveCancel(ctx, orderId, userId);
+});
+
+imageBot.callbackQuery(/^reject_cancel_([^_]+)_(\d+)$/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const userId  = ctx.match[2];
+  await handleRejectCancel(ctx, orderId, userId);
+});
 
 // ─── docBot Error Handler ──────────────────────────────────────────────────────
 

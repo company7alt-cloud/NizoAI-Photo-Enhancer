@@ -296,12 +296,15 @@ export async function startCommand(ctx: BotContext): Promise<void> {
           { text: 'القناة', url: chanLink, style: 'primary' }
         ]] : []),
 
-        // ROW 5.5 — Free Enhance & Design
+        // ROW 5.5 — Free Enhance & Design + My Orders
         [
           { text: '✨ تحسين مجاني بالذكاء 🆓', callback_data: 'free_enhance', style: 'primary' as const },
         ],
         [
+          // @ts-ignore
           { text: '🟦 تصميم مجاني', callback_data: 'start_free_design', style: 'primary' },
+          // @ts-ignore
+          { text: '📦 طلباتي', callback_data: 'my_orders_menu', style: 'primary' },
         ],
 
         // ROW 6 — Internet Image Downloader (blue)
