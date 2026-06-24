@@ -402,8 +402,21 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
       const tgFile = await ctx.api.getFile(fileId);
       const imageUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${tgFile.file_path}`;
 
+      // Download image to detect dimensions for dynamic padding
+      const imgFetchRes = await fetch(imageUrl);
+      const imgRawBuffer = Buffer.from(await imgFetchRes.arrayBuffer());
+      const sharp = (await import('sharp')).default;
+      const imgMeta = await sharp(imgRawBuffer).metadata();
+      const imgW = imgMeta.width ?? 800;
+      const imgH = imgMeta.height ?? 800;
+
+      // Pad the bottom-right crop zone by 5% of image dimensions on each side
+      // so the watermark removal covers slightly more than the bare star
+      const paddingX = Math.round(imgW * 0.05);
+      const paddingY = Math.round(imgH * 0.05);
+
       const { removeBottomRightWatermarkAI } = await import('../../services/imageService');
-      const resultBuffer = await removeBottomRightWatermarkAI(imageUrl);
+      const resultBuffer = await removeBottomRightWatermarkAI(imageUrl, { paddingX, paddingY });
 
 
 
@@ -423,6 +436,24 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
             "💎 الجودة: نسخة كاملة بدون ضغط",
           parse_mode: "Markdown",
           reply_parameters: { message_id: ctx.message!.message_id },
+          reply_markup: {
+            inline_keyboard: [
+              [
+                // @ts-ignore
+                { text: 'JPG', callback_data: 'eraser_fmt_jpg', style: 'primary' as const },
+                // @ts-ignore
+                { text: 'PNG', callback_data: 'eraser_fmt_png', style: 'primary' as const },
+                // @ts-ignore
+                { text: 'WEBP', callback_data: 'eraser_fmt_webp', style: 'primary' as const },
+              ],
+              [
+                // @ts-ignore
+                { text: 'GIF', callback_data: 'eraser_fmt_gif', style: 'primary' as const },
+                // @ts-ignore
+                { text: 'TIFF', callback_data: 'eraser_fmt_tiff', style: 'primary' as const },
+              ],
+            ],
+          },
         }
       );
 
@@ -468,20 +499,7 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
         }
       );
 
-      // Send format conversion buttons as a SEPARATE message immediately after
-      await ctx.reply(
-        "🔄 *تحويل الصيغة:*",
-        {
-          parse_mode: "Markdown",
-          reply_markup: new InlineKeyboard()
-            .text({ text: "🖼 JPG 🖼️", style: 'primary' as const }, "eraser_fmt_jpg")
-            .text({ text: "🗋 PNG 🖼️", style: 'primary' as const }, "eraser_fmt_png")
-            .text({ text: "🌐 WEBP 🖼️", style: 'primary' as const }, "eraser_fmt_webp")
-            .row()
-            .text({ text: "🎞 GIF 🖼️", style: 'primary' as const }, "eraser_fmt_gif")
-            .text({ text: "📄 TIFF 🖼️", style: 'primary' as const }, "eraser_fmt_tiff")
-        }
-      );
+
 
 
 

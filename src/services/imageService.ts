@@ -398,7 +398,10 @@ export async function processNanoBanana(imageUrl: string): Promise<Buffer> {
 
 
 // ── AUTO WATERMARK REMOVAL (bottom-right corner, Lama surgical inpainting) ──
-export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Buffer> {
+export async function removeBottomRightWatermarkAI(
+  imageUrl: string,
+  options?: { paddingX?: number; paddingY?: number }
+): Promise<Buffer> {
   // STEP 1 — Download original image
   const imageResponse = await fetch(imageUrl);
   if (!imageResponse.ok) throw new Error(`Download failed: ${imageResponse.status}`);
@@ -413,10 +416,19 @@ export async function removeBottomRightWatermarkAI(imageUrl: string): Promise<Bu
 
   // STEP 3 — Define SURGICAL watermark zone (Gemini Watermark is small, bottom-right)
   // Instead of taking 30% of the image, we take exactly 15% width and 7% height at the extreme corner.
-  const zoneW = Math.round(W * 0.15);
-  const zoneH = Math.round(H * 0.07);
-  const zoneX = W - zoneW;
-  const zoneY = H - zoneH;
+  const padX = options?.paddingX ?? 0;
+  const padY = options?.paddingY ?? 0;
+
+  const rawZoneW = Math.round(W * 0.15);
+  const rawZoneH = Math.round(H * 0.07);
+  const rawZoneX = W - rawZoneW;
+  const rawZoneY = H - rawZoneH;
+
+  const zoneX = Math.max(0, rawZoneX - padX);
+  const zoneY = Math.max(0, rawZoneY - padY);
+  const zoneW = Math.min(W - zoneX, rawZoneW + padX * 2);
+  const zoneH = Math.min(H - zoneY, rawZoneH + padY * 2);
+
   console.log(`[AutoEraser] Surgical Zone: x=${zoneX} y=${zoneY} w=${zoneW} h=${zoneH}`);
 
   // STEP 4 — Resize to fit Lama Model requirements (max ~1024px)
