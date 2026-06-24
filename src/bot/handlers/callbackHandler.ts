@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import AdmZip from 'adm-zip';
 import PDFDocument from 'pdfkit';
 import { User } from '../../database/models/User';
+import { Order } from '../../database/models/Order';
 import { BotContext, isAdmin } from '../../utils/validators';
 import { setImageAdminState, getImageAdminState, clearImageAdminState } from '../../utils/adminTextState';
 import * as imageService from '../../services/imageService';
@@ -24,9 +25,9 @@ import {
 import { ForceSubChannel } from '../../database/models/ForceSubChannel';
 import { handleAddGhost, handleGhostStats } from './adminGhostHandler';
 import { handleFreeEnhanceButton } from './freeEnhanceHandler';
-import { 
-  getAdminMaintenanceLock, 
-  setAdminMaintenanceLock 
+import {
+  getAdminMaintenanceLock,
+  setAdminMaintenanceLock
 } from '../../services/ghostResetService';
 
 import { execFile } from 'child_process';
@@ -184,8 +185,13 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
   // ─── My Orders Callbacks ───────────────────────────────────────────────────
   if (data === 'my_orders_menu') {
-    const { handleMyOrdersMenu } = await import('./myOrdersHandler');
-    await handleMyOrdersMenu(ctx);
+    try {
+      const { handleMyOrdersMenu } = await import('./myOrdersHandler');
+      await handleMyOrdersMenu(ctx);
+    } catch (e: any) {
+      console.error('[MyOrders] my_orders_menu error:', e?.message, e?.stack);
+      await ctx.answerCallbackQuery({ text: '❌ حدث خطأ، حاول مرة أخرى.' }).catch(() => { });
+    }
     return;
   }
 
@@ -3649,7 +3655,7 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const { freeEnhanceStates } = await import('./freeEnhanceHandler');
     freeEnhanceStates.delete(userId);
     await ctx.answerCallbackQuery({ text: '✅ تم الإلغاء' });
-    try { await ctx.deleteMessage(); } catch {}
+    try { await ctx.deleteMessage(); } catch { }
     return;
   }
 
@@ -3657,23 +3663,23 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     const userId = ctx.from?.id;
     const ADMIN_IDS = process.env.ADMIN_IDS?.split(',').map(Number) || [];
     if (!userId || !ADMIN_IDS.includes(userId)) {
-      await ctx.answerCallbackQuery({ 
-        text: '⛔ غير مصرح', 
-        show_alert: true 
+      await ctx.answerCallbackQuery({
+        text: '⛔ غير مصرح',
+        show_alert: true
       });
       return;
     }
 
     const currentStatus = getAdminMaintenanceLock();
     setAdminMaintenanceLock(!currentStatus);
-    
-    await ctx.answerCallbackQuery({ 
-      text: !currentStatus 
-        ? '🔒 تم قفل الزر المجاني عن المستخدمين!' 
-        : '✅ تم فتح الزر المجاني للجميع!', 
-      show_alert: true 
+
+    await ctx.answerCallbackQuery({
+      text: !currentStatus
+        ? '🔒 تم قفل الزر المجاني عن المستخدمين!'
+        : '✅ تم فتح الزر المجاني للجميع!',
+      show_alert: true
     });
-    
+
     await handleGhostStats(ctx);
     return;
   }
@@ -4732,28 +4738,28 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
 
       switch (data) {
         // Type
-        case 'shadow_type_drop':  state.shadowType = 'drop';   break;
-        case 'shadow_type_glow':  state.shadowType = 'glow';   break;
-        case 'shadow_type_inner': state.shadowType = 'inner';  break;
+        case 'shadow_type_drop': state.shadowType = 'drop'; break;
+        case 'shadow_type_glow': state.shadowType = 'glow'; break;
+        case 'shadow_type_inner': state.shadowType = 'inner'; break;
         // Speed
-        case 'shadow_speed_fast':   state.shadowSpeed = 'fast';   break;
+        case 'shadow_speed_fast': state.shadowSpeed = 'fast'; break;
         case 'shadow_speed_normal': state.shadowSpeed = 'normal'; break;
         // D-Pad
-        case 'shadow_move_up':    state.shadowOffsetY = (state.shadowOffsetY ?? 0) - step; break;
-        case 'shadow_move_down':  state.shadowOffsetY = (state.shadowOffsetY ?? 0) + step; break;
-        case 'shadow_move_left':  state.shadowOffsetX = (state.shadowOffsetX ?? 0) - step; break;
+        case 'shadow_move_up': state.shadowOffsetY = (state.shadowOffsetY ?? 0) - step; break;
+        case 'shadow_move_down': state.shadowOffsetY = (state.shadowOffsetY ?? 0) + step; break;
+        case 'shadow_move_left': state.shadowOffsetX = (state.shadowOffsetX ?? 0) - step; break;
         case 'shadow_move_right': state.shadowOffsetX = (state.shadowOffsetX ?? 0) + step; break;
         // Opacity and Blur
-        case 'shadow_soft':    state.shadowBlur = (state.shadowBlur ?? 10) + 15;                      break;
-        case 'shadow_sharp':   state.shadowBlur = 0;                                                  break;
-        case 'shadow_op_up':   state.shadowOpacity = Math.min(1.0, (state.shadowOpacity ?? 0.8) + 0.1); break;
+        case 'shadow_soft': state.shadowBlur = (state.shadowBlur ?? 10) + 15; break;
+        case 'shadow_sharp': state.shadowBlur = 0; break;
+        case 'shadow_op_up': state.shadowOpacity = Math.min(1.0, (state.shadowOpacity ?? 0.8) + 0.1); break;
         case 'shadow_op_down': state.shadowOpacity = Math.max(0.1, (state.shadowOpacity ?? 0.8) - 0.1); break;
       }
     }
 
     state.lastActivity = Date.now();
     setDesignState(ctx.from!.id, state);
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     await showConsolidatedFontUI(ctx, state); // Live preview
     return;
   }
@@ -5223,15 +5229,15 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
 
   // Shadow type — 3 blue buttons
   rows.push([
-    { text: state.shadowType === 'drop'  ? '✅ تحت النص' : 'تحت النص',  callback_data: 'shadow_type_drop',  style: 'primary' as const },
-    { text: state.shadowType === 'glow'  ? '✅ مضيئ'     : 'مضيئ',      callback_data: 'shadow_type_glow',  style: 'primary' as const },
-    { text: state.shadowType === 'inner' ? '✅ داخلي'    : 'داخلي',     callback_data: 'shadow_type_inner', style: 'primary' as const },
+    { text: state.shadowType === 'drop' ? '✅ تحت النص' : 'تحت النص', callback_data: 'shadow_type_drop', style: 'primary' as const },
+    { text: state.shadowType === 'glow' ? '✅ مضيئ' : 'مضيئ', callback_data: 'shadow_type_glow', style: 'primary' as const },
+    { text: state.shadowType === 'inner' ? '✅ داخلي' : 'داخلي', callback_data: 'shadow_type_inner', style: 'primary' as const },
   ]);
 
   // Movement speed — 2 blue buttons
   rows.push([
-    { text: state.shadowSpeed === 'fast'   ? '✅ سريع 🚀' : 'سريع 🚀', callback_data: 'shadow_speed_fast',   style: 'primary' as const },
-    { text: state.shadowSpeed === 'normal' ? '✅ عادي'    : 'عادي',    callback_data: 'shadow_speed_normal', style: 'primary' as const },
+    { text: state.shadowSpeed === 'fast' ? '✅ سريع 🚀' : 'سريع 🚀', callback_data: 'shadow_speed_fast', style: 'primary' as const },
+    { text: state.shadowSpeed === 'normal' ? '✅ عادي' : 'عادي', callback_data: 'shadow_speed_normal', style: 'primary' as const },
   ]);
 
   // ── ألوان الظل (8 ألوان) ────────────────────────
@@ -5242,10 +5248,10 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     { text: state.shadowColor === '#0000FF' ? '✅ أزرق' : 'أزرق', callback_data: 'shadow_color_0000FF', style: 'primary' as const }
   ]);
   rows.push([
-    { text: state.shadowColor === '#00CC44' ? '✅ أخضر'   : 'أخضر',   callback_data: 'shadow_color_00CC44', style: 'primary' as const },
-    { text: state.shadowColor === '#FFD700' ? '✅ أصفر'   : 'أصفر',   callback_data: 'shadow_color_FFD700', style: 'primary' as const },
+    { text: state.shadowColor === '#00CC44' ? '✅ أخضر' : 'أخضر', callback_data: 'shadow_color_00CC44', style: 'primary' as const },
+    { text: state.shadowColor === '#FFD700' ? '✅ أصفر' : 'أصفر', callback_data: 'shadow_color_FFD700', style: 'primary' as const },
     { text: state.shadowColor === '#8B00FF' ? '✅ بنفسجي' : 'بنفسجي', callback_data: 'shadow_color_8B00FF', style: 'primary' as const },
-    { text: state.shadowColor === '#FF69B4' ? '✅ وردي'   : 'وردي',   callback_data: 'shadow_color_FF69B4', style: 'primary' as const }
+    { text: state.shadowColor === '#FF69B4' ? '✅ وردي' : 'وردي', callback_data: 'shadow_color_FF69B4', style: 'primary' as const }
   ]);
 
   // D-Pad — move shadow
@@ -5253,7 +5259,7 @@ export function buildTextStudioKeyboard(state: any): { inline_keyboard: any[][] 
     { text: '⬆️', callback_data: 'shadow_move_up', style: 'primary' as const }
   ]);
   rows.push([
-    { text: '⬅️', callback_data: 'shadow_move_left',  style: 'primary' as const },
+    { text: '⬅️', callback_data: 'shadow_move_left', style: 'primary' as const },
     { text: '➡️', callback_data: 'shadow_move_right', style: 'primary' as const }
   ]);
   rows.push([
