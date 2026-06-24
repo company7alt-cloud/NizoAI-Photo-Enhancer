@@ -182,6 +182,53 @@ export async function callbackHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  // ─── My Orders Callbacks ───────────────────────────────────────────────────
+  if (data === 'my_orders_menu') {
+    const { handleMyOrdersMenu } = await import('./myOrdersHandler');
+    await handleMyOrdersMenu(ctx);
+    return;
+  }
+
+  if (data.startsWith('order_details_')) {
+    const orderId = data.replace('order_details_', '');
+    const { handleOrderDetails } = await import('./myOrdersHandler');
+    await handleOrderDetails(ctx, orderId);
+    return;
+  }
+
+  if (data.startsWith('refresh_order_')) {
+    const orderId = data.replace('refresh_order_', '');
+    const { handleRefreshOrder } = await import('./myOrdersHandler');
+    await handleRefreshOrder(ctx, orderId);
+    return;
+  }
+
+  if (data.startsWith('request_cancel_')) {
+    const orderId = data.replace('request_cancel_', '');
+    const { handleRequestCancel } = await import('./myOrdersHandler');
+    await handleRequestCancel(ctx, orderId);
+    return;
+  }
+
+  if (data.startsWith('approve_cancel_')) {
+    const parts = data.replace('approve_cancel_', '').split('_');
+    const userId = parts.pop()!;
+    const orderId = parts.join('_');
+    const { handleApproveCancel } = await import('./myOrdersHandler');
+    await handleApproveCancel(ctx, orderId, userId);
+    return;
+  }
+
+  if (data.startsWith('reject_cancel_')) {
+    const parts = data.replace('reject_cancel_', '').split('_');
+    const userId = parts.pop()!;
+    const orderId = parts.join('_');
+    const { handleRejectCancel } = await import('./myOrdersHandler');
+    await handleRejectCancel(ctx, orderId, userId);
+    return;
+  }
+  // ─── End My Orders Callbacks ───────────────────────────────────────────────
+
   // ── [KILL-SWITCH — ABSOLUTE TOP] Admin Toggle Internet Fetcher ──
   if (data === 'admin_toggle_internet_fetcher') {
     if (!isAdmin(ctx.from!.id)) {
