@@ -24,6 +24,7 @@ function buildProgressBar(stage: number): string {
 
 // ── Show "طلباتي" main menu ──────────────────────────────────────────────────
 export async function handleMyOrdersMenu(ctx: BotContext): Promise<void> {
+  await ctx.answerCallbackQuery().catch(() => {});
   const telegramId = ctx.from!.id.toString();
   const user = await User.findOne({ telegramId: Number(telegramId) });
   const totalEnhancements = user?.totalEnhancements ?? 0;
